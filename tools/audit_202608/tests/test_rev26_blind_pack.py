@@ -467,6 +467,27 @@ def test_the_margin_bar_basis_follows_the_population_ranges_family_not_the_vendo
     assert r26_stages.resolve_family(fin.facts, fin.facts["op_margin_bar"]) == ("financial", None)
 
 
+def test_a_name_with_no_filed_operating_income_gets_the_stamped_x_basis_bar_and_a_missing_filed_share_count_uses_the_pack_count(gev_r26, monkeypatch):
+    no_oi = {"basis": "operating", "years": [], "missing": [{"fy": 2025, "why": "operating_income not held"}]}
+    assert rb.no_filed_operating_income(no_oi)
+    assert not rb.no_filed_operating_income(dict(no_oi, missing=[{"fy": 2025, "why": "revenue not held or not positive"}]))
+    assert not rb.no_filed_operating_income(dict(no_oi, years=[{"fy": 2025}])) and not rb.no_filed_operating_income({"basis": "x", "years": [], "missing": []})
+    monkeypatch.setattr(rb, "op_margin_bar", lambda rows, window=8: dict(no_oi, label="l", fields=[], window=[2018, 2025], n=0, min=None, p25=None, median=None, p75=None, max=None,
+                                                                         last=None, last_year=2025, percentile_rule=""))
+    pk = cap.build_pack("GEV", pilot_arm="r26")
+    bar = pk.facts["op_margin_bar"]
+    assert bar["basis"] == "x" and bar["stamps"] == ["x_basis_no_operating_income"] and "files no operating income in the window" in str(pk)
+    import r26_stages
+    assert r26_stages.resolve_family(pk.facts, bar) == ("financial", None)
+
+
+def test_filed_eps_from_the_pack_share_count_is_stamped_and_the_floor_and_vintage_rules_stay():
+    est = _est()
+    c = rb.consensus_corrected(est, 1.5, 2.0, 1e9, 1.0, False, filed_eps_from_pack_shares=True)
+    assert c["stamps"] == ["filed_eps_from_pack_shares"] and rb.consensus_corrected(est, 1.5, 2.0, 1e9, 1.0, False)["stamps"] == []
+    assert rb.consensus_corrected(est, 1.5, 2.0, 1e9, 1.0, False, vintage_aligned=False, filed_eps_from_pack_shares=True)["consensus_not_comparable"] is True
+
+
 def test_a_seeded_leak_in_the_built_blind_pack_is_caught(gev_r26):
     pk, _ = gev_r26
     f = pk.facts

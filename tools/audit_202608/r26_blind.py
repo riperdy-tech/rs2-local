@@ -527,6 +527,11 @@ def op_margin_bar(rows: Dict[Any, Dict[str, Any]], window: int = BAR_WINDOW_YEAR
     return out
 
 
+def no_filed_operating_income(bar: Dict[str, Any]) -> bool:
+    """True when an operating-basis bar holds no year and none of its missing years lacks only revenue: no operating income is filed anywhere in the window."""
+    return bar.get("basis") == "operating" and not bar.get("years") and not any(m.get("why") == "revenue not held or not positive" for m in bar.get("missing") or [])
+
+
 def x_margin_bar(x_history: Optional[Dict[str, Any]], window: int = BAR_WINDOW_YEARS) -> Dict[str, Any]:
     """The same bar on the X basis, for the financial family (a bank or insurer files no operating income): the X-basis margin per filed year as filed
     (x_margin_basis.history's `x_margin`, not the without-one-offs series)."""
@@ -559,7 +564,9 @@ def op_margin_bar_lines(bar: Dict[str, Any], financial_family: bool) -> List[str
     first, last = bar["window"]
     head = f"## DATA 5.1 - MARGIN HISTORY BAR   [Arithmetic on filed values; fiscal years FY{first}-FY{last}]" if first is not None else "## DATA 5.1 - MARGIN HISTORY BAR   [no fiscal-year record held]"
     lines = [head]
-    if financial_family:
+    if "x_basis_no_operating_income" in (bar.get("stamps") or []):
+        lines.append("- This company files no operating income in the window, so the bar is on the X basis (the basis of your earnings_margin).")
+    elif financial_family:
         lines.append("- This company is in the financial family: it files no operating income, so the bar is on the X basis (the basis of your earnings_margin).")
     per_year = " | ".join(f"FY{y['fy']} {_pct(y['margin'])}" for y in bar["years"])
     lines.append(f"- {bar['label']}, by fiscal year: {per_year if per_year else 'none held'}")
@@ -601,7 +608,8 @@ def _bridge_hook(x_margins: Dict[str, Optional[float]], years: Dict[str, Optiona
 
 def consensus_corrected(estimates: Optional[Dict[str, Any]], filed_eps: Any, vendor_eps: Any, shares: Any, pi: Any, vendor_break: bool,
                         vintage_aligned: Any = True, shares_agree: bool = True, filed_x_margins: Optional[Dict[str, Any]] = None,
-                        bridge_facts: Optional[Dict[str, Any]] = None, base_year: Optional[int] = None) -> Dict[str, Any]:
+                        bridge_facts: Optional[Dict[str, Any]] = None, base_year: Optional[int] = None,
+                        filed_eps_from_pack_shares: bool = False) -> Dict[str, Any]:
     """The vendor's consensus EPS on the filed base year's basis (SPEC section 5): each year's vendor EPS x (filed base-year EPS / the vendor's base-year EPS),
     converted to an X-basis margin on the consensus revenue (x_margin_basis.consensus_margins, the arithmetic of x_margin_consensus_y1y2).
     {"consensus_not_comparable", "reason", "ratio", "ratio_band", "min_eps_analysts", "filed_eps", "vendor_eps", "x_margin": {"y1", "y2"}, "years": {...},
@@ -612,7 +620,8 @@ def consensus_corrected(estimates: Optional[Dict[str, Any]], filed_eps: Any, ven
     out: Dict[str, Any] = {"consensus_not_comparable": True, "reason": None, "ratio": None, "ratio_band": list(RATIO_BAND), "min_eps_analysts": MIN_EPS_ANALYSTS,
                            "filed_eps": filed_eps if _isnum(filed_eps) else None, "vendor_eps": vendor_eps if _isnum(vendor_eps) else None,
                            "x_margin": {"y1": None, "y2": None}, "years": {"y1": None, "y2": None},
-                           "filed_x_margin": filed_x_margins, "operating_basis": {"status": "not_computed"}}
+                           "filed_x_margin": filed_x_margins, "operating_basis": {"status": "not_computed"},
+                           "stamps": ["filed_eps_from_pack_shares"] if filed_eps_from_pack_shares else []}
 
     def stop(reason: str) -> Dict[str, Any]:
         out["reason"] = reason

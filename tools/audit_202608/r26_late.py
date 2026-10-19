@@ -137,6 +137,35 @@ def forecast_properties():
 
 FORECAST_REQUIRED = ["discount_rate", "frame", "scenarios"]
 
+X_BASIS_PHRASES = (("filed operating margin (operating income / revenue)", "X-basis margin (net income plus after-tax amortization of acquired intangibles, over revenue)"),
+                   ("filed operating margin (a decimal)", "X-basis margin (a decimal)"), ("filed operating-margin history", "X-basis margin history"),
+                   ("filed operating margin", "X-basis margin"))
+
+
+def _x_wording(text):
+    for a, b in X_BASIS_PHRASES:
+        text = text.replace(a, b)
+    return text
+
+
+def stage2_task(bar=None):
+    """STAGE2_TASK, or its X-basis wording when the margin bar is on the X basis (the financial family, or any name with no filed operating income): the margins you give are
+    the X-basis margin and code converts nothing."""
+    if (bar or {}).get("basis") != "x":
+        return STAGE2_TASK
+    t = STAGE2_TASK.replace("1. The margin basis. Every margin you give is the filed operating margin: operating income divided by revenue, the operating-income line of the income statement. It is not a net margin, an after-tax margin or an adjusted margin. Code converts your operating margins to the basis the valuation desk uses, and shows the conversion afterwards.",
+                            "1. The margin basis. Every margin you give is on the valuation desk's basis, the X-basis margin: net income plus the after-tax amortization of acquired intangibles, divided by revenue, as the history bar shows it. Code converts nothing. The line \"operating margin\" in the fields below means this margin.")
+    assert t != STAGE2_TASK
+    return _x_wording(t)
+
+
+def stage2_tool(bar=None):
+    """SUBMIT_FORECAST_TOOL with its descriptions in the X-basis wording when the bar is on the X basis."""
+    if (bar or {}).get("basis") != "x":
+        return SUBMIT_FORECAST_TOOL
+    return json.loads(_x_wording(json.dumps(SUBMIT_FORECAST_TOOL)))
+
+
 SUBMIT_FORECAST_TOOL = {
     "type": "function",
     "function": {

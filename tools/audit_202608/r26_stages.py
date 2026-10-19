@@ -862,6 +862,8 @@ def resolve_family(facts, bar=None):
     else:
         return None, f"family_unresolved: population_ranges.family is {fam!r}"
     basis = (bar or {}).get("basis")
+    if out == "operating" and basis == "x" and "x_basis_no_operating_income" in ((bar or {}).get("stamps") or []):
+        return "financial", None                  # no filed operating income in the window (any name): the X basis throughout, the identity bridge
     if basis in ("operating", "x") and (basis == "x") != (out == "financial"):
         return None, f"family_unresolved: family {fam!r} but the margin bar is on the {basis!r} basis"
     return out, None
@@ -869,14 +871,15 @@ def resolve_family(facts, bar=None):
 
 def valuation_inputs(facts, price, desk_context, ticker=None, bridge_facts=None):
     """Everything code needs to value a forecast: rev0 and base_cf ($B), the bridge facts, the desk's call arguments and context, the price and the verdict band.
-    rev0 is facts["long_run"]["rev_L"] and base_cf facts["owner_earnings_default_b"] (the desk's own base year and cash basis); a missing one raises R26InputError.
+    rev0 is facts["long_run"]["rev_L"] and base_cf facts["owner_earnings_default_b"] (the desk's own base year and cash basis); a missing rev_L raises R26InputError, a missing base_cf sets `base_cf_unavailable` (the name ends in a no_call).
     The bridge facts are facts["r26_bridge_facts"] when the pack's facts carry them, else the history's (load_bridge_facts); a name whose history is not held gets
     {"family": ...} alone, so every sample says `bridge_unavailable_*` and is not valued. The bridge needs tau, OI_0 and X_0 (x_L x rev_L of the facts' long_run)."""
     lr = (facts or {}).get("long_run") or {}
     rev0, base_cf = lr.get("rev_L"), (facts or {}).get("owner_earnings_default_b")
-    for nm, v, owner in (("long_run.rev_L", rev0, "pack facts"), ("owner_earnings_default_b", base_cf, "pack facts")):
-        if not rf._num(v):
-            raise R26InputError(f"facts[{nm!r}] is not a number ({v!r}); owner: {owner}")
+    if not rf._num(rev0):
+        raise R26InputError(f"facts['long_run.rev_L'] is not a number ({rev0!r}); owner: pack facts")
+    # no code-owned base cash flow exists (PACS: no D&A in the filed 10-K facts): r26 does not invent one. A model-independent data no_call, recorded, not a code defect.
+    base_cf_why = None if rf._num(base_cf) else f"base_cf_unavailable: owner_earnings_default_b is {base_cf!r} (the pack holds no owner earnings)"
     fam, fam_why = resolve_family(facts, (facts or {}).get("op_margin_bar"))
     bf = bridge_facts if bridge_facts is not None else (facts or {}).get("r26_bridge_facts")
     if bf is None and ticker and fam is not None:
@@ -901,8 +904,10 @@ def valuation_inputs(facts, price, desk_context, ticker=None, bridge_facts=None)
         bf["revenue_0"] = float(rev0)
     elif rf._num(oi0):
         bf["stamps"] = list(bf.get("stamps") or []) + ["operating_income_0_revenue_basis_not_checked"]
+    if "x_basis_no_operating_income" in (((facts or {}).get("op_margin_bar") or {}).get("stamps") or []) and fam == "financial":
+        bf["stamps"] = list(bf.get("stamps") or []) + ["x_basis_no_operating_income"]
     ctx = dict(desk_context or {})
-    return {"family": fam, "family_unresolved": fam_why, "rev0": float(rev0), "base_cf": float(base_cf), "bridge_facts": bf, "desk_params": default_desk_params(), "desk_context": ctx,
+    return {"family": fam, "family_unresolved": fam_why, "base_cf_unavailable": base_cf_why, "rev0": float(rev0), "base_cf": float(base_cf) if base_cf_why is None else None, "bridge_facts": bf, "desk_params": default_desk_params(), "desk_context": ctx,
             "price": float(price), "min_mos": None, "run_date": ctx.get("run_date") or time.strftime("%Y-%m-%d")}
 
 
@@ -1026,7 +1031,7 @@ def _cites_unusable(forecast, dossier):
     return sorted(cited & bad)
 
 
-def _stage2_sample(model, msgs0, dossier, run_dir, k, seed, sess):
+def _stage2_sample(model, msgs0, dossier, run_dir, k, seed, sess, tool=None):
     """One of the K sessions. Returns the sample record without its valuation."""
     state = {"subs": 0, "forecast": None, "problems": [], "history": []}
     msgs = copy.deepcopy(msgs0)
@@ -1045,7 +1050,7 @@ def _stage2_sample(model, msgs0, dossier, run_dir, k, seed, sess):
             return {"accepted": False, "message": _structure_message(probs) + ". You have one correction: call submit_forecast again with the whole forecast."}, False
         return {"accepted": False, "message": _structure_message(probs) + ". This is the second failure: this sample is dropped."}, True
 
-    res = _session(model, msgs, [r26_late.SUBMIT_FORECAST_TOOL], run_dir, f"stage2_k{k}", handle, seed=seed, max_turns=STAGE2_MAX_TURNS, nudge=SUBMIT_NUDGE, **sess)
+    res = _session(model, msgs, [tool or r26_late.SUBMIT_FORECAST_TOOL], run_dir, f"stage2_k{k}", handle, seed=seed, max_turns=STAGE2_MAX_TURNS, nudge=SUBMIT_NUDGE, **sess)
     status = "forecast_invalid" if (state["subs"] and state["forecast"] is None) else ("no_forecast" if state["forecast"] is None else "submitted")
     return {"k": k, "seed": seed, "status": status, "forecast": state["forecast"], "submissions": state["subs"], "repair_used": state["subs"] >= 2,
             "problems": state["problems"], "problem_history": state["history"], "turns": res["turns"], "ended": res["ended"], "stamps": []}
@@ -1058,17 +1063,18 @@ def run_stage2(*, run_dir, model, blind_pack, dossier, op_margin_bar, valuation,
     t0 = time.time()
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    if valuation.get("family_unresolved"):
+    pre = ("family_unresolved", valuation["family_unresolved"]) if valuation.get("family_unresolved") else (
+        ("base_cf_unavailable", valuation["base_cf_unavailable"]) if valuation.get("base_cf_unavailable") else None)
+    if pre:
         out = {"schema": "r26.forecasts.v1", "stage": "stage2", "pack_revision": PACK_REVISION_R26, "k": int(k), "seeds": [], "samples": [], "aggregate": rf.aggregate([]),
-               "median_index": None, "spread": None, "base_values": [], "op_margin_bar": op_margin_bar, "family_unresolved": valuation["family_unresolved"],
-               "stamps": ["family_unresolved"], "elapsed_s": 0}
+               "median_index": None, "spread": None, "base_values": [], "op_margin_bar": op_margin_bar, pre[0]: pre[1], "stamps": [pre[0]], "elapsed_s": 0}
         _write_json(run_dir / ARTIFACTS["stage2"], out)
         return out
-    msgs0 = fresh_messages("stage2", {"blind_pack": blind_pack, "dossier": dossier, "op_margin_bar": op_margin_bar, "task": r26_late.STAGE2_TASK})
+    msgs0 = fresh_messages("stage2", {"blind_pack": blind_pack, "dossier": dossier, "op_margin_bar": op_margin_bar, "task": r26_late.stage2_task(op_margin_bar)})
     sess = dict(think=think, ctx=ctx, num_predict=num_predict, temperature=temperature, num_batch=num_batch, draft_num_predict=draft_num_predict, timeout=timeout, verbose=verbose)
     samples = []
     for i in range(int(k)):
-        s = _stage2_sample(model, msgs0, dossier, run_dir, i + 1, (seed if seed is not None else 0) + i, sess)
+        s = _stage2_sample(model, msgs0, dossier, run_dir, i + 1, (seed if seed is not None else 0) + i, sess, r26_late.stage2_tool(op_margin_bar))
         if s["forecast"] is not None:
             cu = _cites_unusable(s["forecast"], dossier)
             if cu:
@@ -1089,7 +1095,7 @@ def run_stage2(*, run_dir, model, blind_pack, dossier, op_margin_bar, valuation,
            "samples": samples, "aggregate": agg, "median_index": agg["median_index"], "spread": agg["spread"],
            "base_values": [s["base_value"] for s in samples], "op_margin_bar": op_margin_bar,
            "valuation_inputs": {"rev0": valuation["rev0"], "base_cf": valuation["base_cf"], "bridge_facts": valuation["bridge_facts"], "price": valuation["price"]},
-           "stamps": stamps, "elapsed_s": round(time.time() - t0), "task_sha256": hashlib.sha256(r26_late.STAGE2_TASK.encode("utf-8")).hexdigest()}
+           "stamps": stamps, "elapsed_s": round(time.time() - t0), "task_sha256": hashlib.sha256(r26_late.stage2_task(op_margin_bar).encode("utf-8")).hexdigest()}
     _write_json(run_dir / ARTIFACTS["stage2"], out)
     return out
 
@@ -1214,9 +1220,10 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
               "stamps": [], "turns": 0, "ended": None, "final_source": None, "final_forecast": None, "pre": None, "post": None, "pull": None, "diagnostics": None}
     mi = forecasts.get("median_index")
     if mi is None:
-        reveal["no_call"], reveal["no_call_reasons"] = True, (["family_unresolved"] if forecasts.get("family_unresolved") else ["no_valued_sample"])
-        if forecasts.get("family_unresolved"):
-            reveal["family_unresolved"] = forecasts["family_unresolved"]
+        pre_key = next((k for k in ("family_unresolved", "base_cf_unavailable") if forecasts.get(k)), None)
+        reveal["no_call"], reveal["no_call_reasons"] = True, ([pre_key] if pre_key else ["no_valued_sample"])
+        if pre_key:
+            reveal[pre_key] = forecasts[pre_key]
         _write_json(run_dir / ARTIFACTS["stage3"], reveal)
         return reveal
     pre_fc = forecasts["samples"][mi]["forecast"]

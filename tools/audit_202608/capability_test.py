@@ -3667,6 +3667,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                               "filed_eps": (_fy_ni_x / _fy_sh_x) if (isinstance(_fy_ni_x, (int, float)) and isinstance(_fy_sh_x, (int, float))
                                                                       and _fy_sh_x > 0 and _fy_ni_x != 0) else None,
                               "aligned": _aligned, "shares_agree": bool(_sh_ok)})
+            _sd26 = facts.get("shares_default")
+            if (_r26 and _r26_base["filed_eps"] is None and not isinstance(_fy_sh_x, (int, float)) and isinstance(_fy_ni_x, (int, float)) and _fy_ni_x != 0
+                    and isinstance(_sd26, (int, float)) and _sd26 > 0):
+                # revision 26: the filer tags no diluted share count (a 20-F filer): the pack's own code-owned count stands in, stamped; the vintage test and the analyst floor are unchanged
+                _r26_base.update({"filed_eps": _fy_ni_x / _sd26, "shares_agree": True, "filed_eps_from_pack_shares": True})
             if (isinstance(_ya, (int, float)) and _ya > 0 and isinstance(_fy_ni_x, (int, float))
                     and isinstance(_fy_sh_x, (int, float)) and _fy_sh_x > 0 and _fy_ni_x != 0
                     and not (_aligned is True and _sh_ok)):
@@ -4255,6 +4260,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # revision 26: DATA 5.1, the operating-margin bar (the X basis for the financial family); consensus_corrected for stage 3; the blind pack, the drops and the leak test
         _fin_family = (facts.get("population_ranges") or {}).get("family") == "financial"      # the family r26_stages.resolve_family reads, not the vendor sector (Gold.com: sector Financial Services, SIC 5051, operating)
         _bar = r26_blind.x_margin_bar(facts.get("x_margin_history")) if _fin_family else r26_blind.op_margin_bar(h)
+        if not _fin_family and r26_blind.no_filed_operating_income(_bar):
+            # any name, never by ticker: an operating-family name with no filed operating income in the window is on the X basis throughout
+            _bar = r26_blind.x_margin_bar(facts.get("x_margin_history"))
+            _bar["stamps"] = ["x_basis_no_operating_income"]
+            _fin_family = True
         facts["op_margin_bar"] = _bar
         L.insert_block(_bar_at, r26_blind.op_margin_bar_lines(_bar, _fin_family), r26_blind.FILED)
         _pi26 = (facts.get("nci_attribution") or {}).get("pi")
@@ -4264,6 +4274,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         facts["consensus_corrected"] = r26_blind.consensus_corrected(
             en.get("estimates") if en else None, _r26_base.get("filed_eps"), _r26_base.get("vendor_eps"), facts.get("shares_default"), _pi26,
             _vb26.startswith("break"), vintage_aligned=_r26_base.get("aligned"), shares_agree=bool(_r26_base.get("shares_agree")),
+            filed_eps_from_pack_shares=bool(_r26_base.get("filed_eps_from_pack_shares")),
             filed_x_margins=({"fy": _xh_last["fy"], "x_margin": _xh_last["x_margin"]} if isinstance(_xh_last, dict) else None),
             bridge_facts=facts, base_year=_xh.get("base_year"))
         _split26 = r26_blind.blind_split(L)

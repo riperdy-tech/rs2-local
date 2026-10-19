@@ -560,8 +560,8 @@ def test_fewer_valued_samples_than_k_is_stamped(tmp_path, monkeypatch):
 
 
 def test_a_missing_code_owned_input_is_named():
-    with pytest.raises(r26.R26InputError, match="owner_earnings_default_b"):
-        r26.valuation_inputs({"long_run": dict(LR)}, 10.0, {})
+    nb = r26.valuation_inputs({"long_run": dict(LR)}, 10.0, {})              # a missing base_cf is a recorded data no_call, not an input error
+    assert nb["base_cf"] is None and nb["base_cf_unavailable"].startswith("base_cf_unavailable")
     with pytest.raises(r26.R26InputError, match="long_run.rev_L"):
         r26.valuation_inputs({"owner_earnings_default_b": 1.0, "long_run": {}}, 10.0, {})
     v = r26.valuation_inputs({"owner_earnings_default_b": 1.0, "long_run": dict(LR), "r26_bridge_facts": {"family": "x"}, "population_ranges": {"family": "financial"}}, 10.0, {"run_date": "2026-01-01"})
@@ -682,3 +682,32 @@ def test_a_crux_on_an_input_the_path_does_not_offer_is_a_form_problem(tmp_path, 
     bad = crux_args("keep", input="year2_level")
     script, _, rv, _ = run_stages(tmp_path, monkeypatch, THREE + [bad, bad, memo_step()])
     assert rv["crux"]["state"] == "form_failed" and rv["no_call"] and "not offered on this desk path" in " ".join(rv["crux"]["form_problems"])
+
+
+def test_a_missing_base_cf_is_a_no_call_with_no_model_call_and_no_error(tmp_path, monkeypatch):
+    facts = {"long_run": dict(LR), "population_ranges": {"family": "operating"}, "op_margin_bar": dict(DBAR, basis="operating")}
+    u = r26.valuation_inputs(facts, PRICE, _ctx(price=PRICE, desk_schema=None))
+    assert u["family"] == "operating" and u["family_unresolved"] is None and u["base_cf_unavailable"]
+    script = Script()
+    monkeypatch.setattr(prov, "chat", script)
+    kw = dict(run_dir=tmp_path / "b", model="m", dossier=dossier(), valuation=u, op_margin_bar=DBAR, verbose=False)
+    f2 = r26.run_stage2(blind_pack="B", seed=1, **kw)
+    r2 = r26.run_stage3(blind_pack="B", forecasts=f2, **kw)
+    fi = r26.run_stage4(forecasts=f2, reveal=r2, **kw)
+    assert script.bodies == [] and f2["base_cf_unavailable"] and r2["no_call_reasons"] == ["base_cf_unavailable"]
+    assert fi["no_call"] and fi["verdict"]["no_call"]["reasons"] == ["base_cf_unavailable"] and fi["actionable"] is False
+
+
+def test_no_filed_operating_income_puts_any_name_on_the_x_basis_with_the_identity_bridge_and_the_x_wording():
+    xbar = dict(DBAR, basis="x", stamps=["x_basis_no_operating_income"])
+    assert r26.resolve_family({"population_ranges": {"family": "operating"}}, xbar) == ("financial", None)
+    assert r26.resolve_family({"population_ranges": {"family": "commodity"}}, xbar) == ("financial", None)
+    assert r26.resolve_family({"population_ranges": {"family": "operating"}}, dict(DBAR, basis="x"))[0] is None          # an unstamped X bar is still a mismatch
+    facts = {"long_run": dict(LR), "owner_earnings_default_b": BASE_CF, "population_ranges": {"family": "operating"}, "op_margin_bar": xbar}
+    v = r26.valuation_inputs(facts, PRICE, {})
+    assert v["family"] == "financial" and v["bridge_facts"]["family"] == "financial" and "x_basis_no_operating_income" in v["bridge_facts"]["stamps"]
+    t = late.stage2_task(xbar)
+    assert "X-basis margin" in t and "Code converts nothing" in t and "operating income divided by revenue" not in t and late.stage2_task(DBAR) is late.STAGE2_TASK
+    assert late.stage2_task(dict(DBAR, basis="operating")) is late.STAGE2_TASK
+    tool = json.dumps(late.stage2_tool(xbar))
+    assert "operating income / revenue" not in tool and "X-basis margin" in tool and late.stage2_tool(DBAR) is late.SUBMIT_FORECAST_TOOL
