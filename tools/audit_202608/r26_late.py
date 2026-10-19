@@ -343,6 +343,15 @@ def consensus_view(cc, bridge_facts):
         return {"status": "not_comparable", "reason": cc.get("reason") or cc.get("consensus_not_comparable") or "consensus_not_comparable", "years": {}}
     xs, rev = _year_map(cc.get("x_margins") or cc.get("x_margin")), _year_map(cc.get("revenue"))
     ops = _year_map(cc.get("op_margins")) if not isinstance(cc.get("op_margins"), str) else {}
+    # R26-B's shape (r26_blind.consensus_corrected): the revenue is years.<y>.revenue_b ($B) and the operating equivalent is operating_basis.values.<y>.op_margin
+    for k, yv in _year_map(cc.get("years")).items():
+        if isinstance(yv, dict) and _num(yv.get("revenue_b")) and k not in rev:
+            rev[k] = float(yv["revenue_b"]) * 1e9
+    ob = cc.get("operating_basis") if isinstance(cc.get("operating_basis"), dict) else {}
+    if ob.get("status") == "inverted":
+        for k, inv in _year_map(ob.get("values")).items():
+            if isinstance(inv, dict) and inv.get("status") == rf.BRIDGE_OK and _num(inv.get("op_margin")) and k not in ops:
+                ops[k] = inv["op_margin"]
     years = {}
     for y, x in sorted(xs.items()):
         if not _num(x):

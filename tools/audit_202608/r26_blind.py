@@ -595,7 +595,7 @@ def _bridge_hook(x_margins: Dict[str, Optional[float]], years: Dict[str, Optiona
         x, y = x_margins.get(label), (years or {}).get(label)
         if x is None or not isinstance(y, dict):
             continue
-        out[label] = invert_bridge(x, base_year + n, facts, revenue=y["revenue_b"] * 1e9)
+        out[label] = invert_bridge(x, n, facts, revenue=y["revenue_b"] * 1e9)      # n is the path year (1, 2): r26_forecast indexes A_t by path year
     return {"status": "inverted", "values": out}
 
 
