@@ -1123,7 +1123,13 @@ def valuation_inputs(facts, price, desk_context, ticker=None, bridge_facts=None)
     if "x_basis_no_operating_income" in (((facts or {}).get("op_margin_bar") or {}).get("stamps") or []) and fam == "financial":
         bf["stamps"] = list(bf.get("stamps") or []) + ["x_basis_no_operating_income"]
     ctx = dict(desk_context or {})
-    return {"family": fam, "family_unresolved": fam_why, "base_cf_unavailable": base_cf_why, "rev0": float(rev0), "base_cf": float(base_cf) if base_cf_why is None else None, "bridge_facts": bf, "desk_params": default_desk_params(), "desk_context": ctx,
+    # a bridge input the filings do not hold (LPG: no tax provision filed, so no measured tax rate) is a model-independent data no_call, recorded like
+    # base_cf_unavailable, never a defaulted value (0.0 is a value; an absent figure is not 0)
+    bridge_why = None
+    if fam is not None and fam_why is None and base_cf_why is None:
+        bst = rf._bridge_inputs(bf)["status"]
+        bridge_why = None if bst == rf.BRIDGE_OK else f"bridge_unavailable: {bst}"
+    return {"family": fam, "family_unresolved": fam_why, "base_cf_unavailable": base_cf_why, "bridge_unavailable": bridge_why, "rev0": float(rev0), "base_cf": float(base_cf) if base_cf_why is None else None, "bridge_facts": bf, "desk_params": default_desk_params(), "desk_context": ctx,
             "price": float(price), "min_mos": None, "run_date": ctx.get("run_date") or time.strftime("%Y-%m-%d")}
 
 
@@ -1281,7 +1287,8 @@ def run_stage2(*, run_dir, model, blind_pack, dossier, op_margin_bar, valuation,
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     pre = ("family_unresolved", valuation["family_unresolved"]) if valuation.get("family_unresolved") else (
-        ("base_cf_unavailable", valuation["base_cf_unavailable"]) if valuation.get("base_cf_unavailable") else None)
+        ("base_cf_unavailable", valuation["base_cf_unavailable"]) if valuation.get("base_cf_unavailable") else (
+        ("bridge_unavailable", valuation["bridge_unavailable"]) if valuation.get("bridge_unavailable") else None))
     if pre:
         out = {"schema": "r26.forecasts.v1", "stage": "stage2", "pack_revision": PACK_REVISION_R26, "k": int(k), "seeds": [], "samples": [], "aggregate": rf.aggregate([]),
                "median_index": None, "spread": None, "base_values": [], "op_margin_bar": op_margin_bar, pre[0]: pre[1], "stamps": [pre[0]], "elapsed_s": 0}
@@ -1486,7 +1493,7 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
               "stamps": [], "turns": 0, "ended": None, "final_source": None, "final_forecast": None, "pre": None, "post": None, "pull": None, "diagnostics": None}
     mi = forecasts.get("median_index")
     if mi is None:
-        pre_key = next((k for k in ("family_unresolved", "base_cf_unavailable") if forecasts.get(k)), None)
+        pre_key = next((k for k in ("family_unresolved", "base_cf_unavailable", "bridge_unavailable") if forecasts.get(k)), None)
         reveal["no_call"], reveal["no_call_reasons"] = True, ([pre_key] if pre_key else ["no_valued_sample"])
         if pre_key:
             reveal[pre_key] = forecasts[pre_key]

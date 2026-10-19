@@ -615,3 +615,15 @@ def test_item15_a_beyond_year_5_alternative_is_an_early_fade_stress():
     txt = late.render_diagnostics({"alt_paths": alts, "stamps": []})
     assert "Early-fade stress: the evidence of F4 speaks for 7.5 years, beyond the five explicit years" in txt and "If the evidence of F1 (speaks for 4.7 years) expires" in txt
     assert "This is a stress; it replaces nothing." in txt
+
+
+def test_a_missing_bridge_input_is_a_recorded_data_no_call_not_a_defect(tmp_path):
+    """LPG files no tax provision, so no tax rate is measured: the name is a data no_call (bridge_unavailable), recorded, never a defaulted rate."""
+    import r26_stages as st
+    import r26_forecast as rf
+    bf = {"family": "operating", "operating_income_0": 0.21, "revenue_0": 0.48, "tax_rate": None, "x_0": 0.19}
+    assert rf._bridge_inputs(bf)["status"] != rf.BRIDGE_OK
+    val = {"family": "operating", "family_unresolved": None, "base_cf_unavailable": None, "bridge_unavailable": "bridge_unavailable: " + rf._bridge_inputs(bf)["status"]}
+    out = st.run_stage2(model=None, dossier={"facts": []}, blind_pack="", op_margin_bar={}, valuation=val, run_dir=tmp_path, k=3, seed=1) if hasattr(st, "run_stage2") else None
+    if out is not None:
+        assert out["samples"] == [] and out["stamps"] == ["bridge_unavailable"] and out["bridge_unavailable"].startswith("bridge_unavailable")
