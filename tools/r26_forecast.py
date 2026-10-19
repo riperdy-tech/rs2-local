@@ -1,7 +1,8 @@
 """r26_forecast.py - revision 26 (SPEC_rev26_staged_analyst.md sections 2 and 3): the stage-2 forecast, as pure functions.
 
 What is here, in the order the spec uses it:
-  validate_forecast   structure only: fields, finiteness, enums, fact IDs present in the dossier. Numbers are never bounded.
+  validate_forecast   structure and four domain rules: fields, finiteness, enums, usable fact IDs, probabilities, non-negative revenue, discount rate above terminal_g,
+                      positive terminal_ronic (cross-check 23). A margin is never bounded.
   build_path          years of revenue growth and operating margin from the model's near term, its normalized state and its transition.
   bridge_to_x         the operating margin of each year on the desk's X basis (net income + after-tax amortization, over revenue; calibrated to the filed base year), as a table
                       with its inputs; invert_bridge goes back (the operating-basis equivalent of an X margin, for the consensus).
@@ -19,13 +20,14 @@ Units. Margins and growth rates are decimals (0.12 = 12%). `delta_pts` is in PER
 the one place that converts. Dollar quantities (revenue, operating income, X-basis earnings, K_0) share one unit, whatever it is.
 
 The forecast object:
-  {"discount_rate": r, "frame": "equity" | "firm",
+  {"discount_rate": r, "frame": "equity",
    "scenarios": {"Base": SC, "Bull": SC, "Bear": SC}}
   SC = {"near_term": {"rev_growth": [g1, g2], "op_margin": [m1, m2], "fact_ids": [...]},
         "normalized": {"year": N, "rev_growth": gN, "baseline": "min|p25|median|p75|max|last", "delta_pts": d, "fact_ids": [...], "reason": "..."},
         "transition": "linear" | "step_at_year" | "hold_then_linear", "transition_year": k,
         "long_run_margin_op": L, "terminal_g": gT, "terminal_ronic": ronic, "fade_years": F, "prob": p,
-        "long_run_fact_ids": [...]}                 # optional: the facts behind long_run_margin_op (SPEC step 4 names them; see alt_paths)
+        "long_run_fact_ids": [...],                 # the usable facts behind long_run_margin_op (SPEC step 4 names them; see alt_paths) ...
+        "no_duration_matched_evidence": "..."}      # ... or, instead, this sentence saying that no usable fact speaks for as long as the long run (one of the two is required)
 The operating-margin bar: {"min", "p25", "median", "p75", "max", "last"} as decimals (SPEC section 5), plus anything else it carries.
 """
 from __future__ import annotations
@@ -36,7 +38,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 BASELINES = ("min", "p25", "median", "p75", "max", "last")
 TRANSITIONS = ("linear", "step_at_year", "hold_then_linear")
-FRAMES = ("equity", "firm")
+FRAMES = ("equity",)                    # ruling 2026-10-19 (cross-check 23, item 1): the frame is equity only for r26
 SCENARIOS = ("Base", "Bull", "Bear")
 DELTA_PTS_SCALE = 0.01                  # delta_pts is in percentage points
 NEAR_TERM_YEARS = 2
@@ -49,6 +51,12 @@ UNAVAILABLE_OPERATING_INCOME = "bridge_unavailable_operating_income"
 UNAVAILABLE_X0 = "bridge_unavailable_x_0"
 CALIBRATED_STAMP = "bridge_calibrated_to_base_year"
 UNAVAILABLE_REVENUE = "bridge_unavailable_revenue"
+PROB_SUM_TOLERANCE = 0.01               # item 6: the three probabilities add to 1 +- 0.01
+EARLY_FADE_STRESS = "early_fade_stress"                          # item 15
+EXPIRY_ALT = "alt_path_after_evidence_expiry"
+TAX_CLIPPED_STAMP = "tax_rate_clipped"                           # item 8
+DELTA_SCALE_STAMP = "delta_pts_scale_suspect"                    # item 11
+DELTA_PTS_SUSPECT_LOW, DELTA_PTS_SUSPECT_HIGH = 0.05, 50.0
 
 
 def _num(v: Any) -> bool:
@@ -63,18 +71,32 @@ def _int(v: Any) -> bool:
 # ---- 1. validation: structure only ---------------------------------------------------------------------------------------------------------------
 
 def dossier_fact_ids(dossier: Optional[Dict[str, Any]]) -> set:
-    """Every fact ID in the dossier (usable or not: a fact that exists is citable; its status is shown to the model, and nothing here gates on it)."""
+    """Every fact ID in the dossier, usable or not (an unusable fact exists but cannot be cited: see usable_fact_ids)."""
     return {f.get("fact_id") for f in ((dossier or {}).get("facts") or []) if isinstance(f, dict) and isinstance(f.get("fact_id"), str)}
 
 
-def _fact_ids_problems(where: str, v: Any, known: Optional[set], out: List[Dict[str, str]]) -> None:
+def usable_fact_ids(dossier: Optional[Dict[str, Any]]) -> set:
+    """The IDs of the usable facts: the only ones a forecast may cite (cross-check 23, item 2)."""
+    return {f.get("fact_id") for f in ((dossier or {}).get("facts") or []) if isinstance(f, dict) and isinstance(f.get("fact_id"), str) and f.get("usable")}
+
+
+def _fact_ids_problems(where: str, v: Any, known: Optional[set], out: List[Dict[str, str]], usable: Optional[set] = None, required: bool = False) -> None:
+    """The problems of a list of cited fact IDs. `known` is every ID of the dossier, `usable` the citable ones (None: the same as `known`, the old behaviour).
+    With `required` and a dossier, an empty list is a problem (`fact_ids_empty`)."""
     if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
         out.append({"field": where, "problem": "not_a_list_of_fact_ids"})
         return
-    if known is not None:
-        missing = [x for x in v if x not in known]
-        if missing:
-            out.append({"field": where, "problem": "fact_id_not_in_dossier", "detail": ", ".join(missing)})
+    if known is None:
+        return
+    ok = known if usable is None else usable
+    missing = [x for x in v if x not in known]
+    if missing:
+        out.append({"field": where, "problem": "fact_id_not_in_dossier", "detail": ", ".join(missing)})
+    unusable = [x for x in v if x in known and x not in ok]
+    if unusable:
+        out.append({"field": where, "problem": "fact_id_not_usable", "detail": ", ".join(unusable)})
+    if required and not v:
+        out.append({"field": where, "problem": "fact_ids_empty"})
 
 
 def _numbers_problem(where: str, v: Any, n: int, out: List[Dict[str, str]]) -> None:
@@ -84,7 +106,14 @@ def _numbers_problem(where: str, v: Any, n: int, out: List[Dict[str, str]]) -> N
         out.append({"field": where, "problem": "not_finite_numbers"})
 
 
-def validate_scenario(sc: Any, label: str, known: Optional[set]) -> List[Dict[str, str]]:
+def _below_minus_one(where: str, v: Any, out: List[Dict[str, str]]) -> None:
+    """Revenue never goes negative (item 6): a growth rate below -100% would make it so."""
+    vals = v if isinstance(v, (list, tuple)) else []
+    if any(_num(x) and x < -1.0 for x in vals):
+        out.append({"field": where, "problem": "revenue_would_be_negative"})
+
+
+def validate_scenario(sc: Any, label: str, known: Optional[set], usable: Optional[set] = None) -> List[Dict[str, str]]:
     """The structure problems of one scenario, each {"field", "problem"[, "detail"]}. Empty means structurally valid."""
     out: List[Dict[str, str]] = []
     if not isinstance(sc, dict):
@@ -96,7 +125,8 @@ def validate_scenario(sc: Any, label: str, known: Optional[set]) -> List[Dict[st
     else:
         _numbers_problem(p + "near_term.rev_growth", nt.get("rev_growth"), NEAR_TERM_YEARS, out)
         _numbers_problem(p + "near_term.op_margin", nt.get("op_margin"), NEAR_TERM_YEARS, out)
-        _fact_ids_problems(p + "near_term.fact_ids", nt.get("fact_ids"), known, out)
+        _below_minus_one(p + "near_term.rev_growth", nt.get("rev_growth"), out)
+        _fact_ids_problems(p + "near_term.fact_ids", nt.get("fact_ids"), known, out, usable, required=True)
     F = sc.get("fade_years")
     if not (_int(F) and F >= 0):
         out.append({"field": p + "fade_years", "problem": "not_a_whole_number_of_years"})
@@ -114,9 +144,10 @@ def validate_scenario(sc: Any, label: str, known: Optional[set]) -> List[Dict[st
         for k in ("rev_growth", "delta_pts"):
             if not _num(nm.get(k)):
                 out.append({"field": p + f"normalized.{k}", "problem": "not_a_finite_number"})
+        _below_minus_one(p + "normalized.rev_growth", [nm.get("rev_growth")], out)
         if nm.get("baseline") not in BASELINES:
             out.append({"field": p + "normalized.baseline", "problem": "not_one_of_" + "|".join(BASELINES)})
-        _fact_ids_problems(p + "normalized.fact_ids", nm.get("fact_ids"), known, out)
+        _fact_ids_problems(p + "normalized.fact_ids", nm.get("fact_ids"), known, out, usable, required=True)
         r = nm.get("reason")
         if not (isinstance(r, str) and r.strip()):
             out.append({"field": p + "normalized.reason", "problem": "missing_text"})
@@ -134,17 +165,30 @@ def validate_scenario(sc: Any, label: str, known: Optional[set]) -> List[Dict[st
     for k in ("long_run_margin_op", "terminal_g", "terminal_ronic", "prob"):
         if not _num(sc.get(k)):
             out.append({"field": p + k, "problem": "not_a_finite_number"})
-    if sc.get("long_run_fact_ids") is not None:
-        _fact_ids_problems(p + "long_run_fact_ids", sc.get("long_run_fact_ids"), known, out)
+    # domain checks (item 6): a probability is in [0, 1] (the three sum to 1 in validate_forecast) and the return on new investment is positive
+    if _num(sc.get("prob")) and not 0.0 <= sc["prob"] <= 1.0:
+        out.append({"field": p + "prob", "problem": "probability_outside_0_1"})
+    if _num(sc.get("terminal_ronic")) and not sc["terminal_ronic"] > 0:
+        out.append({"field": p + "terminal_ronic", "problem": "terminal_ronic_not_positive"})
+    # the long run rests on facts, or says in words that no fact matches its duration (item 2)
+    lr_ids, nd = sc.get("long_run_fact_ids"), sc.get("no_duration_matched_evidence")
+    if lr_ids is not None:
+        _fact_ids_problems(p + "long_run_fact_ids", lr_ids, known, out, usable)
+    if nd is not None and not (isinstance(nd, str) and nd.strip()):
+        out.append({"field": p + "no_duration_matched_evidence", "problem": "missing_text"})
+    elif known is not None and not (isinstance(lr_ids, list) and lr_ids) and nd is None:
+        out.append({"field": p + "long_run_fact_ids", "problem": "needs_fact_ids_or_no_duration_matched_evidence_with_a_reason"})
     return out
 
 
 def validate_forecast(obj: Any, dossier: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
-    """SPEC section 2, 'Validation is structure only': the list of named problems ([] when the forecast is structurally valid).
+    """SPEC section 2, 'Validation is structure only' as amended by cross-check 23 (items 1, 2 and 6): the list of named problems ([] when the forecast is valid).
 
     Checked: the fields exist and have their types; every number is finite (NaN, infinity and booleans are refused, 0.0 is accepted); the enums
-    (`baseline`, `transition`, `frame`); whole-number year fields; the word count of `reason`; and, when `dossier` is given, that every cited fact ID
-    exists in it. Never checked: how large or small a number is. A margin of 400% is structurally valid.
+    (`baseline`, `transition`, `frame`, which is equity); whole-number year fields; the word count of `reason`; and, when `dossier` is given, that every cited fact ID
+    exists in it AND is usable, that near_term and normalized cite at least one, and that the long run cites facts or states `no_duration_matched_evidence` with a
+    reason. The domain checks (item 6): each probability in [0, 1] and the three summing to 1 +- 0.01, revenue never negative (growth not below -100%), the discount
+    rate above each terminal_g, terminal_ronic above zero. Never checked: how large or small a margin is. A margin of 400% is valid.
 
     The normalized year N must be a whole number 3..5 (`normalized_year_out_of_range`). A normalization that is reached after year 5 is not given
     as N: it is expressed through `long_run_margin_op` and `fade_years`, which the desk already fades to after year 5."""
@@ -159,8 +203,17 @@ def validate_forecast(obj: Any, dossier: Optional[Dict[str, Any]] = None) -> Lis
     if not isinstance(scs, dict):
         return out + [{"field": "scenarios", "problem": "missing_or_not_an_object"}]
     known = dossier_fact_ids(dossier) if dossier is not None else None
+    usable = usable_fact_ids(dossier) if dossier is not None else None
     for name in SCENARIOS:
-        out += validate_scenario(scs.get(name), name, known)
+        out += validate_scenario(scs.get(name), name, known, usable)
+    dr = obj.get("discount_rate")
+    for name in SCENARIOS:
+        g = scs[name].get("terminal_g") if isinstance(scs.get(name), dict) else None
+        if _num(dr) and _num(g) and not dr > g:
+            out.append({"field": f"{name}.terminal_g", "problem": "terminal_g_not_below_discount_rate"})
+    probs = [scs[n].get("prob") if isinstance(scs.get(n), dict) else None for n in SCENARIOS]
+    if all(_num(x) for x in probs) and abs(sum(probs) - 1.0) > PROB_SUM_TOLERANCE + 1e-12:
+        out.append({"field": "scenarios", "problem": "probabilities_do_not_sum_to_1", "detail": f"sum {sum(probs):g}"})
     extra = sorted(set(scs) - set(SCENARIOS))
     if extra:
         out.append({"field": "scenarios", "problem": "unknown_scenario", "detail": ", ".join(map(str, extra))})
@@ -180,6 +233,15 @@ def normalized_margin(normalized: Dict[str, Any], op_margin_bar: Dict[str, Any])
         return {"status": "baseline_not_in_bar", "baseline": b, "baseline_value": None, "delta": None, "value": None}
     d = float(normalized["delta_pts"]) * DELTA_PTS_SCALE
     return {"status": BRIDGE_OK, "baseline": b, "baseline_value": float(bv), "delta": d, "value": float(bv) + d}
+
+
+def delta_pts_scale_suspect(delta_pts: Any) -> bool:
+    """Item 11 (annotate only): 0 < |delta_pts| < 0.05 reads like a fraction typed where percentage points were asked (0.02 for two points); |delta_pts| > 50 reads like
+    basis points or a margin typed as a delta. Zero is a value and is never suspect."""
+    if not _num(delta_pts):
+        return False
+    d = abs(float(delta_pts))
+    return (0.0 < d < DELTA_PTS_SUSPECT_LOW) or d > DELTA_PTS_SUSPECT_HIGH
 
 
 def _blend(start: float, target: float, t: int, n: int, transition: str, k: Optional[int]) -> float:
@@ -234,6 +296,8 @@ def build_path(forecast: Dict[str, Any], op_margin_bar: Dict[str, Any], rev0: fl
         out["years"].append({"year": t, "rev_growth": gt, "op_margin": mt, "revenue": rev})
     if N > int(years):
         out["stamps"].append("normalized_year_beyond_path")
+    if delta_pts_scale_suspect(nm.get("delta_pts")):
+        out["stamps"].append(DELTA_SCALE_STAMP)
     return out
 
 
@@ -260,8 +324,10 @@ def _bridge_inputs(facts: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": UNAVAILABLE_OPERATING_INCOME}
     if not _num(x0):
         return {"status": UNAVAILABLE_X0}
-    return {"status": BRIDGE_OK, "financial": False, "tau": float(tau), "operating_income_0": float(oi0), "x_0": float(x0),
-            "k_0": float(oi0) - float(x0) / (1.0 - float(tau))}
+    raw = facts.get("tax_rate_raw")
+    raw = float(raw) if _num(raw) else None
+    return {"status": BRIDGE_OK, "financial": False, "tau": float(tau), "tax_rate_raw": raw, "tax_rate_clipped": raw is not None and raw != float(tau),
+            "operating_income_0": float(oi0), "x_0": float(x0), "k_0": float(oi0) - float(x0) / (1.0 - float(tau))}
 
 
 def _x_of_op(op_margin: float, revenue: float, year: int, inp: Dict[str, Any]) -> Dict[str, Any]:
@@ -270,7 +336,11 @@ def _x_of_op(op_margin: float, revenue: float, year: int, inp: Dict[str, Any]) -
         return {"year": year, "revenue": revenue, "op_margin": op_margin, "x_margin": op_margin, "identity": True}
     R, tau = float(revenue), inp["tau"]
     k_pct = inp["k_0"] / R
-    return {"year": year, "revenue": R, "op_margin": op_margin, "k_0": inp["k_0"], "k_0_pct": k_pct, "tax_rate": tau, "x_margin": (op_margin - k_pct) * (1.0 - tau)}
+    row = {"year": year, "revenue": R, "op_margin": op_margin, "k_0": inp["k_0"], "k_0_pct": k_pct, "tax_rate": tau, "x_margin": (op_margin - k_pct) * (1.0 - tau)}
+    if inp.get("tax_rate_raw") is not None:
+        row["tax_rate_raw"] = inp["tax_rate_raw"]               # item 8: the measured rate beside the applied one
+        row["tax_rate_clipped"] = bool(inp["tax_rate_clipped"])
+    return row
 
 
 def _assumptions(inp: Dict[str, Any]) -> List[str]:
@@ -278,7 +348,7 @@ def _assumptions(inp: Dict[str, Any]) -> List[str]:
         return ["financial_family_identity: margins are already on the X basis, no conversion"]
     return ["bridge_calibrated_to_base_year: K_0 = filed operating income - X-basis earnings / (1 - tax rate), held in dollars",
             "k_0_carries_net_interest_other_nonoperating_and_acquired_amortization_all_held_flat_in_dollars",
-            "tax_rate_measured"]
+            (f"tax_rate_clipped: measured {inp['tax_rate_raw']:.4f}, applied {inp['tau']:.4f} (clipped to [0, 0.35])" if inp.get("tax_rate_clipped") else "tax_rate_measured")]
 
 
 def bridge_to_x(path: Dict[str, Any], facts: Dict[str, Any]) -> Dict[str, Any]:
@@ -307,7 +377,7 @@ def bridge_to_x(path: Dict[str, Any], facts: Dict[str, Any]) -> Dict[str, Any]:
             return out
         out["rows"].append(_x_of_op(float(y["op_margin"]), float(y["revenue"]), int(y["year"]), inp))
     out["assumptions"] = _assumptions(inp)
-    out["stamps"] = [] if inp.get("financial") else [CALIBRATED_STAMP]
+    out["stamps"] = [] if inp.get("financial") else [CALIBRATED_STAMP] + ([TAX_CLIPPED_STAMP] if inp.get("tax_rate_clipped") else [])
     return out
 
 
@@ -457,10 +527,11 @@ def alt_paths(forecast: Dict[str, Any], dossier: Dict[str, Any], op_margin_bar: 
               desk_params: Dict[str, Any], desk_context: Dict[str, Any], scenario: str = "Base") -> List[Dict[str, Any]]:
     """SPEC section 2, step 4. For every fact cited in the scenario's `normalized.fact_ids` or behind its long-run margin (`long_run_fact_ids`) whose
     `duration_years` is a finite number, the path and value if that evidence expires: the margin fades linearly from the end of the duration to the
-    normalized baseline (no delta) over the scenario's fade, and the long-run margin is that baseline. Reported as `alt_path_after_evidence_expiry`;
+    normalized baseline (no delta) over the scenario's fade, and the long-run margin is that baseline. Reported as `alt_path_after_evidence_expiry`, or as `early_fade_stress` when the duration is beyond the five explicit years (item 15: the desk's own fade
+    then starts at year 5, earlier than the fact says, so the figure is a stress and not an expiry path);
     NEVER substituted for the forecast's own value. A fact with duration "ongoing", null, or not a finite non-negative number gets no alternative.
 
-    Each item: {"label": "alt_path_after_evidence_expiry", "fact_id", "duration_years", "op_margins", "x_margins", "long_run_margin_op", "value",
+    Each item: {"label": "alt_path_after_evidence_expiry" | "early_fade_stress", "fact_id", "duration_years", "op_margins", "x_margins", "long_run_margin_op", "value",
     "status", "stamps"}. A duration beyond the five explicit years leaves years 1-5 on the forecast's path and moves only the long run, so the
     desk's own fade (which starts at year 5) takes the margin to the baseline earlier than the fact says: stamped `evidence_outlasts_explicit_years`."""
     sc = forecast["scenarios"][scenario]
@@ -477,7 +548,7 @@ def alt_paths(forecast: Dict[str, Any], dossier: Dict[str, Any], op_margin_bar: 
         nrm = normalized_margin(sc["normalized"], op_margin_bar)
         N = int(sc["normalized"]["year"])
         path = build_path(sc, op_margin_bar, rev0, years=max(HORIZON, int(math.ceil(d)), N))
-        item: Dict[str, Any] = {"label": "alt_path_after_evidence_expiry", "fact_id": fid, "duration_years": float(d), "stamps": []}
+        item: Dict[str, Any] = {"label": EARLY_FADE_STRESS if d > HORIZON else EXPIRY_ALT, "fact_id": fid, "duration_years": float(d), "stamps": []}
         if path["status"] != BRIDGE_OK:
             item.update(status=path["status"], value=None)
             out.append(item)

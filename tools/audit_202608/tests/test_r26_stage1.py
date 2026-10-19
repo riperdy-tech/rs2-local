@@ -141,9 +141,11 @@ def test_a_far_metric_is_unusable_and_names_the_missing_words():
     assert not r["usable"] and r["unusable_reason"] == "metric_not_near_quote: danaos, fleet"
 
 
-def test_a_value_not_in_the_quote_does_not_make_a_fact_unusable():
-    r = r26.check_fact(_fact(value=999), PAGE)
-    assert r["value_status"] == "value_not_in_quote" and r["usable"] is True
+def test_a_value_not_in_the_quote_makes_a_fact_association_uncertain_and_unusable():
+    r = r26.check_fact(_fact(value=999), PAGE)                                            # cross-check 23, item 5: the value must be in the quote
+    assert r["value_status"] == "value_not_in_quote" and r["usable"] is False and r["unusable_code"] == "association_uncertain"
+    assert r["unusable_reason"] == "association_uncertain: value_not_in_quote"
+    assert r26.check_fact(_fact(value=None, quote="The fleet is chartered through 2029."), "x The fleet is chartered through 2029. Danaos container vessels operating revenues")["usable"] is True
 
 
 def test_an_unresolved_source_is_unusable_with_its_reason():

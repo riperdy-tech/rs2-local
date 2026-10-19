@@ -21,8 +21,12 @@ fact and ANNOTATES it (SPEC section 1); nothing is deleted:
                    words counts. Content words: letters-only tokens of at least 4 letters, lower-cased, not in STOPWORDS, a plural -s/-ies folded.
   value            `value_in_quote` when a number written in the quote equals `value` in the same written form (WRITTEN FORMS below), else
                    `value_not_in_quote`; `value_null` when the fact carries no value.
-  usable           a fact is usable iff it is well-formed, `quote_verified` and not `metric_not_near_quote`. The others stay in the dossier, with
-                   the reason, and later stages list them as "unusable, why".
+  association      (cross-check 23, item 5) a fact that carries a value must pass a stronger test or it is `association_uncertain`, which is not usable:
+                   the value is written in the quote, and then, for PROSE, the registered metric is the nearest metric term to the value within the value's sentence
+                   of the quote (METRIC_VOCABULARY); for a TABLE ROW (the quote's source line holds two or more `|`) the table's header row and the row's label are added to
+                   the window the proximity check reads. A fact with no value has nothing to associate.
+  usable           a fact is usable iff it is well-formed, `quote_verified`, not `metric_not_near_quote` and not `association_uncertain`. The others stay in the dossier,
+                   with the reason; later stages are told only their number and reason codes (r26_late.render_dossier), never the facts.
   incomplete       the dossier is marked `incomplete` (with the cause) when the session ended without an accepted register_facts(done=true).
 
 NORMALIZATION (applied to the quote and to the source alike; the quote is found in the normalized source and mapped back to the source's own
@@ -62,6 +66,7 @@ if _TOOLS not in sys.path:
 
 import analyst_tools  # noqa: E402
 import llm_provider  # noqa: E402
+import r26_blind  # noqa: E402
 import r26_forecast as rf  # noqa: E402
 import r26_late  # noqa: E402
 import sec_primary  # noqa: E402
@@ -244,14 +249,14 @@ def _window(source, a, b, radius):
     return source[lo:hi]
 
 
-def proximity(source, spans, entity, metric, radius=PROXIMITY_CHARS):
+def proximity(source, spans, entity, metric, radius=PROXIMITY_CHARS, extra=None):
     """(missing words sorted, the span used): over the quote's occurrences, the one whose window (`radius` characters each side of the quote, in the source's
     own characters) misses the fewest content words of `entity` and `metric`; the words are named as the model wrote them. No content word at all gives no
-    missing word (nothing to look for)."""
+    missing word (nothing to look for). `extra(a, b)`, when given, is more text added to that occurrence's window (a table's header row and row label: item 5)."""
     need = {**content_word_forms(entity), **content_word_forms(metric)}
     best = None
     for a, b in spans:
-        have = content_words(_window(source, a, b, radius))
+        have = content_words(_window(source, a, b, radius) + ((" " + extra(a, b)) if extra is not None else ""))
         miss = sorted(need[k] for k in need if k not in have)
         if best is None or len(miss) < len(best[0]):
             best = (miss, (a, b))
@@ -267,8 +272,8 @@ _NUMBER = re.compile(r"(?P<pre>[(\-−–—])?\s*\$?\s*(?P<num>\d{1,3}(?:,\d{3}
                      r"(?:\s*(?P<unit>%|(?:thousand|million|billion|trillion|percent)\b|(?:mm|mn|bn|tn|k|m|b|t)\b))?(?P<post>\))?", re.I)
 
 
-def number_tokens(quote):
-    """[(Decimal value, scale Decimal)] for every number written in `quote` (signed; the scale of its unit word, 1 without one)."""
+def number_token_spans(quote):
+    """[(Decimal value, scale Decimal, start, end)] for every number written in `quote` (signed; the scale of its unit word, 1 without one; the span is the whole token)."""
     out = []
     for m in _NUMBER.finditer(quote or ""):
         try:
@@ -279,8 +284,13 @@ def number_tokens(quote):
         if pre in ("-", "−", "–", "—") or (pre == "(" and m.group("post") == ")"):
             v = -v
         unit = (m.group("unit") or "").lower()
-        out.append((v, _SCALES.get(unit, Decimal(1))))
+        out.append((v, _SCALES.get(unit, Decimal(1)), m.start(), m.end()))
     return out
+
+
+def number_tokens(quote):
+    """[(Decimal value, scale Decimal)] for every number written in `quote` (signed; the scale of its unit word, 1 without one)."""
+    return [(v, sc) for v, sc, _a, _b in number_token_spans(quote)]
 
 
 def value_in_quote(value, quote):
@@ -290,6 +300,169 @@ def value_in_quote(value, quote):
     except (InvalidOperation, ValueError, TypeError):
         return False
     return any(want == v or want == v * s for v, s in number_tokens(quote))
+
+
+def _want(value):
+    try:
+        return Decimal(repr(float(value))) if not isinstance(value, int) else Decimal(value)
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+# ---------------------------------------------------------------- the metric vocabulary and the association test (cross-check 23, item 5)
+
+# ONE generic vocabulary of financial and operating metric terms: canonical name -> the surface forms (lower case; a trailing plural s is matched). No industry list, no company
+# term. A phrase is matched longest first, so "operating income" is never read as "income". "per share", "percent" and the periods are not metric terms: they qualify one.
+METRIC_VOCABULARY = {
+    "revenue": ("revenue", "sales", "net sales", "turnover"),
+    "operating_income": ("operating income", "operating profit", "income from operations", "operating earnings", "operating result"),
+    "net_income": ("net income", "net earnings", "net profit", "net loss", "net result", "profit attributable", "income attributable"),
+    "income": ("income",), "earnings": ("earnings",), "profit": ("profit",),
+    "gross_profit": ("gross profit",), "ebitda": ("ebitda",), "ebit": ("ebit",),
+    "eps": ("eps", "earnings per share"),
+    "operating_margin": ("operating margin", "operating income margin"), "net_margin": ("net margin", "net income margin"), "gross_margin": ("gross margin",),
+    "ebitda_margin": ("ebitda margin",), "margin": ("margin",),
+    "free_cash_flow": ("free cash flow", "fcf"),
+    "operating_cash_flow": ("operating cash flow", "ocf", "cash flow from operations", "cash from operations", "cash provided by operating activities", "cash flows from operating activities"),
+    "cash_flow": ("cash flow",), "cash": ("cash", "cash and cash equivalents", "liquidity"),
+    "capex": ("capex", "capital expenditure", "capital spending", "capital investment"),
+    "depreciation_amortization": ("depreciation and amortization", "d&a"), "depreciation": ("depreciation",), "amortization": ("amortization",),
+    "operating_expense": ("operating expense", "operating cost"), "interest_expense": ("interest expense", "finance cost"), "interest_income": ("interest income",),
+    "cost_of_revenue": ("cost of revenue", "cost of sales", "cost of goods sold", "cogs"), "sga": ("sg&a", "selling, general and administrative", "general and administrative"),
+    "research_development": ("research and development", "r&d"), "expense": ("expense",), "cost": ("cost",),
+    "tax_rate": ("tax rate", "effective tax rate"), "tax": ("tax", "income tax"),
+    "net_debt": ("net debt",), "debt": ("debt", "borrowing", "indebtedness"), "leverage": ("leverage", "gearing"),
+    "assets": ("assets", "total assets"), "liabilities": ("liabilities",), "equity": ("equity", "shareholders' equity", "stockholders' equity"), "book_value": ("book value",),
+    "working_capital": ("working capital",),
+    "backlog": ("backlog", "orderbook", "order book", "remaining performance obligations"),
+    "contract": ("contract", "charter", "agreement"),
+    "customers": ("customer", "subscriber", "user", "member"),
+    "price": ("price", "pricing"), "rate": ("rate",), "day_rate": ("day rate", "tce", "time charter equivalent"), "yield": ("yield",),
+    "interest_rate": ("interest rate",), "discount_rate": ("discount rate", "cost of equity", "cost of capital", "wacc"),
+    "volume": ("volume", "shipment", "delivery", "unit"), "production": ("production", "output", "throughput"), "capacity": ("capacity",), "utilization": ("utilization", "utilisation", "load factor"),
+    "fleet": ("fleet", "vessel", "ship", "aircraft", "rig"), "locations": ("store", "location", "branch", "facility", "plant"), "employees": ("employee", "headcount"),
+    "term": ("term", "tenor", "duration", "maturity", "remaining life"), "age": ("age",),
+    "roic": ("roic", "return on invested capital"), "roe": ("roe", "return on equity"), "roa": ("roa", "return on assets"),
+    "shares": ("share count", "shares outstanding", "shares"), "dividend": ("dividend",), "repurchase": ("repurchase", "buyback"), "payout": ("payout ratio", "payout"),
+    "growth": ("growth", "cagr"), "market_share": ("market share",), "market_size": ("market size",), "coverage": ("coverage",), "ratio": ("ratio",),
+    "guidance": ("guidance", "outlook"),
+}
+_TERM_FORMS = sorted(((form, canon) for canon, forms in METRIC_VOCABULARY.items() for form in forms), key=lambda fc: -len(fc[0]))
+_TERM_RE = re.compile("(?<![a-z0-9&])(?:" + "|".join(re.escape(f) for f, _c in _TERM_FORMS) + r")(?:e?s)?(?![a-z0-9&])", re.I)
+_TERM_CANON = {f: c for f, c in _TERM_FORMS}
+
+
+def metric_terms(text):
+    """[(canonical term, start, end)] of the vocabulary terms in `text`, longest phrase first and without overlap."""
+    out = []
+    for m in _TERM_RE.finditer(text or ""):
+        w = m.group(0).lower()
+        canon = _TERM_CANON.get(w)
+        if canon is None:
+            for f, c in _TERM_FORMS:
+                if w.startswith(f):
+                    canon = c
+                    break
+        if canon is not None:
+            out.append((canon, m.start(), m.end()))
+    return out
+
+
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(\[$])")
+
+
+def sentence_spans(text):
+    """[(start, end)] of the sentences of `text` (a break is . ! or ? followed by white space and a capital, a quote, a bracket or a $; decimals never break)."""
+    spans, last = [], 0
+    for m in _SENTENCE_BREAK.finditer(text or ""):
+        spans.append((last, m.start()))
+        last = m.end()
+    spans.append((last, len(text or "")))
+    return spans
+
+
+def prose_association(quote, value, metric):
+    """(ok, detail) for a fact in PROSE: the registered `metric` names the nearest vocabulary term to the value, within the value's sentence of the quote. The value's token is
+    any number of the quote equal to `value` (value_in_quote's forms); distance is the number of characters between the token and the term (0 when they touch). The nearest term
+    is the one that counts; a tie goes to the term before the number. Passes when ANY matching token passes."""
+    want = _want(value)
+    if want is None:
+        return False, "value_not_a_number"
+    toks = [(a, b) for v, sc, a, b in number_token_spans(quote) if want == v or want == v * sc]
+    if not toks:
+        return False, "value_not_in_quote"
+    registered = {c for c, _a, _b in metric_terms(metric)}
+    first = None
+    for a, b in toks:
+        sa, sb = next((x for x in sentence_spans(quote) if x[0] <= a < x[1] or x[0] <= a <= x[1]), (0, len(quote)))
+        terms = [(c, ta + sa, tb + sa) for c, ta, tb in metric_terms(quote[sa:sb])]
+        if not terms:
+            res = (False, "no_metric_term_in_the_values_sentence")
+        else:
+            def gap(t):
+                return (a - t[2]) if t[2] <= a else ((t[1] - b) if t[1] >= b else 0)
+            near = min(terms, key=lambda t: (max(gap(t), 0), 0 if t[2] <= a else 1))
+            if near[0] in registered:
+                return True, None
+            res = (False, f"nearest_metric_term_is_{near[0]}" + ("" if registered else "_and_the_registered_metric_names_no_vocabulary_term"))
+        first = first or res
+    return first
+
+
+def table_context(source, a, b):
+    """The table a quote at source[a:b] sits in: None when its source line is not a table row (fewer than two `|`), else {"row_label", "header_row", "text"}. A table is the
+    unbroken run of lines holding two or more `|`; its header row is the line before the first rule line (cells of dashes) or, with no rule line, the run's first line; the row
+    label is the first non-empty cell of the quote's line. `text` is both, the words added to the proximity window."""
+    lines = source.split("\n")
+    pos, idx = 0, None
+    for i, ln in enumerate(lines):
+        if pos <= a <= pos + len(ln):
+            idx = i
+            break
+        pos += len(ln) + 1
+    if idx is None or lines[idx].count("|") < 2:
+        return None
+    lo = idx
+    while lo > 0 and lines[lo - 1].count("|") >= 2:
+        lo -= 1
+    hi = idx
+    while hi + 1 < len(lines) and lines[hi + 1].count("|") >= 2:
+        hi += 1
+    block = lines[lo:hi + 1]
+    rule = next((k for k, ln in enumerate(block) if re.fullmatch(r"[\s|:\-]+", ln) and "-" in ln), None)
+    header = block[rule - 1] if rule is not None and rule >= 1 else block[0]
+    cells = [c.strip(" \t\u200b\u200c\u200d\ufeff") for c in lines[idx].split("|")]
+    label = next((c for c in cells if c), "")
+    return {"row_label": label, "header_row": header, "row_line": lines[idx], "text": header + " " + label}
+
+
+def _cells(line):
+    cells = [c.strip(" 	​‌‍﻿") for c in line.split("|")]
+    while cells and not cells[0]:
+        cells.pop(0)
+    while cells and not cells[-1]:
+        cells.pop()
+    return cells
+
+
+def column_check(tctx, value, metric):
+    """(ok, detail) or None - the table's column test: when the header row and the quote's row have the same number of cells, the cell that writes the value sits in a
+    column whose header cell, together with the row label, must name the registered metric (by the vocabulary's terms when both name one, else by content words): a value under
+    `operating income` is not a `net income` fact although both words stand in the header row. None when the cell counts differ (a filing's padded cells) or no cell writes the value: the window rule alone then decides."""
+    want = _want(value)
+    row, head = _cells(tctx["row_line"]), _cells(tctx["header_row"])
+    if want is None or len(row) != len(head):
+        return None
+    idx = next((i for i, c in enumerate(row) if any(want == v or want == v * sc for v, sc in number_tokens(c))), None)
+    if idx is None:
+        return None
+    where = head[idx] + " " + tctx["row_label"]
+    reg, there = {c for c, _a, _b in metric_terms(metric)}, {c for c, _a, _b in metric_terms(where)}
+    if reg and there:                                      # both name vocabulary terms: they must share one (so `net income` is not read under `operating income`)
+        return (True, None) if reg & there else (False, "metric_not_in_the_values_column_or_row_label")
+    have = content_words(where)
+    miss = sorted(w for k, w in content_word_forms(metric).items() if k not in have)
+    return (False, "metric_not_in_the_values_column_or_row_label") if miss else (True, None)
 
 
 # ---------------------------------------------------------------- the facts
@@ -328,29 +501,62 @@ def company_words(company, ticker):
 
 
 def check_fact(fact, source_text, waived=None):
-    """The SPEC section 1 annotations of one well-formed fact against the text of its source (None when the source could not be resolved).
-    Returns {"quote_status", "quote_over_400_chars", "proximity_status", "missing_words", "value_status", "usable", "unusable_reason"}."""
+    """The SPEC section 1 annotations of one well-formed fact against the text of its source (None when the source could not be resolved), with the association test of
+    cross-check 23 item 5. Returns {"quote_status", "quote_over_400_chars", "proximity_status", "missing_words", "value_status", "table", "association_status",
+    "association_detail", "usable", "unusable_reason", "unusable_code"}."""
     quote = fact["quote"]
     rec = {"quote_status": None, "quote_over_400_chars": len(quote.strip()) > QUOTE_MAX_CHARS, "proximity_status": "not_checked", "missing_words": [],
            "value_status": ("value_null" if fact["value"] is None else
-                            ("value_in_quote" if value_in_quote(fact["value"], quote) else "value_not_in_quote"))}
+                            ("value_in_quote" if value_in_quote(fact["value"], quote) else "value_not_in_quote")),
+           "table": False, "association_status": "not_checked", "association_detail": None}
     spans = find_quote(source_text, quote) if source_text is not None else []
     rec["quote_status"] = "quote_verified" if spans else "quote_not_found"
+    is_query = str(fact.get("source") or "").strip().lower().startswith("query:")        # a search result's `title | url | snippet` lines are not tables
+    tables = {}
+
+    def extra(a, b):
+        if is_query:
+            return ""
+        t = tables.setdefault((a, b), table_context(source_text, a, b))
+        return t["text"] if t else ""
+
     if spans:
-        miss, _ = proximity(source_text, spans, fact["entity"], fact["metric"])
+        miss, used = proximity(source_text, spans, fact["entity"], fact["metric"], extra=extra)
         if waived and miss:
             # a `pack:` source: the pack is about the company, so its name tokens and ticker as ENTITY words count as satisfied (never as metric words)
             keep = {w: w for w in content_word_forms(fact["entity"]).values() if _stem(w) not in waived}
-            miss2, _ = proximity(source_text, spans, " ".join(keep), fact["metric"])
+            miss2, used = proximity(source_text, spans, " ".join(keep), fact["metric"], extra=extra)
             rec["entity_from_pack_company"] = sorted(set(miss) - set(miss2))
             miss = miss2
         rec["missing_words"] = miss
         rec["proximity_status"] = "metric_not_near_quote" if miss else "near"
-    rec["usable"] = rec["quote_status"] == "quote_verified" and rec["proximity_status"] != "metric_not_near_quote"
-    rec["unusable_reason"] = (None if rec["usable"] else
-                              ("source not resolved" if source_text is None else "quote not found in its source")
-                              if rec["quote_status"] != "quote_verified" else
-                              "metric_not_near_quote: " + ", ".join(rec["missing_words"]))
+        tctx = None if (used is None or is_query) else tables.get(tuple(used)) or table_context(source_text, used[0], used[1])
+        rec["table"] = tctx is not None
+        if tctx is not None:
+            rec["table_row_label"], rec["table_header_row"] = tctx["row_label"], tctx["header_row"]
+        if fact["value"] is None:
+            rec["association_status"] = "no_value"
+        elif rec["value_status"] != "value_in_quote":
+            rec["association_status"], rec["association_detail"] = "association_uncertain", "value_not_in_quote"
+        elif tctx is not None:
+            col = column_check(tctx, fact["value"], fact["metric"])
+            rec["association_status"], rec["association_detail"] = (("association_uncertain", col[1]) if col is not None and not col[0] else
+                                                                     ("associated_by_table_header_and_row_label", None))
+        else:
+            ok, why = prose_association(quote, fact["value"], fact["metric"])
+            rec["association_status"], rec["association_detail"] = ("associated_nearest_metric_term", None) if ok else ("association_uncertain", why)
+    rec["usable"] = (rec["quote_status"] == "quote_verified" and rec["proximity_status"] != "metric_not_near_quote"
+                     and rec["association_status"] != "association_uncertain")
+    if rec["usable"]:
+        rec["unusable_reason"], rec["unusable_code"] = None, None
+    elif source_text is None:
+        rec["unusable_reason"], rec["unusable_code"] = "source not resolved", "source_not_resolved"
+    elif rec["quote_status"] != "quote_verified":
+        rec["unusable_reason"], rec["unusable_code"] = "quote not found in its source", "quote_not_found"
+    elif rec["proximity_status"] == "metric_not_near_quote":
+        rec["unusable_reason"], rec["unusable_code"] = "metric_not_near_quote: " + ", ".join(rec["missing_words"]), "metric_not_near_quote"
+    else:
+        rec["unusable_reason"], rec["unusable_code"] = "association_uncertain: " + str(rec["association_detail"]), "association_uncertain"
     return rec
 
 
@@ -429,7 +635,7 @@ class Ledger:
                 continue
             if problems:
                 rec = {**(f if isinstance(f, dict) else {"raw": f}), "statuses": {"shape": "malformed", "problems": problems},
-                       "usable": False, "unusable_reason": "malformed: " + "; ".join(problems)}
+                       "usable": False, "unusable_reason": "malformed: " + "; ".join(problems), "unusable_code": "malformed"}
                 if not isinstance(fid, str) or not fid.strip() or fid in self._ids():
                     rec["fact_id"] = f"_malformed_{len(self.facts) + 1}"
                 self.facts.append(rec)
@@ -437,17 +643,19 @@ class Ledger:
                 continue
             text, why = self.evidence.resolve(f["source"])
             chk = check_fact(f, text, self.waived if f["source"].strip().lower().startswith("pack:") else None)
-            statuses = {k: chk[k] for k in ("quote_status", "proximity_status", "missing_words", "value_status", "quote_over_400_chars")}
+            statuses = {k: chk[k] for k in ("quote_status", "proximity_status", "missing_words", "value_status", "quote_over_400_chars", "table", "association_status", "association_detail")}
             if chk.get("entity_from_pack_company"):
                 statuses["entity_from_pack_company"] = chk["entity_from_pack_company"]
             if why:
                 statuses["source_problem"] = why
-            rec = {**f, "statuses": statuses, "usable": chk["usable"], "unusable_reason": chk["unusable_reason"]}
+            rec = {**f, "statuses": statuses, "usable": chk["usable"], "unusable_reason": chk["unusable_reason"], "unusable_code": chk["unusable_code"]}
             if why:
                 rec["unusable_reason"] = f"{chk['unusable_reason']} ({why})"
+                rec["unusable_code"] = "source_not_resolved"
             self.facts.append(rec)
             shown.append({"fact_id": f["fact_id"], "status": ", ".join(
                 [chk["quote_status"], *(["metric_not_near_quote: " + ", ".join(chk["missing_words"])] if chk["proximity_status"] == "metric_not_near_quote" else []),
+                 *(["association_uncertain: " + str(chk["association_detail"])] if chk["association_status"] == "association_uncertain" else []),
                  chk["value_status"], "usable" if chk["usable"] else "unusable"])})
         out = {"registered": shown, "facts_registered": len(self.facts), "facts_usable": sum(1 for x in self.facts if x["usable"])}
         if args.get("done") is True:
@@ -492,8 +700,9 @@ REGISTER_FACTS_TOOL = {
         "description": (
             "Register the facts the valuation will need, each with the exact quote it rests on. Call it as often as you like while you research, and "
             "finish the stage by calling it once with done=true and your research_summary. Code checks every fact against its source: that the quote "
-            "occurs there verbatim, that the entity and the metric are named near it, and that the value is written in the quote. A fact that fails a "
-            "check is kept with its status and cannot be used by later stages, so quote the source exactly. A fact has no number when value is null "
+            "occurs there verbatim, that the entity and the metric are named near it, that the value is written in the quote, and that the metric you register is the metric term "
+            "nearest to the value in its sentence (in a table row: that the table's header row and the row's label name it). A fact that fails a "
+            "check is kept with its status and cannot be used by later stages, so quote the source exactly: the whole sentence, or the whole table row. A fact has no number when value is null "
             "(a qualitative fact). A later stage sees only the facts you register and the summary: it cannot see this research."),
         "parameters": {
             "type": "object",
@@ -538,7 +747,7 @@ your research summary; it cannot see this conversation, the pack's research or y
 3. Register facts with register_facts as you find them (do not leave them all to the end). A fact is one statement with its exact quote: what the number is about (entity), what is measured (metric), the period, the value as written in the quote, its unit, the basis
    (filed_gaap, company_adjusted, third_party, n/a) and, for contracts, guidance and backlog, how many years the fact speaks for (duration_years; "ongoing"; null for a one-off).
 4. The quote is copied exactly from the source you name in `source`: pack:<section id> (one of the ids listed below; filings in PRIMARY SOURCES are pack:primary-p1, pack:primary-p2, ...), page:<the exact url> of a page you fetched, or query:Q<n> for a search result ([call n]).
-   Name the entity and the metric in words the source uses, close to the quote: code checks that they appear within 300 characters of it.
+   Name the entity and the metric in words the source uses, close to the quote: code checks that they appear within 300 characters of it. Quote the whole sentence the number is in, so that the metric's own name stands in the quote beside the number (for a table, the whole row: code also reads the table's header row and the row's label). Code checks that the value is written in the quote and that the metric you register is the metric term nearest to the value in its sentence; a fact it cannot tie to its value is unusable (association_uncertain), and the stages that follow never see it.
 5. Register what disagrees as well as what agrees. Do not register an opinion as a fact; register what the source says and who says it.
 6. When your research is done, call register_facts with done=true and your research_summary (at most 600 words). That ends the stage.
 
@@ -781,7 +990,7 @@ def _research_call(name, args, call_index, snap_rec, evidence, q_cache, u_cache,
 # ---------------------------------------------------------------- stages 2-4 (brief R26-A2)
 #
 # STAGE 2   K = 3 sessions (seeds s, s+1, s+2), each fresh from the blind pack, the usable dossier, the operating-margin bar and the stage-2 TASK. One tool, submit_forecast.
-#           Structure only is checked; a first failure gets one repair turn, a second drops the sample (forecast_invalid). Code builds the path, bridges it to the X basis,
+#           Structure and four domain rules are checked (cross-check 23); a first failure gets one repair turn, a second drops the sample (forecast_invalid). Code builds the path, bridges it to the X basis,
 #           values it (r26_forecast.value_forecast) and values the alternative paths. forecasts.json.
 # STAGE 3   a fresh session; no model call when the samples split by direction or no sample was valued. It sees the median sample's forecast NUMBERS (the reason text of
 #           the normalized state is dropped), its desk result, the three Base values, the price, the price-implied inputs, the basis-corrected consensus and the diagnostics.
@@ -814,7 +1023,7 @@ def _write_json(p, obj):
 def bridge_facts_from_row(row, family="operating"):
     """The filed inputs of r26_forecast's base-year-calibrated bridge from the base fiscal year's row of the screener history (dollars -> $B, the unit of the desk's revenue):
     operating_income_0 the filed operating income, and tax_rate the MEASURED rate tax_provision / pretax_income clipped to [0, 0.35] (None when either is missing or the
-    pretax income is not positive; not the record's 0.21 fallback). X_0, the X-basis earnings, is the pack's own (x_L x rev_L): valuation_inputs adds it. Net interest and
+    pretax income is not positive; not the record's 0.21 fallback); `tax_rate_raw` is the unclipped figure, and a clipped rate is stamped `tax_rate_clipped` (item 8). X_0, the X-basis earnings, is the pack's own (x_L x rev_L): valuation_inputs adds it. Net interest and
     the acquired amortization are not read here: they sit inside K_0 = OI_0 - X_0 / (1 - tau). Nothing is defaulted."""
     row = row or {}
 
@@ -823,9 +1032,13 @@ def bridge_facts_from_row(row, family="operating"):
         return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
 
     pre, tax, oi, rev = n("pretax_income"), n("tax_provision"), n("operating_income"), n("revenue")
-    out = {"family": family, "operating_income_0": None if oi is None else oi / 1e9, "revenue_0": None if rev is None else rev / 1e9, "tax_rate": None, "stamps": []}
+    out = {"family": family, "operating_income_0": None if oi is None else oi / 1e9, "revenue_0": None if rev is None else rev / 1e9, "tax_rate": None, "tax_rate_raw": None, "stamps": []}
     if pre is not None and tax is not None and pre > 0:
-        out["tax_rate"] = min(0.35, max(0.0, tax / pre))
+        raw = tax / pre
+        out["tax_rate_raw"] = raw                                 # item 8: the measured rate, kept beside the applied one
+        out["tax_rate"] = min(0.35, max(0.0, raw))
+        if out["tax_rate"] != raw:
+            out["stamps"].append(rf.TAX_CLIPPED_STAMP)
     return out
 
 
@@ -1018,27 +1231,23 @@ SUBMIT_NUDGE = "You ended the turn without calling a tool. Call submit_forecast 
 
 
 def _structure_message(problems):
-    return ("Structure only is checked, never the size of a number. Problems: "
+    return ("The structure and a few domain rules are checked, never the size of a margin. Problems: "
             + "; ".join(f"{p['field']}: {p['problem']}" + (f" ({p['detail']})" if p.get("detail") else "") for p in problems))
-
-
-def _cites_unusable(forecast, dossier):
-    bad = {f["fact_id"] for f in (dossier or {}).get("facts", []) if isinstance(f, dict) and not f.get("usable")}
-    cited = set()
-    for sc in (forecast.get("scenarios") or {}).values():
-        if isinstance(sc, dict):
-            cited |= set((sc.get("near_term") or {}).get("fact_ids") or []) | set((sc.get("normalized") or {}).get("fact_ids") or []) | set(sc.get("long_run_fact_ids") or [])
-    return sorted(cited & bad)
 
 
 def _stage2_sample(model, msgs0, dossier, run_dir, k, seed, sess, tool=None):
     """One of the K sessions. Returns the sample record without its valuation."""
-    state = {"subs": 0, "forecast": None, "problems": [], "history": []}
+    state = {"subs": 0, "forecast": None, "problems": [], "history": [], "ignored": 0, "closed": False}
     msgs = copy.deepcopy(msgs0)
 
     def handle(name, args):
         if name != "submit_forecast":
             return {"error": f"unknown tool {name}; this stage's only tool is submit_forecast"}, False
+        # item 7: acceptance is idempotent. Once a forecast is accepted, or the repair has failed, a further call (the same turn may carry several) changes nothing.
+        if state["forecast"] is not None or state["closed"]:
+            state["ignored"] += 1
+            return ({"accepted": True, "message": "A forecast was already accepted; this call is ignored."} if state["forecast"] is not None else
+                    {"accepted": False, "message": "This sample is already closed; this call is ignored."}), True
         state["subs"] += 1
         probs = rf.validate_forecast(args, dossier) + r26_late.validate_labels(args, dossier)
         state["history"].append(probs)
@@ -1048,18 +1257,23 @@ def _stage2_sample(model, msgs0, dossier, run_dir, k, seed, sess, tool=None):
         state["problems"] = probs
         if state["subs"] == 1:
             return {"accepted": False, "message": _structure_message(probs) + ". You have one correction: call submit_forecast again with the whole forecast."}, False
+        state["closed"] = True
         return {"accepted": False, "message": _structure_message(probs) + ". This is the second failure: this sample is dropped."}, True
 
     res = _session(model, msgs, [tool or r26_late.SUBMIT_FORECAST_TOOL], run_dir, f"stage2_k{k}", handle, seed=seed, max_turns=STAGE2_MAX_TURNS, nudge=SUBMIT_NUDGE, **sess)
     status = "forecast_invalid" if (state["subs"] and state["forecast"] is None) else ("no_forecast" if state["forecast"] is None else "submitted")
     return {"k": k, "seed": seed, "status": status, "forecast": state["forecast"], "submissions": state["subs"], "repair_used": state["subs"] >= 2,
-            "problems": state["problems"], "problem_history": state["history"], "turns": res["turns"], "ended": res["ended"], "stamps": []}
+            "problems": state["problems"], "problem_history": state["history"], "turns": res["turns"], "ended": res["ended"], "stamps": [],
+            "ignored_submissions": state["ignored"]}
 
 
 def run_stage2(*, run_dir, model, blind_pack, dossier, op_margin_bar, valuation, seed=0, k=3, think="high", ctx=98304, num_predict=49152, temperature=None,
-               num_batch=None, draft_num_predict=None, timeout=14400, verbose=True):
-    """Stage 2: K sessions with seeds seed, seed+1, ... (each a FRESH message list from blind_pack, dossier, op_margin_bar and STAGE2_TASK), the path, the bridge and the
-    value of each valid forecast, its alternative paths, and the aggregate. Writes <run_dir>/forecasts.json and returns it."""
+               num_batch=None, draft_num_predict=None, timeout=14400, verbose=True, facts=None):
+    """Stage 2: K sessions with seeds seed, seed+1, ... (each a FRESH message list from the filed-data lines of blind_pack, the audited view of the dossier, op_margin_bar and
+    STAGE2_TASK), the path, the bridge and the value of each valid forecast, its alternative paths, and the aggregate. Writes <run_dir>/forecasts.json and returns it.
+
+    `facts` (the pack's facts) carries what the two views need (cross-check 23, items 3 and 4): facts["r26_blind_source"]["spans"] cut the pack to its filed-data lines, and
+    the removed-class numbers audit the dossier. Without them the pack is shown whole and the dossier is filtered by the sentence rule alone; both say so in the stamps."""
     t0 = time.time()
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -1070,15 +1284,24 @@ def run_stage2(*, run_dir, model, blind_pack, dossier, op_margin_bar, valuation,
                "median_index": None, "spread": None, "base_values": [], "op_margin_bar": op_margin_bar, pre[0]: pre[1], "stamps": [pre[0]], "elapsed_s": 0}
         _write_json(run_dir / ARTIFACTS["stage2"], out)
         return out
-    msgs0 = fresh_messages("stage2", {"blind_pack": blind_pack, "dossier": dossier, "op_margin_bar": op_margin_bar, "task": r26_late.stage2_task(op_margin_bar)})
+    view, vaudit = r26_blind.stage2_dossier_view(dossier, blind_pack, facts)
+    spans = ((facts or {}).get("r26_blind_source") or {}).get("spans")
+    view_stamps = list(vaudit.get("stamps") or [])
+    if spans:
+        pack2, pack_report = r26_blind.filed_only_pack(blind_pack, spans)
+    else:
+        pack2, pack_report = blind_pack, None
+        view_stamps.append("stage2_pack_not_filtered:no_spans")
+    leaks_after = r26_blind.text_leaks(r26_late.render_dossier(view), blind_pack, facts) if facts is not None else None
+    if leaks_after:
+        view_stamps.append("stage2_dossier_leaks_after_filter")
+    msgs0 = fresh_messages("stage2", {"blind_pack": pack2, "dossier": view, "op_margin_bar": op_margin_bar, "task": r26_late.stage2_task(op_margin_bar)})
     sess = dict(think=think, ctx=ctx, num_predict=num_predict, temperature=temperature, num_batch=num_batch, draft_num_predict=draft_num_predict, timeout=timeout, verbose=verbose)
     samples = []
     for i in range(int(k)):
-        s = _stage2_sample(model, msgs0, dossier, run_dir, i + 1, (seed if seed is not None else 0) + i, sess, r26_late.stage2_tool(op_margin_bar))
+        s = _stage2_sample(model, msgs0, view, run_dir, i + 1, (seed if seed is not None else 0) + i, sess, r26_late.stage2_tool(op_margin_bar))
         if s["forecast"] is not None:
-            cu = _cites_unusable(s["forecast"], dossier)
-            if cu:
-                s["stamps"].append("cites_unusable_fact:" + ",".join(cu))
+            s["stamps"] += [f"{rf.DELTA_SCALE_STAMP}:{n}" for n in SCEN if rf.delta_pts_scale_suspect(s["forecast"]["scenarios"][n]["normalized"]["delta_pts"])]
             vf = _value(s["forecast"], valuation, op_margin_bar)
             s["status"] = "valued" if vf["status"] == rf.BRIDGE_OK else vf["status"]
             s["valuation"] = trim_valuation(vf)
@@ -1090,12 +1313,14 @@ def run_stage2(*, run_dir, model, blind_pack, dossier, op_margin_bar, valuation,
         if verbose:
             print(f"    [stage2] sample {i + 1}: {s['status']}" + (f" base ${s['base_value']:.2f}" if rf._num(s["base_value"]) else ""), flush=True)
     agg = rf.aggregate([s["base_value"] for s in samples])
-    stamps = [f"samples_valued:{agg['n']}_of_{int(k)}"] if agg["n"] < int(k) else []
+    stamps = ([f"samples_valued:{agg['n']}_of_{int(k)}"] if agg["n"] < int(k) else []) + view_stamps
     out = {"schema": "r26.forecasts.v1", "stage": "stage2", "pack_revision": PACK_REVISION_R26, "k": int(k), "seeds": [s["seed"] for s in samples],
            "samples": samples, "aggregate": agg, "median_index": agg["median_index"], "spread": agg["spread"],
            "base_values": [s["base_value"] for s in samples], "op_margin_bar": op_margin_bar,
            "valuation_inputs": {"rev0": valuation["rev0"], "base_cf": valuation["base_cf"], "bridge_facts": valuation["bridge_facts"], "price": valuation["price"]},
-           "stamps": stamps, "elapsed_s": round(time.time() - t0), "task_sha256": hashlib.sha256(r26_late.stage2_task(op_margin_bar).encode("utf-8")).hexdigest()}
+           "stamps": stamps, "elapsed_s": round(time.time() - t0), "task_sha256": hashlib.sha256(r26_late.stage2_task(op_margin_bar).encode("utf-8")).hexdigest(),
+           "stage2_pack_sha256": hashlib.sha256(pack2.encode("utf-8")).hexdigest(),
+           "stage2_inputs_audit": {"dossier_view": vaudit, "dossier_leaks_after_filter": leaks_after, "pack": pack_report}}
     _write_json(run_dir / ARTIFACTS["stage2"], out)
     return out
 
@@ -1136,6 +1361,36 @@ def translate_crux(crux):
     return out
 
 
+def resolve_crux_citations(crux, dossier, run_date, pack_text=""):
+    """(resolved crux, problems) - cross-check 23, item 9. The model cites a usable dossier fact by id, {"fact_id": "F3"}; code supplies the citation's source (the fact's own),
+    its quote (the fact's verbatim quote, nothing retyped) and its date: the filing date of a `pack:primary-pN` source (the PRIMARY SOURCES item's `filed`, if not after
+    `run_date`), else `run_date`, the date the TASK has always told the model to give when it cannot tell. A citation that names no usable fact, or whose fact quote is outside
+    crux_check's 30-600 characters, is a problem (a sentence for the refusal) and is left unresolved. The model's crux is not changed."""
+    import crux_check
+    resolved = copy.deepcopy(crux)
+    problems = []
+    use = {f["fact_id"]: f for f in (dossier or {}).get("facts", []) if isinstance(f, dict) and f.get("usable")}
+    filed = {f"pack:primary-p{it['id'][1:]}": it.get("filed") for it in sec_primary.parse_pack(pack_text or "")}
+    for i, e in enumerate(resolved if isinstance(resolved, list) else [], 1):
+        cits = e.get("citations") if isinstance(e, dict) else None
+        if not isinstance(cits, list):
+            continue
+        for k, c in enumerate(cits, 1):
+            tag = f"crux[{i}].citations[{k}]"
+            fid = c.get("fact_id") if isinstance(c, dict) else None
+            f = use.get(fid) if isinstance(fid, str) else None
+            if f is None:
+                problems.append(f"{tag}.fact_id (cite the id of a usable dossier fact, such as F1; {fid!r} is not one. You do not type a source, a date or a quote)")
+                continue
+            n = len(crux_check.normalise(f.get("quote") or ""))
+            if not crux_check.QUOTE_MIN <= n <= crux_check.QUOTE_MAX:
+                problems.append(f"{tag}.fact_id ({fid}'s quote has {n} characters; a cited quote needs {crux_check.QUOTE_MIN} to {crux_check.QUOTE_MAX}. Cite another fact)")
+                continue
+            d = filed.get(str(f.get("source") or "").strip().lower())
+            cits[k - 1] = {"fact_id": fid, "source": f["source"], "date": d if (isinstance(d, str) and crux_check.DATE_RE.match(d) and d <= run_date) else run_date, "quote": f["quote"]}
+    return resolved, problems
+
+
 def fetch_calls_from_cache(url_cache):
     """The fetch_page records crux_check reads (what stage 1 fetched), from the evidence url cache {url: {"full_text"/"text", ...}}."""
     out = []
@@ -1160,29 +1415,37 @@ def _diagnostics(forecast, vf, cview, dossier, val, bar):
     return {"alt_paths": alts, "consensus_divergence": div, "consensus_status": cview.get("status"), "stamps": list((vf.get("stamps") or []))}
 
 
-def _margin_items(fc, bar):
-    """{(scenario, item): operating-basis margin} of a forecast: year-1 and year-2 margins, the normalized margin (code's sum) and the long-run margin."""
-    out = {}
+def _input_items(fc, bar):
+    """{(scenario, item): number} for every input of a forecast (cross-check 23, item 12): the year-1 and year-2 operating margins, the normalized margin (code's sum), the
+    long-run margin and its fade, terminal_g and terminal_ronic of each scenario, and the discount rate (scenario "All")."""
+    out = {("All", "discount_rate"): float(fc["discount_rate"])}
     for n in SCEN:
         s = fc["scenarios"][n]
         out[(n, "op_margin_y1")], out[(n, "op_margin_y2")] = float(s["near_term"]["op_margin"][0]), float(s["near_term"]["op_margin"][1])
         nm = rf.normalized_margin(s["normalized"], bar)
         out[(n, "normalized_margin")] = nm["value"]
         out[(n, "long_run_margin_op")] = float(s["long_run_margin_op"])
+        out[(n, "fade_years")] = float(s["fade_years"])
+        out[(n, "terminal_g")] = float(s["terminal_g"])
+        out[(n, "terminal_ronic")] = float(s["terminal_ronic"])
     return out
 
 
-def pull_record(pre_fc, post_fc, bar, cview):
-    """For each margin that changed in the revision: pre, post, the consensus margin (years 1 and 2 only, operating basis) and C's pull ratio."""
-    pre, post = _margin_items(pre_fc, bar), _margin_items(post_fc, bar)
+def pull_record(pre_fc, post_fc, bar, cview, pre_value=None, post_value=None):
+    """Every input of the forecast, pre and post the revision, and the Base value per share pre and post (item 12): {"scenario", "item", "pre", "post", "changed", "consensus",
+    "pull_ratio"}. The consensus is known for the year-1 and year-2 operating margins only (operating basis); every other item has none and no ratio. `changed` is false for an
+    input the revision left alone, so a reader can take the changed ones (a ratio of an unchanged input is 0.0, a value)."""
+    pre, post = _input_items(pre_fc, bar), _input_items(post_fc, bar)
     cons = {"op_margin_y1": ((cview.get("years") or {}).get(1) or {}).get("op"), "op_margin_y2": ((cview.get("years") or {}).get(2) or {}).get("op")}
     items = []
     for key in pre:
         a, b = pre[key], post.get(key)
-        if a is None or b is None or a == b:
+        if a is None or b is None:
             continue
         c = cons.get(key[1]) if cview.get("status") == "ok" else None
-        items.append({"scenario": key[0], "item": key[1], "pre": a, "post": b, "consensus": c, "pull_ratio": rf.pull_ratio(a, b, c)})
+        items.append({"scenario": key[0], "item": key[1], "pre": a, "post": b, "changed": a != b, "consensus": c, "pull_ratio": rf.pull_ratio(a, b, c)})
+    if rf._num(pre_value) and rf._num(post_value):
+        items.append({"scenario": "Base", "item": "base_value", "pre": float(pre_value), "post": float(post_value), "changed": pre_value != post_value, "consensus": None, "pull_ratio": None})
     return items
 
 
@@ -1245,8 +1508,9 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
         return reveal
     # ---- the session
     msgs = _stage3_messages(dossier, numbers_only(pre_fc), pre_vf, forecasts, valuation, cview, diag, valuation["run_date"], revealed, op_margin_bar)
-    st = {"crux": None, "crux_attempts": 0, "crux_state": None, "decision": None, "subs": 0, "revision": None, "form_problems": [], "closed": False, "rev_resolved": False}
+    st = {"crux": None, "resolved": None, "crux_attempts": 0, "crux_state": None, "decision": None, "subs": 0, "revision": None, "form_problems": [], "closed": False, "rev_resolved": False}
     known = rf.dossier_fact_ids(dossier)
+    usable = rf.usable_fact_ids(dossier)
 
     def done():
         return st["crux_state"] is not None and (st["rev_resolved"] or st["decision"] == "keep")
@@ -1259,7 +1523,9 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
             crux = args.get("crux")
             if args.get("decision") in ("keep", "revise"):
                 st["decision"] = args["decision"]
-            probs = crux_check.form_problems(crux, valuation["run_date"])
+            st["resolved"], cprobs = resolve_crux_citations(crux, dossier, valuation["run_date"], blind_pack)
+            bad = tuple(x.split(".fact_id")[0] for x in cprobs)
+            probs = cprobs + [x for x in crux_check.form_problems(st["resolved"], valuation["run_date"]) if not any(x.startswith(t) for t in bad)]
             probs += [f"crux[{i}].input ({e.get('input')!r} is not offered on this desk path; one of {', '.join(r26_late.CRUX_INPUTS)})" for i, e in enumerate(crux if isinstance(crux, list) else [], 1)
                       if isinstance(e, dict) and e.get("input") in crux_check.J and e.get("input") not in r26_late.CRUX_INPUTS]
             if probs and st["crux_attempts"] < CRUX_FORM_ATTEMPTS:
@@ -1281,6 +1547,8 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
                 probs.append({"field": "revision_fact_ids", "problem": "a revision must cite at least one fact id"})
             elif [x for x in rids if x not in known]:
                 probs.append({"field": "revision_fact_ids", "problem": "fact_id_not_in_dossier", "detail": ", ".join(x for x in rids if x not in known)})
+            elif [x for x in rids if x not in usable]:
+                probs.append({"field": "revision_fact_ids", "problem": "fact_id_not_usable", "detail": ", ".join(x for x in rids if x not in usable)})
             if not (isinstance(rreason, str) and rreason.strip()):
                 probs.append({"field": "revision_reason", "problem": "missing_text"})
             st["revision"] = {"submitted": True, "accepted": not probs, "problems": probs, "fact_ids": rids if isinstance(rids, list) else None,
@@ -1304,7 +1572,8 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
             final_fc, final_vf = st["revision"]["forecast"], rvf
             post = {"forecast": final_fc, "valuation": trim_valuation(rvf), "base_value": rvf["base_value"]}
             reveal["final_source"] = "stage3_revision"
-            reveal["pull"] = pull_record(pre_fc, final_fc, op_margin_bar, cview)
+            reveal["pull"] = pull_record(pre_fc, final_fc, op_margin_bar, cview, pre_vf["base_value"], rvf["base_value"])
+            reveal["stamps"] += [f"{rf.DELTA_SCALE_STAMP}:{n}" for n in SCEN if rf.delta_pts_scale_suspect(final_fc["scenarios"][n]["normalized"]["delta_pts"])]
         else:
             reveal["revision"].update(accepted=False, not_valued=rvf["status"])
             reveal["stamps"].append(f"revision_not_valued:{rvf['status']}")
@@ -1312,11 +1581,11 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
     reveal["final_forecast"] = final_fc
     reveal["diagnostics"] = _diagnostics(final_fc, final_vf, cview, dossier, valuation, op_margin_bar) if post else diag
     # ---- the crux, resolved against the final run
-    crux_t = translate_crux(st["crux"]) if st["crux"] is not None else None
+    crux_t = translate_crux(st["resolved"]) if st["crux"] is not None else None
     chk = crux_check.check(crux_t, (final_vf.get("desk") or {}).get("price_implied"), blind_pack, list(fetch_calls), company, ticker, facts or {})
     if st["crux_state"] == "form_failed":
         chk = dict(chk, valid=False, reason="crux_form: " + "; ".join(st["form_problems"]))
-    reveal["crux"] = {"stated": st["crux"], "translated": crux_t, "form_problems": st["form_problems"], "state": st["crux_state"] or "not_stated", "check": chk, "valid": bool(chk.get("valid"))}
+    reveal["crux"] = {"stated": st["crux"], "resolved": st["resolved"], "translated": crux_t, "form_problems": st["form_problems"], "state": st["crux_state"] or "not_stated", "check": chk, "valid": bool(chk.get("valid"))}
     if not chk.get("valid"):
         reveal["no_call"] = True
         reveal["no_call_reasons"].append(f"crux_invalid:{chk.get('reason')}")
@@ -1325,10 +1594,13 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
 
 
 def numbers_only(fc):
-    """The forecast as stage 3 is shown it: the reason text of each normalized state (stage 2's reasoning) is removed."""
+    """The forecast as stage 3 is shown it: the reason text of each normalized state (stage 2's reasoning) is removed, and so is the sentence that says why no fact matches
+    the long run (the flag that it was said stays: `no_duration_matched_evidence` becomes true)."""
     out = copy.deepcopy(fc)
     for sc in out["scenarios"].values():
         sc["normalized"].pop("reason", None)
+        if sc.get("no_duration_matched_evidence") is not None:
+            sc["no_duration_matched_evidence"] = True
     return out
 
 
@@ -1395,7 +1667,8 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
     cview = {**cview, "years": {int(k): v for k, v in (cview.get("years") or {}).items()}}
     diag = reveal.get("diagnostics") or _diagnostics(fc, vf, cview, dossier, valuation, op_margin_bar)
     crux = reveal.get("crux") or {}
-    crux_txt = json.dumps(crux.get("stated"), indent=1) if crux.get("stated") else "(no crux was stated)"
+    shown = crux.get("resolved") or crux.get("stated")
+    crux_txt = json.dumps(shown, indent=1) if shown else "(no crux was stated)"
     chk = crux.get("check") or {}
     ver_lines = [f"Crux valid: {bool(crux.get('valid'))}" + (f" (reason: {chk.get('reason')})" if chk.get("reason") else "")]
     for e in chk.get("entries") or []:
@@ -1422,7 +1695,13 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
     final["turns"] = 1
     content = ((resp.get("message") or {}).get("content")) or ""
     memo, ctext, cproblem = r26_late.parse_contract_text(content)
-    ver = r26_late.verify_memo(memo, rows) if memo.strip() else {"flags": ["memo_missing"], "details": [{"flag": "memo_missing"}]}
+    cited = set()
+    for sc_ in fc["scenarios"].values():
+        cited |= set((sc_.get("near_term") or {}).get("fact_ids") or []) | set((sc_.get("normalized") or {}).get("fact_ids") or []) | set(sc_.get("long_run_fact_ids") or [])
+        for lk in r26_late.LABEL_ENUMS:
+            cited |= set((sc_.get(lk) or {}).get("fact_ids") or [])
+    ver = (r26_late.verify_memo(memo, rows, [f for f in dossier.get("facts", []) if f.get("usable")], sorted(cited)) if memo.strip()
+           else {"flags": ["memo_missing"], "annotations": [], "details": [{"flag": "memo_missing"}]})
     # ---- the contract: numbers by code
     crux_t = crux.get("translated")
     call = synthetic_desk_call(vf, valuation, fc, crux_t)
@@ -1441,22 +1720,25 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
         verdict["code_label"] = verdict.get("verdict_label")
         verdict["verdict_label"] = "hold"
         verdict["no_call"] = {"reasons": list(final["no_call_reasons"])}
-    reasons = (["no_call"] + final["no_call_reasons"] if final["no_call"] else []) + list(ver["flags"])
+    reasons = (["no_call"] + final["no_call_reasons"] if final["no_call"] else []) + list(ver["flags"])      # the prose-number check annotates and does not gate (item 13)
     if cproblem:
         reasons.append(cproblem)
+    unfilled = [k for k in r26_late.UNFILLED_NUMERIC if verdict.get(k) is None]
+    if unfilled:
+        reasons.append("contract_fields_unfilled")             # item 14: no code source for these numbers yet; resolve before any book-wide run
     if reveal.get("revision", {}).get("submitted") and not reveal["revision"].get("accepted"):
         final["flags"].append("revision_not_accepted")
     verdict["r26"] = {"pilot_arm": ARM, "desk_schema": R26_DESK_SCHEMA, "pack_revision": PACK_REVISION_R26, "actionable": not reasons, "non_actionable_reasons": reasons,
                       "no_call": final["no_call"], "verifier": ver, "final_source": reveal.get("final_source"), "spread": forecasts.get("spread"),
                       "pre_reveal_base": (reveal.get("pre") or {}).get("base_value"), "post_reveal_base": (reveal.get("post") or {}).get("base_value"),
-                      "contract_unfilled": list(r26_late.UNFILLED_NUMERIC), "model_typed_numbers_in": [k for k in r26_late.MODEL_TYPED_NUMBERS if k in ctext],
+                      "contract_unfilled": unfilled, "model_typed_numbers_in": [k for k in r26_late.MODEL_TYPED_NUMBERS if k in ctext],
                       "contract_fill": prov, "code_directionection_m": code_direction}
     verdict["pilot_arm"], verdict["desk_schema"], verdict["pack_revision"] = ARM, R26_DESK_SCHEMA, PACK_REVISION_R26
     block = {k: verdict[k] for k in (*CONTRACT_NUMERIC_FROM_FILL, "near_term_earnings", "normalized_earnings", "verdict_label") if k in verdict and verdict[k] is not None}
     block.update({k: ctext[k] for k in ctext})
     report = memo.rstrip() + "\n\n```json:underwriting\n" + json.dumps(block, indent=1, default=str) + "\n```\n"
     final.update(status="ok" if memo.strip() else "memo_missing", memo=memo, report=report, contract_text=ctext, verdict=verdict, verifier=ver,
-                 flags=final["flags"] + list(ver["flags"]) + (["r26_no_call"] if final["no_call"] else []), elapsed_s=round(time.time() - t0),
+                 flags=final["flags"] + list(ver["flags"]) + list(ver.get("annotations") or []) + (["r26_no_call"] if final["no_call"] else []), elapsed_s=round(time.time() - t0),
                  table=rows, actionable=not reasons, non_actionable_reasons=reasons, desk_call=call,
                  task_sha256=hashlib.sha256(r26_late.stage4_task(op_margin_bar).encode("utf-8")).hexdigest())
     _write_json(run_dir / ARTIFACTS["stage4"], final)
@@ -1519,7 +1801,7 @@ def run_sample(model, pack, run_dir, **kw):
     sess = {k: kw[k] for k in ("think", "ctx", "num_predict", "temperature", "num_batch", "draft_num_predict", "timeout") if k in kw}
     seed = kw.get("seed")
     forecasts = run_stage2(run_dir=run_dir, model=model, blind_pack=blind_pack, dossier=dossier, op_margin_bar=bar, valuation=val, seed=seed if seed is not None else 0,
-                           verbose=verbose, **sess)
+                           verbose=verbose, facts=facts, **sess)
     reveal = run_stage3(run_dir=run_dir, model=model, dossier=dossier, valuation=val, op_margin_bar=bar, consensus_corrected=facts.get("consensus_corrected"), revealed=revealed,
                         blind_pack=blind_pack, fetch_calls=fetch_calls, company=company, ticker=ticker, facts=facts, forecasts=forecasts,
                         seed=seed if seed is not None else 0, verbose=verbose, **sess)

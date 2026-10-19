@@ -17,6 +17,8 @@ checks what the memo says, it does not demand it.
     memo_number_mismatch    a labelled number that is not the table's within rounding
     memo_verdict_mismatch   the verdict word SECTION 0 states differs from the code's (undervalued, overvalued, hold, no_call)
     memo_forecast_mismatch  an enum label (a transition or baseline) followed by a word that is not the forecast's
+    memo_prose_number_mismatch (cross-check 23, item 13; an ANNOTATION, it does not gate) a number written with %, $, x or bps anywhere in the memo that is neither in the
+                            table nor a number of a fact the forecast cites (or the memo names by id); years and dates carry no mark and are not read
 """
 import copy
 import json
@@ -36,7 +38,8 @@ import r26_forecast as rf  # noqa: E402
 
 SCEN = rf.SCENARIOS
 HORIZON = rf.HORIZON
-MEMO_FLAGS = ("memo_number_mismatch", "memo_verdict_mismatch", "memo_forecast_mismatch")
+MEMO_FLAGS = ("memo_number_mismatch", "memo_verdict_mismatch", "memo_forecast_mismatch")          # these gate: any one makes the result non-actionable
+MEMO_ANNOTATIONS = ("memo_prose_number_mismatch",)                                                  # reported beside them; they do not gate (item 13)
 
 
 def _num(x):
@@ -72,6 +75,7 @@ def validate_labels(forecast, dossier=None):
     if not isinstance(base, dict):
         return out                                     # rf.validate_forecast names a missing Base
     known = rf.dossier_fact_ids(dossier) if dossier is not None else None
+    usable = rf.usable_fact_ids(dossier) if dossier is not None else None
     for k, enum in LABEL_ENUMS.items():
         v = base.get(k)
         if not isinstance(v, dict):
@@ -84,6 +88,8 @@ def validate_labels(forecast, dossier=None):
             out.append({"field": f"Base.{k}.fact_ids", "problem": "not_a_list_of_fact_ids"})
         elif known is not None and [x for x in ids if x not in known]:
             out.append({"field": f"Base.{k}.fact_ids", "problem": "fact_id_not_in_dossier", "detail": ", ".join(x for x in ids if x not in known)})
+        elif usable is not None and [x for x in ids if x not in usable]:
+            out.append({"field": f"Base.{k}.fact_ids", "problem": "fact_id_not_usable", "detail": ", ".join(x for x in ids if x not in usable)})
     return out
 
 
@@ -102,8 +108,8 @@ def scenario_schema():
                 "op_margin": _numbers("The filed operating margin (operating income / revenue) of year 1 and year 2, as decimals.", 2),
                 "fact_ids": _ids("The ids of the dossier facts these two years rest on.")},
                 "required": ["rev_growth", "op_margin", "fact_ids"]},
-            "normalized": {"type": "object", "description": "The normalized state the business reaches by year N.", "properties": {
-                "year": {"type": "integer", "description": "The year (a whole number from 3 to 5) in which the business reaches its normalized state."},
+            "normalized": {"type": "object", "description": "The normalized state the business reaches by year N: its mid-cycle margin in year N, not the margin after year 5.", "properties": {
+                "year": {"type": "integer", "description": "The year N (a whole number from 3 to 5) in which the business reaches its normalized state: the year-N mid-cycle margin."},
                 "rev_growth": {"type": "number", "description": "Annual revenue growth in the normalized state, a decimal."},
                 "baseline": {"type": "string", "enum": list(rf.BASELINES), "description": "Which statistic of the filed operating-margin history the normalized margin starts from."},
                 "delta_pts": {"type": "number", "description": "Percentage points added to that baseline (negative subtracts). Code adds it: you never type the normalized margin."},
@@ -112,12 +118,13 @@ def scenario_schema():
                 "required": ["year", "rev_growth", "baseline", "delta_pts", "fact_ids", "reason"]},
             "transition": {"type": "string", "enum": list(rf.TRANSITIONS), "description": "How years 3 to N get from the year-2 values to the normalized values."},
             "transition_year": {"type": "integer", "description": "Required for step_at_year (the year of the step) and hold_then_linear (the last year held)."},
-            "long_run_margin_op": {"type": "number", "description": "The filed operating margin (a decimal) the business earns at the end of the fade after year 5."},
+            "long_run_margin_op": {"type": "number", "description": "The post-year-5 terminal margin: the filed operating margin (a decimal) the business earns at the end of the fade after year 5. It is not the year-N mid-cycle margin."},
             "terminal_g": {"type": "number", "description": "Terminal growth after the fade, a decimal."},
             "terminal_ronic": {"type": "number", "description": "The return on new investment that pays for growth after the fade, a decimal."},
             "fade_years": {"type": "integer", "description": "Whole years over which growth and margin move from year 5 to terminal growth and the long-run margin."},
             "prob": {"type": "number", "description": "The scenario's probability; the three add to one."},
-            "long_run_fact_ids": _ids("Optional: the ids of the dossier facts behind long_run_margin_op."),
+            "long_run_fact_ids": _ids("The ids of the usable dossier facts behind long_run_margin_op (give these, or no_duration_matched_evidence)."),
+            "no_duration_matched_evidence": {"type": "string", "description": "Only when no usable fact speaks for as long as the long run: say so and why, in one sentence. Leave it out when long_run_fact_ids is given."},
         },
         "required": ["near_term", "normalized", "transition", "long_run_margin_op", "terminal_g", "terminal_ronic", "fade_years", "prob"],
     }
@@ -130,7 +137,7 @@ def forecast_properties():
     base["required"] = base["required"] + list(LABEL_ENUMS)
     return {
         "discount_rate": {"type": "number", "description": "The annual discount rate, a decimal."},
-        "frame": {"type": "string", "enum": list(rf.FRAMES), "description": "equity values the flows after interest at the cost of equity; firm values them before interest at the cost of capital."},
+        "frame": {"type": "string", "enum": list(rf.FRAMES), "description": "Always equity: the flows are after interest and are valued at the cost of equity."},
         "scenarios": {"type": "object", "properties": {"Base": base, "Bull": copy.deepcopy(sc), "Bear": copy.deepcopy(sc)}, "required": list(SCEN)},
     }
 
@@ -171,7 +178,7 @@ SUBMIT_FORECAST_TOOL = {
     "function": {
         "name": "submit_forecast",
         "description": ("Submit your forecast: Base, Bull and Bear, each with its two near-term years, its normalized state, its transition and its long run. "
-                        "Code checks the structure only (the fields, finite numbers, the enums, that every fact id exists); it never bounds a number. "
+                        "Code checks the structure and a few domain rules (the fields, finite numbers, the enums, that every fact id exists and is usable, probabilities in 0 to 1 adding to one, revenue not negative, the discount rate above terminal growth, a positive return on new investment); it never bounds a margin. "
                         "Everything that follows (the margin path, the conversion to the valuation basis, the value) is code's."),
         "parameters": {"type": "object", "properties": forecast_properties(), "required": FORECAST_REQUIRED},
     },
@@ -181,11 +188,11 @@ SUBMIT_FORECAST_TOOL = {
 def revision_tool():
     t = copy.deepcopy(SUBMIT_FORECAST_TOOL)
     t["function"]["description"] = (
-        "Submit ONE revised forecast, in full (the same fields as the forecast you were shown). A revision must cite at least one dossier fact in revision_fact_ids and "
-        "give in revision_reason why that fact was underweighted in the forecast. You may call this once; a second call is refused and the stage closes.")
+        "Submit ONE revised forecast, in full (the same fields as the forecast you were shown), only to correct an error of fact. A revision must cite at least one usable dossier fact in revision_fact_ids and "
+        "give in revision_reason the error in the forecast that fact shows. You may call this once; a second call is refused and the stage closes.")
     props = t["function"]["parameters"]["properties"]
-    props["revision_fact_ids"] = _ids("At least one dossier fact id that the forecast underweighted.")
-    props["revision_reason"] = {"type": "string", "description": "Why that fact was underweighted in the forecast you were shown."}
+    props["revision_fact_ids"] = _ids("At least one usable dossier fact id that shows the error.")
+    props["revision_reason"] = {"type": "string", "description": "The error of fact in the forecast you were shown, and how that fact corrects it."}
     t["function"]["parameters"]["required"] = FORECAST_REQUIRED + ["revision_fact_ids", "revision_reason"]
     return t
 
@@ -222,16 +229,14 @@ STATE_CRUX_TOOL = {
     "function": {
         "name": "state_crux",
         "description": ("State the crux of the valuation, and whether you keep the forecast or revise it. Call it once the form is right; a malformed crux is returned to you once. "
-                        "Code resolves every quote in it against its source."),
+                        "You cite dossier facts by id; code pulls each fact's source, date and verbatim quote and resolves the quote against its source."),
         "parameters": {"type": "object", "properties": {
             "crux": {"type": "array", "minItems": 1, "maxItems": 3, "description": "One to three entries.", "items": {"type": "object", "properties": {
                 "input": {"type": "string", "enum": list(CRUX_INPUTS)},
                 "reason": {"type": "string", "description": "Why this company's value of the input differs from, or matches, what the price implies, and by how much."},
                 "citations": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "object", "properties": {
-                    "source": {"type": "string", "description": "The source of a dossier fact, exactly as the dossier lists it (pack:primary-p1, pack:data-5, page:<url>)."},
-                    "date": {"type": "string", "description": "YYYY-MM-DD: the date of the source document."},
-                    "quote": {"type": "string", "description": "30 to 600 characters copied exactly from that source (the fact's quote, or a longer passage around it)."}},
-                    "required": ["source", "date", "quote"]}}},
+                    "fact_id": {"type": "string", "description": "The id of a usable dossier fact (F1, F2, ...). You do not type its source, date or quote: code supplies them from the fact."}},
+                    "required": ["fact_id"]}}},
                 "required": ["input", "reason", "citations"]}},
             "decision": {"type": "string", "enum": ["keep", "revise"], "description": "keep the forecast as shown, or revise it once with submit_forecast."}},
             "required": ["crux", "decision"]},
@@ -247,13 +252,13 @@ You are the analyst for the company in the data pack above. In this stage you fo
 
 1. The margin basis. Every margin you give is the filed operating margin: operating income divided by revenue, the operating-income line of the income statement. It is not a net margin, an after-tax margin or an adjusted margin. Code converts your operating margins to the basis the valuation desk uses, and shows the conversion afterwards. Revenue growth is the annual growth of revenue. Margins and growth are decimals; delta_pts alone is in percentage points.
 2. Three scenarios: Base, Bull and Bear. For each, give the two near-term years (revenue growth and operating margin for year 1 and year 2), then the normalized state the business reaches.
-3. The normalized state. Choose the year N, a whole number from 3 to 5, by which the business is in its normalized state, and its revenue growth. The normalized margin is a baseline plus a delta: choose a baseline from the filed history (min, p25, median, p75, max or last) and delta_pts, the percentage points added to that baseline (a negative number subtracts, zero keeps the baseline). A delta_pts of one is one percentage point. You never type the normalized margin; code adds the two.
+3. The normalized state. Choose the year N, a whole number from 3 to 5, by which the business is in its normalized state, and its revenue growth. The normalized margin is the year-N mid-cycle margin: a baseline plus a delta. Choose a baseline from the filed history (min, p25, median, p75, max or last) and delta_pts, the percentage points added to that baseline (a negative number subtracts, zero keeps the baseline). A delta_pts of one is one percentage point. You never type the normalized margin; code adds the two. A worked example, for illustration only: if the history's median were ten percent and you chose baseline median with delta_pts 2.5, code's normalized margin would be twelve and a half percent; delta_pts -1.5 would give eight and a half percent; delta_pts 0.025 would add only a fortieth of a point, so write 2.5 for two and a half points.
 4. The transition from year 2 to the normalized state: linear (a straight line from year 2 to year N), step_at_year (the year-2 values until transition_year, the normalized values from it) or hold_then_linear (the year-2 values through transition_year, then a straight line reaching the normalized values in year N). Growth moves the same way as the margin. After year N the normalized values hold to year 5.
-5. A normalization that comes later than year 5 (a contract that runs for many years, a ramp, a cycle) is not given as N. Give the state of year 5, and express the later normalization through long_run_margin_op, the operating margin the business earns when the fade after year 5 has finished, and fade_years, the whole years that fade takes (growth also moves from year 5 to terminal_g over it).
-6. Also give for each scenario terminal_g, terminal_ronic (the return on new investment that pays for growth after the fade), prob (the three probabilities add to one), and for the forecast the discount_rate and the frame (equity: flows after interest at the cost of equity; firm: flows before interest at the cost of capital). The pack's flows are after interest.
-7. Evidence. In near_term.fact_ids and normalized.fact_ids cite the dossier facts each rests on, and in long_run_fact_ids the facts behind long_run_margin_op. A fact speaks only for the span its duration states: code values what happens when that evidence expires and reports it, so rest the normalized state and the long run on evidence of matching duration. Cite the facts listed as usable; a fact listed as unusable cannot be cited as evidence. Give in normalized.reason, in at most 60 words, why this is the normalized state.
+5. A normalization that comes later than year 5 (a contract that runs for many years, a ramp, a cycle) is not given as N. Give the state of year 5, and express the later normalization through long_run_margin_op, the post-year-5 terminal margin: the operating margin the business earns when the fade after year 5 has finished (it is not the year-N mid-cycle margin of item 3), and fade_years, the whole years that fade takes (growth also moves from year 5 to terminal_g over it).
+6. Also give for each scenario terminal_g, terminal_ronic (the return on new investment that pays for growth after the fade), prob (the three probabilities add to one), and for the forecast the discount_rate and the frame, which is always equity (the pack's flows are after interest and are valued at the cost of equity). The discount_rate must be above every terminal_g, terminal_ronic must be above zero, and each probability is between 0 and 1.
+7. Evidence. In near_term.fact_ids and normalized.fact_ids cite the usable dossier facts each rests on (each needs at least one), and in long_run_fact_ids the facts behind long_run_margin_op; if no fact speaks for as long as the long run, leave long_run_fact_ids out and say so in no_duration_matched_evidence, with the reason. A fact speaks only for the span its duration states: code values what happens when that evidence expires and reports it, so rest the normalized state and the long run on evidence of matching duration. Every id you cite must be one listed as usable; the dossier shows you no other. A company-adjusted or non-GAAP fact tells you the direction of a change; it never sets the level of a margin, which rests on filed figures. Give in normalized.reason, in at most 60 words, why this is the normalized state.
 8. Classify the Base, each with the dossier facts it rests on (fact_ids): margin_persistence says whether the margin level rests on lasting advantages (structural), only partly does (partly_structural) or is a passing condition (transient); cycle_position says where the business is in its cycle now (trough, mid, peak or not_cyclical); growth_trajectory says whether revenue growth is accelerating, steady, decelerating or shrinking. Each is judged from its own evidence and none is forced by another.
-9. Code checks the structure only: the fields, finite numbers, the enums and that the fact ids exist. It never bounds a number, so the judgment is yours. If the structure is wrong you get one correction."""
+9. Code checks the structure and a few domain rules: the fields, finite numbers, the enums, that the cited fact ids are usable, that the probabilities are between 0 and 1 and add to one, that revenue never goes negative, that the discount rate is above terminal growth and that terminal_ronic is positive. It never bounds a margin, so the judgment is yours. If a check fails you get one correction."""
 
 STAGE3_TASK = """STAGE 3 OF 4: THE REVEAL AND THE AUDIT.
 
@@ -261,16 +266,16 @@ In stage 2 a forecast was made blind, in three samples. You now see the forecast
 
 Treat the reveal as an audit of the market's view, not as an answer. The price is the market's opinion; the consensus is analysts' opinion; neither is evidence. Ask what the market must believe for the price to be right, and whether the dossier's facts support that belief, your forecast, or neither. Move a number only for a reason that a fact in the dossier supplies.
 
-(a) The crux. Call state_crux. Name one to three of the desk's judgment inputs (coe, fade_years, terminal_g, terminal_ronic, long_run_margin) that decide whether the price is right; the growth of years 3 to 5 and the year-2 level are declared in the forecast and are not offered. For each give your reason (why this company's value of the input is what you say, against what the price implies, and by how much) and one to five citations {{source, date, quote}} of this company's own evidence, taken from the dossier: the source exactly as a dossier fact lists it, the date of the source document (when you cannot tell, today's date), and a quote of 30 to 600 characters copied exactly from that source. Code resolves every quote. A crux is required whatever your view: if the evidence supports the price, name the inputs on which it does. One entry that fails makes the whole crux invalid, and without a valid crux there is no call.
-(b) Keep or revise. In the same state_crux call give decision: keep, or revise. To revise, call submit_forecast once with the full revised forecast, revision_fact_ids (at least one dossier fact) and revision_reason (why that fact was underweighted in the forecast you were shown). Code accepts one revision only; a second call is refused and the stage closes. A revision with no fact that supports it is not accepted, and a number that moved toward the consensus or the price without a fact is recorded by code as a pull toward it.
+(a) The crux. Call state_crux. Name one to three of the desk's judgment inputs (coe, fade_years, terminal_g, terminal_ronic, long_run_margin) that decide whether the price is right; the growth of years 3 to 5 and the year-2 level are declared in the forecast and are not offered. For each give your reason (why this company's value of the input is what you say, against what the price implies, and by how much) and one to five citations {{fact_id}} of this company's own evidence: the id of a usable dossier fact. You do not type a source, a date or a quote; code takes them from the fact and resolves the quote against its source. A fact whose quote is shorter than 30 characters cannot be cited. A crux is required whatever your view: if the evidence supports the price, name the inputs on which it does. One entry that fails makes the whole crux invalid, and without a valid crux there is no call.
+(b) Keep or revise. Keep is the default: the forecast was made blind, from the filed record, and the price and the consensus are not evidence. In the same state_crux call give decision: keep, or revise. Revise only when a dossier fact shows that the forecast contains an error of fact (a figure misread, a basis mixed up, a fact it ignored that contradicts it); a difference from the price or the consensus is never a reason. To revise, call submit_forecast once with the full revised forecast, revision_fact_ids (at least one usable dossier fact) and revision_reason (the error of fact, and how that fact corrects it). Code accepts one revision only; a second call is refused and the stage closes. A revision with no fact that supports it is not accepted, and a number that moved toward the consensus or the price is recorded by code as a pull toward it, whatever fact is cited. A company-adjusted or non-GAAP fact informs the direction of a change, never the level of a margin.
 
-You cannot see the reasoning behind the stage-2 forecast, only its numbers; judge it by the dossier."""
+You cannot see the reasoning behind the stage-2 forecast. You see its numbers, the ids of the facts it cited and its classification labels; judge it by the dossier."""
 
 STAGE4_TASK = """STAGE 4 OF 4: THE MEMORANDUM.
 
 The valuation is finished and frozen. Below are the revealed price and momentum facts, the final desk table (every number in it was computed by code), the conversion table, the crux with code's verification of its quotes, the stage-2 spread, the diagnostics, and the research dossier. Write the memorandum that explains the locked numbers. You cannot change a number, and you must never restate a number that is not in the table.
 
-1. Write SECTION 0 first: its first line is `Verdict: undervalued`, `Verdict: overvalued`, `Verdict: hold` or `Verdict: no call`, the word the table gives under "Verdict", with one sentence on why. Then the sections you need: the business and what drives its economics; the forecast and why (the normalized state, the transition and the baseline, with the dossier facts behind them by id); the crux, the quotes that support it and what code found; what the diagnostics show (the alternative path if a fact's evidence expires, the consensus divergence, the spread); the risks and what would change the view.
+1. Write SECTION 0 first: its first line is `Verdict: undervalued`, `Verdict: overvalued`, `Verdict: hold` or `Verdict: no call`, the word the table gives under "Verdict", with one sentence on why. Then the sections you need: the business and what drives its economics; the forecast and why (the normalized state, the transition and the baseline, with the dossier facts behind them by id); the crux, the quotes that support it and what code found; what the diagnostics show (the alternative path if a fact's evidence expires, or the early-fade stress when it speaks for longer than the five explicit years; the consensus divergence; the spread); the risks and what would change the view.
 2. Quote a number only under its label from the table, written exactly as the label is written (for example `Base value per share: $...`), and never round it more coarsely than the table does by more than the digits you write. Do not compute new numbers: no averages, differences or ratios of your own. In SECTION 2 state the forecast's labels exactly as the table writes them (for example `Base transition: ...`, `Base baseline: ...`, `Base margin persistence: ...`). Code checks every labelled number, the verdict word and these labels against the table and flags a difference.
 3. If the table says no call, say so in SECTION 0 and state the reasons the table gives; do not argue a verdict.
 4. End with the contract: a ```json:underwriting block holding only the text fields listed here, each as the system text describes: catalysts (a list of {date, event, direction, estimates_moved, scenario}), cycle_evidence, normalization_reason, margin_persistence_evidence, cycle_position_evidence, growth_trajectory_evidence (one line each: where the evidence for the Base classification in the table is; the classifications themselves are the forecast's and code fills them), momentum_view (confirming, neutral or contradicting; ground it in the REVEALED block), entry_timing (buy_now, wait_for_momentum or avoid), position_basis (value, momentum or none), momentum_evidence, momentum_flip_condition and momentum_break_rule ({metric, comparator, threshold, window_days}), invalidation_rules (a list of {metric, comparator, threshold, window, source}) and thesis_invalidation_trigger. Code fills every number of the contract (values, probabilities, sizes, margins) from the frozen table; leave them out."""
@@ -290,7 +295,25 @@ def _dur(d):
     return f"{d:g} years" if _num(d) else str(d)
 
 
+REASON_CODES = ("quote_not_found", "metric_not_near_quote", "association_uncertain", "malformed", "source_not_resolved")
+
+
+def reason_code(f):
+    """The reason code of an unusable fact (item 2): one word from REASON_CODES, never the model's own words (the metric words a fact failed on are not shown)."""
+    c = f.get("unusable_code")
+    if c in REASON_CODES:
+        return c
+    r = str(f.get("unusable_reason") or "")
+    for code, needle in (("association_uncertain", "association_uncertain"), ("metric_not_near_quote", "metric_not_near_quote"), ("malformed", "malformed"),
+                         ("source_not_resolved", "source not resolved"), ("quote_not_found", "quote not found")):
+        if r.startswith(needle) or needle in r:
+            return code
+    return "quote_not_found" if r else "malformed"
+
+
 def render_dossier(dossier):
+    """The dossier as stages 2-4 read it. Unusable facts are never shown (item 2): only their count and the reason codes, so no quote, metric or number of a fact that
+    failed the checks reaches a stage and none can be cited."""
     d = dossier or {}
     facts = d.get("facts") or []
     use = [f for f in facts if f.get("usable")]
@@ -303,8 +326,12 @@ def render_dossier(dossier):
     if not use:
         lines.append("(none)")
     bad = [f for f in facts if not f.get("usable")]
-    lines += ["", "UNUSABLE FACTS (listed with the reason; they cannot be cited as evidence):"]
-    lines += [f"[{f.get('fact_id')}] {f.get('metric') or ''}: {f.get('unusable_reason')}" for f in bad] or ["(none)"]
+    counts = {}
+    for f in bad:
+        counts[reason_code(f)] = counts.get(reason_code(f), 0) + 1
+    lines += ["", "UNUSABLE FACTS: " + (f"{len(bad)} (not shown; they cannot be cited). Reason codes: " + ", ".join(f"{k} {counts[k]}" for k in sorted(counts)) if bad else "none")]
+    if d.get("withheld_from_stage2"):
+        lines.append(f"FACTS WITHHELD FROM THIS STAGE: {d['withheld_from_stage2']} (they quote analyst, consensus or price content, or a number this stage must not see; they cannot be cited).")
     return "\n".join(lines)
 
 
@@ -337,7 +364,8 @@ def render_forecast_numbers(fc):
                 f"  normalized by year {nm['year']}: revenue growth {_p(nm['rev_growth'], 2)}; margin = baseline {nm['baseline']} + {nm['delta_pts']:g} percentage points; facts {', '.join(nm.get('fact_ids') or []) or 'none'}",
                 f"  transition {s['transition']}" + (f" at year {s['transition_year']}" if s.get("transition_year") is not None else ""),
                 f"  long-run operating margin {_p(s['long_run_margin_op'], 2)}; terminal growth {_p(s['terminal_g'], 2)}; terminal return on new investment {_p(s['terminal_ronic'], 2)}; fade {s['fade_years']} years"
-                + (f"; long-run facts {', '.join(s['long_run_fact_ids'])}" if s.get("long_run_fact_ids") else "")]
+                + (f"; long-run facts {', '.join(s['long_run_fact_ids'])}" if s.get("long_run_fact_ids") else "")
+                + ("; the forecast states that no fact matches the duration of the long run" if s.get("no_duration_matched_evidence") else "")]
     return "\n".join(out)
 
 
@@ -423,7 +451,12 @@ def render_diagnostics(dg):
         lines.append("  Alternative paths: none (no cited fact has a finite duration).")
     for a in alts:
         v = a.get("value")
-        lines.append(f"  If the evidence of {a['fact_id']} (speaks for {a['duration_years']:g} years) expires, the Base value per share is " + (f"${v:.2f}" if _num(v) else f"not computed ({a.get('status')})")
+        val = f"${v:.2f}" if _num(v) else f"not computed ({a.get('status')})"
+        if a.get("label") == rf.EARLY_FADE_STRESS:
+            lines.append(f"  Early-fade stress: the evidence of {a['fact_id']} speaks for {a['duration_years']:g} years, beyond the five explicit years; if the margin instead faded to its baseline from year 5, the Base value per share is {val}"
+                         + (f" ({'; '.join(a['stamps'])})" if a.get("stamps") else "") + ". This is a stress; it replaces nothing.")
+            continue
+        lines.append(f"  If the evidence of {a['fact_id']} (speaks for {a['duration_years']:g} years) expires, the Base value per share is {val}"
                      + (f" ({'; '.join(a['stamps'])})" if a.get("stamps") else "") + ". This is reported; it replaces nothing.")
     for c in dg.get("consensus_divergence") or []:
         lines.append(f"  Year {c['year']}: the forecast's filed operating margin {_p(c['forecast_op'], 2)}; the consensus equivalent {_p(c['consensus_op'], 2)}; gap {c['gap_pts']:+.2f} percentage points.")
@@ -577,7 +610,8 @@ def render_bridge_table(vf):
             out.append(f"  year {r['year']}: margin {_p(r['x_margin'], 2)} (financial family: no conversion)")
         else:
             out.append(f"  year {r['year']}: operating margin {_p(r['op_margin'], 2)}; less net interest, other non-operating items and acquired amortization, held at their base-year dollars,"
-                       f" {_p(r['k_0_pct'], 2)} of revenue; tax rate {_p(r['tax_rate'], 1)}; valuation-basis margin {_p(r['x_margin'], 2)}")
+                       f" {_p(r['k_0_pct'], 2)} of revenue; tax rate {_p(r['tax_rate'], 1)}" + (f" (measured {_p(r['tax_rate_raw'], 1)}, clipped)" if r.get("tax_rate_clipped") else "")
+                       + f"; valuation-basis margin {_p(r['x_margin'], 2)}")
     out.append("Assumptions: " + ("; ".join(br.get("assumptions") or []) or "none"))
     return "\n".join(out)
 
@@ -598,7 +632,7 @@ def _number_right_after(text, pos):
     s = digits.replace(",", "")
     dec = len(s.split(".")[1]) if "." in s else 0
     v = float(s) * (-1 if sign in ("-", "−") else 1)
-    return {"value": v, "decimals": dec, "dollar": bool(dollar), "unit": unit, "text": f"{sign}{dollar}{digits}{unit or ''}"}
+    return {"value": v, "decimals": dec, "dollar": bool(dollar), "unit": unit, "text": f"{sign}{dollar}{digits}{unit or ''}", "span": (m.start(), m.end())}
 
 
 def rounds_to(true_value, shown_decimals, memo_value, memo_decimals):
@@ -627,10 +661,72 @@ def _verdict_word(memo):
     return "hold" if w in ("fair", "fairly_valued") else w
 
 
-def verify_memo(memo, rows):
-    """{"flags": [...], "details": [{"flag", "label", "memo", "table"}]} - annotations only."""
+# ---- the prose-number check (cross-check 23, item 13) --------------------------------------------------------------------------------------------
+
+_PROSE_NUMBER = re.compile(r"(?<![\w.])(?P<sign>[-+\u2212])?\s?(?P<dollar>\$)?\s?(?P<num>\d[\d,]*(?:\.\d+)?)(?:\s?(?P<unit>%|bps?\b|x\b))?", re.I)
+_SCALE_POWERS = (-12, -9, -6, -3, 0, 3, 6, 9, 12)
+
+
+def _prose_allowed(rows, facts, memo_text, cited_ids):
+    """The numbers a memo may state in prose: every value of the frozen table (a percentage also as its fraction and in basis points), and every number of the facts the
+    forecast cites or the memo names by id (the fact's value and each number written in its quote)."""
+    allowed = []
+    for r in rows:
+        v = r.get("value")
+        if r.get("kind") == "word" or not _num(v):
+            continue
+        allowed.append(float(v))
+        if r.get("kind") == "pct":
+            allowed += [float(v) * 100.0, float(v) * 10000.0]
+    named = set(re.findall(r"\bF\d+\b", memo_text or "")) | set(cited_ids or ())
+    for f in facts or []:
+        if not (isinstance(f, dict) and f.get("fact_id") in named):
+            continue
+        if _num(f.get("value")):
+            allowed.append(float(f["value"]))
+        for m in re.finditer(r"\d[\d,]*(?:\.\d+)?", str(f.get("quote") or "")):
+            try:
+                allowed.append(float(m.group(0).replace(",", "")))
+            except ValueError:
+                continue
+    return allowed
+
+
+def _prose_matches(a, v, decimals):
+    """The memo's number v (as written, `decimals` places) is the allowed number a, within the rounding of what the memo wrote, at any power of a thousand (5200 in millions
+    is 5.2 billion; the unit word is not read)."""
+    tol = 0.5 * 10 ** (-decimals) + 1e-9
+    return any(abs(a * 10.0 ** k - v) <= tol for k in _SCALE_POWERS)
+
+
+def prose_number_mismatches(memo, rows, facts=None, cited_ids=(), skip_spans=()):
+    """[{"flag": "memo_prose_number_mismatch", "memo": the number as written, "context": the words around it}] for every number the memo writes with a %, a $, an x or bps
+    that is neither in the table nor a number of a cited or named fact. A number with no mark (a year, a date, a count) is not read. A number inside `skip_spans` (a labelled
+    number the label check already compared) is left to that check."""
+    text = memo or ""
+    allowed = _prose_allowed(rows, facts, text, cited_ids)
+    out = []
+    for m in _PROSE_NUMBER.finditer(text):
+        if not (m.group("dollar") or m.group("unit")):
+            continue
+        if any(a <= m.start("num") < b for a, b in skip_spans):
+            continue
+        s_ = m.group("num").replace(",", "")
+        dec = len(s_.split(".")[1]) if "." in s_ else 0
+        v = float(s_)
+        if not any(_prose_matches(a, v, dec) for a in allowed):
+            lo, hi = max(0, m.start() - 40), min(len(text), m.end() + 20)
+            out.append({"flag": "memo_prose_number_mismatch", "memo": m.group(0).strip(), "context": text[lo:hi].replace("\n", " ")})
+    return out
+
+
+def verify_memo(memo, rows, facts=None, cited_ids=()):
+    """{"flags": [...], "annotations": [...], "details": [{"flag", "label", "memo", "table"}]}. `flags` are the three labelled checks (they gate); `annotations` is the prose-number
+    check (item 13), which reports and does not gate. `facts` are the dossier's facts and `cited_ids` the ids the final forecast cites: the numbers a memo may state besides the
+    table's. Nothing is changed."""
     text = memo or ""
     details = []
+    checked = []
     labels = sorted((r for r in rows if r["kind"] != "word"), key=lambda r: -len(r["label"]))
     low = text.lower()
     taken = [False] * len(text)
@@ -656,6 +752,7 @@ def verify_memo(memo, rows):
         n = _number_right_after(text, e)
         if n is None:
             continue
+        checked.append(n["span"])
         cand = [(r["value"] * 100.0, display_decimals(r))] if r["kind"] == "pct" else [(float(r["value"]), display_decimals(r))]
         if r["kind"] == "pct" and not n["unit"]:
             cand.append((float(r["value"]), 3))                       # a fraction written without the % sign
@@ -667,7 +764,8 @@ def verify_memo(memo, rows):
         if w is None or w != vr["value"]:
             details.append({"flag": "memo_verdict_mismatch", "label": "Verdict", "memo": w, "table": vr["value"]})
     flags = [f for f in MEMO_FLAGS if any(d["flag"] == f for d in details)]
-    return {"flags": flags, "details": details}
+    prose = prose_number_mismatches(text, rows, facts, cited_ids, checked)
+    return {"flags": flags, "annotations": ["memo_prose_number_mismatch"] if prose else [], "details": details + prose}
 
 
 # ---------------------------------------------------------------- the stage-4 contract text

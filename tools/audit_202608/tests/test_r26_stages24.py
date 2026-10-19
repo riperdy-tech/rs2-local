@@ -38,8 +38,12 @@ def dossier():
              "unit": "USD m", "basis": "filed_gaap", "duration_years": dur, "usable": usable, "unusable_reason": None if usable else "quote not found in its source"}
         d.update(kw)
         return d
-    return {"facts": [f(1, True, 4.7), f(2, True, "ongoing"), f(3, False, None)], "summary": "XYZ makes things.", "done": True, "incomplete": False,
-            "counts": {"facts": 3, "usable": 2, "unusable": 1}}
+    page = dict(source=f"page:{PAGE_URL}", entity="Danaos", metric="operating revenues", period="Q2 2026")
+    return {"facts": [f(1, True, 4.7), f(2, True, "ongoing"), f(3, False, None),
+                      f(4, True, None, quote=QUOTE, **page),                                                             # a fact the crux can cite: its quote is in the fetched page
+                      f(5, True, None, quote="An invented sentence that appears nowhere in that page at all.", **page),    # ... one whose quote is not in the page
+                      f(6, True, None, quote="too short", **page)],                                                      # ... one whose quote is under 30 characters
+            "summary": "XYZ makes things.", "done": True, "incomplete": False, "counts": {"facts": 6, "usable": 5, "unusable": 1}}
 
 
 def valuation(price=PRICE, bridge=None):
@@ -84,8 +88,7 @@ def cons_op(y1_op):
 
 
 def crux_args(decision="keep", **over):
-    e = {"input": "long_run_margin", "reason": "the long-run margin is what the filings support",
-         "citations": [{"source": f"page:{PAGE_URL}", "date": "2026-08-04", "quote": QUOTE}]}
+    e = {"input": "long_run_margin", "reason": "the long-run margin is what the filings support", "citations": [{"fact_id": "F4"}]}
     e.update(over)
     return call("state_crux", crux=[e], decision=decision)
 
@@ -133,10 +136,10 @@ def test_the_stage_2_tool_schema_is_the_spec_s_submit_forecast():
     t = late.SUBMIT_FORECAST_TOOL["function"]
     assert t["name"] == "submit_forecast" and t["parameters"]["required"] == ["discount_rate", "frame", "scenarios"]
     props = t["parameters"]["properties"]
-    assert props["frame"]["enum"] == ["equity", "firm"] and set(props["scenarios"]["properties"]) == {"Base", "Bull", "Bear"}
+    assert props["frame"]["enum"] == ["equity"] and set(props["scenarios"]["properties"]) == {"Base", "Bull", "Bear"}
     sc = props["scenarios"]["properties"]["Base"]["properties"]
     assert set(sc) == {"near_term", "normalized", "transition", "transition_year", "long_run_margin_op", "terminal_g", "terminal_ronic", "fade_years", "prob", "long_run_fact_ids",
-                       "margin_persistence", "cycle_position", "growth_trajectory"}      # the Base also classifies (coordinator ruling a)
+                       "no_duration_matched_evidence", "margin_persistence", "cycle_position", "growth_trajectory"}      # the Base also classifies (coordinator ruling a)
     assert set(sc["near_term"]["properties"]) == {"rev_growth", "op_margin", "fact_ids"}
     assert set(sc["normalized"]["properties"]) == {"year", "rev_growth", "baseline", "delta_pts", "fact_ids", "reason"}
     assert sc["normalized"]["properties"]["baseline"]["enum"] == ["min", "p25", "median", "p75", "max", "last"]
@@ -155,7 +158,7 @@ def test_k_equals_3_sessions_with_seeds_s_s1_s2_each_fresh_from_the_same_inputs(
     text = firsts[0][0]["content"]
     assert text.startswith("BLIND PACK TEXT") and "RESEARCH DOSSIER" in text and "FILED OPERATING MARGIN HISTORY" in text and "STAGE 2 OF 4" in text
     assert [t["function"]["name"] for t in script.bodies[0]["tools"]] == ["submit_forecast"]
-    assert "[F3] metric" not in text and "[F1] XYZ" in text and "UNUSABLE FACTS" in text and "F3" in text
+    assert "[F3]" not in text and "[F1] XYZ" in text and "UNUSABLE FACTS: 1 (not shown" in text and "quote not found" not in text         # item 2: a count and codes only
     for lbl in ("MARKET PRICE", "CONSENSUS", "default"):
         assert lbl not in text.split("STAGE 2 OF 4")[0].replace("BLIND PACK TEXT", "")
     assert [s["status"] for s in fc["samples"]] == ["valued"] * 3 and fc["median_index"] == 0 and fc["aggregate"]["median"] == pytest.approx(fc["samples"][0]["base_value"])
@@ -202,11 +205,16 @@ def test_forecasts_json_contents_and_the_sample_records(tmp_path, monkeypatch):
     assert on_disk["valuation_inputs"]["bridge_facts"] == DFACTS and on_disk["op_margin_bar"] == DBAR
 
 
-def test_an_unusable_fact_cited_is_stamped_and_an_unmeasured_tax_rate_leaves_the_sample_unvalued(tmp_path, monkeypatch):
+def test_an_unusable_fact_cited_is_a_structure_problem_with_the_one_repair(tmp_path, monkeypatch):
     f = fcast()
     f["scenarios"]["Base"]["near_term"]["fact_ids"] = ["F3"]
-    _, fc, _, _ = run_stages(tmp_path, monkeypatch, [sub(f), sub(fcast()), sub(fcast())], stages=(2,), bridge=dict(DFACTS, tax_rate=None))
-    assert "cites_unusable_fact:F3" in fc["samples"][0]["stamps"]
+    _, fc, _, _ = run_stages(tmp_path, monkeypatch, [sub(f), sub(fcast()), sub(fcast()), sub(fcast())], stages=(2,))
+    s1 = fc["samples"][0]
+    assert s1["repair_used"] and s1["status"] == "valued" and ("Base.near_term.fact_ids", "fact_id_not_usable") in {(p["field"], p["problem"]) for p in s1["problem_history"][0]}
+
+
+def test_an_unmeasured_tax_rate_leaves_the_sample_unvalued(tmp_path, monkeypatch):
+    _, fc, _, _ = run_stages(tmp_path, monkeypatch, [sub(fcast()), sub(fcast()), sub(fcast())], stages=(2,), bridge=dict(DFACTS, tax_rate=None))
     assert [s["status"] for s in fc["samples"]] == ["bridge_unavailable_tax"] * 3 and fc["median_index"] is None and fc["samples"][0]["base_value"] is None
 
 
@@ -252,7 +260,8 @@ def test_one_revision_is_valued_and_the_pull_ratio_is_recorded(tmp_path, monkeyp
     item = next(i for i in rv["pull"] if i["scenario"] == "Base" and i["item"] == "op_margin_y1")
     assert (item["pre"], item["post"], item["consensus"]) == (0.40, 0.42, pytest.approx(0.45)) and item["pull_ratio"] == pytest.approx(0.4)
     assert rf.pull_ratio(0.40, 0.42, 0.45) == item["pull_ratio"]
-    assert not any(i["item"] == "op_margin_y2" and i["scenario"] == "Base" for i in rv["pull"])         # unchanged margins are not listed
+    y2 = next(i for i in rv["pull"] if i["scenario"] == "Base" and i["item"] == "op_margin_y2")
+    assert y2["changed"] is False and y2["pull_ratio"] == 0.0 and item["changed"] is True            # item 12: every input is listed, the unchanged ones flagged
     assert fi["verdict"]["r26"]["post_reveal_base"] == pytest.approx(rv["post"]["base_value"]) and fi["verdict"]["r26"]["pre_reveal_base"] == pytest.approx(rv["pre"]["base_value"])
 
 
@@ -278,6 +287,8 @@ def test_a_revision_without_a_cited_fact_is_not_accepted(tmp_path, monkeypatch):
     assert any(p["field"] == "revision_fact_ids" for p in rv["revision"]["problems"])
     _, _, rv2, _ = run_stages(tmp_path / "b", monkeypatch, THREE + [crux_args("revise"), revision(0.42, ids=("F99",)), memo_step()])
     assert not rv2["revision"]["accepted"] and rv2["revision"]["problems"][0]["problem"] == "fact_id_not_in_dossier"
+    _, _, rv3, _ = run_stages(tmp_path / "c", monkeypatch, THREE + [crux_args("revise"), revision(0.42, ids=("F3",)), memo_step()])
+    assert not rv3["revision"]["accepted"] and rv3["revision"]["problems"][0]["problem"] == "fact_id_not_usable"
 
 
 def test_no_call_when_the_samples_split_by_direction_and_no_model_call_is_made(tmp_path, monkeypatch):
@@ -291,14 +302,14 @@ def test_no_call_when_the_samples_split_by_direction_and_no_model_call_is_made(t
 
 
 def test_no_call_when_the_crux_is_invalid_after_the_stage(tmp_path, monkeypatch):
-    bad = crux_args("keep", citations=[{"source": f"page:{PAGE_URL}", "date": "2026-08-04", "quote": "An invented sentence that appears nowhere in that page at all."}])
+    bad = crux_args("keep", citations=[{"fact_id": "F5"}])
     _, _, rv, fi = run_stages(tmp_path, monkeypatch, THREE + [bad, memo_step()])
     assert rv["called"] and rv["no_call"] and rv["no_call_reasons"] == ["crux_invalid:quote_not_found"] and rv["crux"]["valid"] is False
     assert fi["no_call"] and fi["actionable"] is False and fi["verdict"]["verdict_label"] == "hold" and fi["verdict"]["r26"]["actionable"] is False
 
 
 def test_a_malformed_crux_is_returned_once_then_stands_as_invalid(tmp_path, monkeypatch):
-    short = crux_args("keep", citations=[{"source": f"page:{PAGE_URL}", "date": "2026-08-04", "quote": "too short"}])
+    short = crux_args("keep", citations=[{"fact_id": "F6"}])
     script, _, rv, _ = run_stages(tmp_path, monkeypatch, THREE + [short, short, memo_step()])
     assert rv["crux"]["state"] == "form_failed" and rv["crux"]["valid"] is False and rv["no_call"] and rv["no_call_reasons"][0].startswith("crux_invalid:crux_form")
     assert "malformed" in [m["content"] for m in script.bodies[4]["messages"] if m["role"] == "tool"][0]
@@ -328,7 +339,8 @@ def test_every_numeric_contract_field_comes_from_code(tmp_path, monkeypatch):
     assert fi["contract_text"] == {"cycle_evidence": "text", "momentum_flip_condition": liar["momentum_flip_condition"]} and v["margin_persistence"] == "structural"
     r = v["r26"]
     assert v["pilot_arm"] == "r26" and v["desk_schema"] == "26" and v["pack_revision"] == 26 and r["contract_unfilled"] == ["conviction_score", "business_quality_moat", "reentry_tranches"]
-    assert r["model_typed_numbers_in"] == ["momentum_flip_condition"] and r["actionable"] is True and fi["actionable"] is True and fi["flags"] == []
+    assert r["model_typed_numbers_in"] == ["momentum_flip_condition"] and fi["flags"] == []
+    assert r["actionable"] is False and fi["actionable"] is False and fi["non_actionable_reasons"] == ["contract_fields_unfilled"]      # item 14
     # the report the harness parses: the memo plus a contract block whose numbers are the code's
     blk = json.loads(re.search(r"```json:underwriting\s*(\{.*?\})\s*```", fi["report"], re.S).group(1))
     assert blk["base_iv"] == pub["Base"] and blk["verdict_label"] == "hold" and "conviction_score" not in blk
@@ -475,7 +487,7 @@ def test_the_three_task_texts_name_no_company_number_and_state_the_rules():
     t2, t3, t4 = late.STAGE2_TASK, late.STAGE3_TASK, late.STAGE4_TASK
     assert "operating income divided by revenue" in t2 and "Code converts" in t2 and "percentage points" in t2 and "a whole number from 3 to 5" in t2
     assert "long_run_margin_op" in t2 and "fade_years" in t2 and "baseline plus a delta" in t2
-    assert "audit of the market" in t3 and "at least one dossier fact" in t3 and "state_crux" in t3 and "only one revision" in t3.lower() or "one revision only" in t3
+    assert "audit of the market" in t3 and "at least one usable dossier fact" in t3 and "state_crux" in t3 and "only one revision" in t3.lower() or "one revision only" in t3
     assert "never restate a number" in t4 and "Code fills every number" in t4
     for t in (t2, t4):
         assert not re.search(r"\$\s?\d|\d+(\.\d+)?%", t)
@@ -498,7 +510,7 @@ def test_the_four_stages_end_to_end(tmp_path, monkeypatch, stub_world):
                period="Q2 2026", duration_years=4.7)
     f2 = _fact(fact_id="F2", source=f"page:{PAGE_URL}", quote=QUOTE, value=274.4, entity="Danaos Corporation", metric="operating revenues", duration_years="ongoing")
     steps = [call("fetch_page", url=PAGE_URL), call("register_facts", facts=[f1, f2], done=True, research_summary="Danaos charters ships."),
-             *THREE, crux_args("revise"), revision(0.42), memo_step()]
+             *THREE, crux_args("revise", citations=[{"fact_id": "F2"}]), revision(0.42), memo_step()]
     script = Script(*steps)
     monkeypatch.setattr(prov, "chat", script)
     facts = {"long_run": dict(LR), "owner_earnings_default_b": BASE_CF, "op_margin_bar": DBAR, "consensus_corrected": cons_op(0.45), "r26_bridge_facts": dict(DFACTS), "pilot_arm": "r26",
@@ -510,7 +522,7 @@ def test_the_four_stages_end_to_end(tmp_path, monkeypatch, stub_world):
         assert (d / name).exists(), name
     assert think == "" and "```json:underwriting" in report and report.startswith("SECTION 0")
     assert [b["options"]["seed"] for b in script.bodies[2:5]] == [700, 701, 702]
-    assert meta["r26"]["stage1"]["usable"] == 2 and meta["r26"]["stage3"]["final_source"] == "stage3_revision" and meta["r26"]["stage4"]["actionable"] is True
+    assert meta["r26"]["stage1"]["usable"] == 2 and meta["r26"]["stage3"]["final_source"] == "stage3_revision" and meta["r26"]["stage4"]["actionable"] is False          # item 14: the contract numbers with no code source
     # the turn log: every model turn of every stage
     names = sorted(p.name for p in (d / "turns").glob("*.json") if p.name != "run_hashes.json") if (d / "turns").exists() else []
     snap = json.loads((d / "_research_snapshot.json").read_text("utf-8"))
@@ -556,7 +568,7 @@ def test_fewer_valued_samples_than_k_is_stamped(tmp_path, monkeypatch):
     bad = fcast()
     del bad["scenarios"]["Bull"]
     _, fc, _, _ = run_stages(tmp_path, monkeypatch, [sub(bad), sub(bad), sub(fcast()), sub(fcast())], stages=(2,))
-    assert fc["stamps"] == ["samples_valued:2_of_3"] and fc["median_index"] == 1 and "elapsed_s" in fc
+    assert [x for x in fc["stamps"] if x.startswith("samples_valued")] == ["samples_valued:2_of_3"] and fc["median_index"] == 1 and "elapsed_s" in fc
 
 
 def test_a_missing_code_owned_input_is_named():

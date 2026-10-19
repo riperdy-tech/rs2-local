@@ -23,7 +23,8 @@ BAR = {"min": 0.05, "p25": 0.08, "median": 0.12, "p75": 0.15, "max": 0.20, "last
 def sc(**over):
     d = {"near_term": {"rev_growth": [0.10, 0.05], "op_margin": [0.10, 0.10], "fact_ids": ["F1"]},
          "normalized": {"year": 5, "rev_growth": 0.03, "baseline": "median", "delta_pts": 4.0, "fact_ids": ["F1"], "reason": "backlog converts"},
-         "transition": "linear", "long_run_margin_op": 0.15, "terminal_g": 0.03, "terminal_ronic": 0.15, "fade_years": 4, "prob": 0.5}
+         "transition": "linear", "long_run_margin_op": 0.15, "terminal_g": 0.03, "terminal_ronic": 0.15, "fade_years": 4, "prob": 0.5,
+         "long_run_fact_ids": ["F1"]}
     d.update(over)
     return d
 
@@ -35,7 +36,8 @@ def forecast(**over):
     return f
 
 
-DOSSIER = {"facts": [{"fact_id": "F1", "duration_years": 4.7}, {"fact_id": "F2", "duration_years": "ongoing"}, {"fact_id": "F3", "duration_years": None}]}
+DOSSIER = {"facts": [{"fact_id": "F1", "duration_years": 4.7, "usable": True}, {"fact_id": "F2", "duration_years": "ongoing", "usable": True},
+                     {"fact_id": "F3", "duration_years": None, "usable": False}]}
 
 
 def problems(obj, dossier=DOSSIER):
@@ -50,6 +52,7 @@ def test_a_well_formed_forecast_has_no_problems_and_numbers_are_not_bounded():
     wild["scenarios"]["Base"]["near_term"]["op_margin"] = [4.0, -3.0]                 # 400% and a loss: structure is fine
     wild["scenarios"]["Base"]["normalized"]["delta_pts"] = 0.0                        # 0.0 is a number
     wild["scenarios"]["Base"]["prob"] = 0.0
+    wild["scenarios"]["Bull"]["prob"] = 0.75                                          # 0.0 is a probability; the three still add to one
     assert r26.validate_forecast(wild, DOSSIER) == []
 
 
@@ -69,6 +72,8 @@ def test_a_well_formed_forecast_has_no_problems_and_numbers_are_not_bounded():
     (lambda s: s["normalized"].__setitem__("fact_ids", ["F9"]), "fact_id_not_in_dossier"),
     (lambda s: s["near_term"].__setitem__("fact_ids", "F1"), "not_a_list_of_fact_ids"),
     (lambda s: s.__setitem__("long_run_fact_ids", ["F7"]), "fact_id_not_in_dossier"),
+    (lambda s: s["normalized"].__setitem__("fact_ids", ["F3"]), "fact_id_not_usable"),
+    (lambda s: s["near_term"].__setitem__("fact_ids", []), "fact_ids_empty"),
     (lambda s: s.__setitem__("fade_years", -1), "not_a_whole_number_of_years"),
 ])
 def test_each_structure_failure_is_named(mut, expect):
@@ -91,10 +96,10 @@ def test_step_and_hold_need_a_transition_year_inside_three_to_n():
 
 
 def test_top_level_fields_and_missing_scenarios_are_named():
-    f = forecast(frame="debt", discount_rate=float("nan"))
+    f = forecast(frame="firm", discount_rate=float("nan"))
     del f["scenarios"]["Bear"]
     p = problems(f)
-    assert ("frame", "not_one_of_equity|firm") in p and ("discount_rate", "not_a_finite_number") in p and ("Bear", "missing_or_not_an_object") in p
+    assert ("frame", "not_one_of_equity") in p and ("discount_rate", "not_a_finite_number") in p and ("Bear", "missing_or_not_an_object") in p
     assert r26.validate_forecast("x") == [{"field": "forecast", "problem": "not_an_object"}]
     assert r26.validate_forecast(forecast()) == []                                     # no dossier supplied: fact IDs are not checked
 

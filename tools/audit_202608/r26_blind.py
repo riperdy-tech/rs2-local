@@ -17,6 +17,9 @@ Pure functions and one list type; nothing here reads a file, calls a model or to
    source; an occurrence on a narrative or aggregator line is a leak. A bare integer is a weak match (counted, not failing).
 3. `op_margin_bar`: filed operating margin per year and min, p25, median, p75, max and last over the filed window. A year that cannot be computed is stated, never filled.
 4. `consensus_corrected`: the vendor's consensus EPS on the filed base year's basis, as X-basis margins, for stage 3 only.
+5. (cross-check 23, items 3 and 4) `stage2_dossier_view`: the leak audit applied to the model-facing dossier of stage 2 - the research summary is filtered sentence by sentence and
+   a fact that quotes analyst, consensus or price content, or a removed number, is withheld, each drop listed; `filed_only_pack`: stage 2 reads the blind pack's filed-data
+   lines only.
 """
 from __future__ import annotations
 
@@ -148,9 +151,10 @@ def names_removed_class(sentence: str) -> Optional[str]:
     return None
 
 
-def filter_narrative(text: str, source: str) -> Tuple[str, List[Dict[str, str]]]:
+def filter_narrative(text: str, source: str, extra=None) -> Tuple[str, List[Dict[str, str]]]:
     """(kept text, drops). The text is split into lines, each line into sentences; a sentence that breaks the rule is dropped and listed as
-    {"source", "rule", "sentence"}. A line with no sentence left is dropped; blank lines stay. The remaining sentences keep their own separators."""
+    {"source", "rule", "sentence"}. A line with no sentence left is dropped; blank lines stay. The remaining sentences keep their own separators.
+    `extra(sentence)`, when given, is a second rule that returns a rule name (a sentence is dropped under it) or None."""
     drops: List[Dict[str, str]] = []
     out_lines: List[str] = []
     for line in str(text).split("\n"):
@@ -161,7 +165,7 @@ def filter_narrative(text: str, source: str) -> Tuple[str, List[Dict[str, str]]]
         kept: List[str] = []
         for i in range(0, len(parts), 2):
             unit = parts[i]
-            rule = names_removed_class(unit) if unit.strip() else None
+            rule = (names_removed_class(unit) or (extra(unit) if extra is not None else None)) if unit.strip() else None
             if rule:
                 drops.append({"source": source, "rule": rule, "sentence": unit.strip()})
                 continue
@@ -412,15 +416,8 @@ def _span_of(spans: Sequence[Dict[str, Any]], line_no: int) -> Tuple[str, str]:
     return "unknown", ""
 
 
-def r26_leak_audit(blind_pack_text: str, facts: Dict[str, Any]) -> Dict[str, Any]:
-    """The leak test of the blind pack. {"pass", "leaks", "exceptions", "weak_matches", "n_removed_numbers", "n_forms", "rule"}.
-    A number of a removed class (the removed lines the build recorded and the removed facts) is rendered to 1, 2 and 3 significant digits (a fact that is a fraction also
-    x 100); the blind pack is searched for each form, with and without the $ % B M x marks (a token is compared by its digits). Header lines are labels and are not searched.
-    An occurrence is, in order: weak, when the token is a bare integer (counted, never failing); an exception on a filed or derived line (the number is a filed or code-owned
-    fact: listed once per section and form, with its section named); an exception on a narrative or aggregator line when the same number is also a filed or derived
-    line's number at that precision (`filed_source` names the first section that holds it); else a leak. `pass` is true when there is no leak."""
-    spans = (facts.get("r26_blind_source") or {}).get("spans") or []
-    nums = removed_numbers(facts)
+def _leak_forms(nums: Sequence[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """{form: [origins]}: each removed number to 1-3 significant digits (a fact that is a fraction also x 100)."""
     forms: Dict[str, List[str]] = {}
     for n in nums:
         cand = set(sig_forms(n["value"]))
@@ -428,9 +425,11 @@ def r26_leak_audit(blind_pack_text: str, facts: Dict[str, Any]) -> Dict[str, Any
             cand |= set(sig_forms(n["value"] * 100.0))
         for f in cand:
             forms.setdefault(f, []).append(n["origin"])
-    lines = str(blind_pack_text).split(chr(10))
-    classes = [_span_of(spans, i) for i in range(len(lines))]
-    # the numbers of the filed and derived lines, each at 1-3 significant digits, with the first section that holds them
+    return forms
+
+
+def _filed_support(lines: Sequence[str], classes: Sequence[Tuple[str, str]]) -> Dict[str, str]:
+    """{form: first section} for the numbers of the filed and derived lines, each at 1-3 significant digits."""
     support: Dict[str, str] = {}
     for line, (cls, sec) in zip(lines, classes):
         if cls in EXCEPTION_CLASSES and not line.startswith("## "):
@@ -443,6 +442,23 @@ def r26_leak_audit(blind_pack_text: str, facts: Dict[str, Any]) -> Dict[str, Any
                     continue
                 for f in set(sig_forms(v)) | {norm}:
                     support.setdefault(f, sec)
+    return support
+
+
+def r26_leak_audit(blind_pack_text: str, facts: Dict[str, Any]) -> Dict[str, Any]:
+    """The leak test of the blind pack. {"pass", "leaks", "exceptions", "weak_matches", "n_removed_numbers", "n_forms", "rule"}.
+    A number of a removed class (the removed lines the build recorded and the removed facts) is rendered to 1, 2 and 3 significant digits (a fact that is a fraction also
+    x 100); the blind pack is searched for each form, with and without the $ % B M x marks (a token is compared by its digits). Header lines are labels and are not searched.
+    An occurrence is, in order: weak, when the token is a bare integer (counted, never failing); an exception on a filed or derived line (the number is a filed or code-owned
+    fact: listed once per section and form, with its section named); an exception on a narrative or aggregator line when the same number is also a filed or derived
+    line's number at that precision (`filed_source` names the first section that holds it); else a leak. `pass` is true when there is no leak."""
+    spans = (facts.get("r26_blind_source") or {}).get("spans") or []
+    nums = removed_numbers(facts)
+    forms = _leak_forms(nums)
+    lines = str(blind_pack_text).split(chr(10))
+    classes = [_span_of(spans, i) for i in range(len(lines))]
+    # the numbers of the filed and derived lines, each at 1-3 significant digits, with the first section that holds them
+    support = _filed_support(lines, classes)
     leaks: List[Dict[str, Any]] = []
     exceptions: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     weak = 0
@@ -467,6 +483,114 @@ def r26_leak_audit(blind_pack_text: str, facts: Dict[str, Any]) -> Dict[str, Any
             "weak_matches": weak, "n_removed_numbers": len(nums), "n_forms": len(forms),
             "rule": "removed-class numbers to 1-3 significant digits; a hit on a filed or derived line, or on another line whose number is also a filed or derived line's, "
                     "is a listed exception; any other hit is a leak; a bare integer is weak"}
+
+
+# ---- the stage-2 views (cross-check 23, items 3 and 4) --------------------------------------------------------------------------------------------
+
+STAGE2_PACK_CLASSES = (FILED, DERIVED)      # stage 2 reads filed data and code-owned derivations only; narrative and vendor figures reach it through usable facts only
+
+
+def filed_only_pack(blind_text: str, spans: Sequence[Dict[str, Any]]) -> Tuple[str, Dict[str, Any]]:
+    """(text, report): the blind pack cut to the lines of the filed and derived classes (item 4). `spans` are blind_split's line spans (facts["r26_blind_source"]["spans"]);
+    a line no span covers has an unknown class and is cut. A section header is kept only while a body line of its own section (or of a `###` inside it) is kept; runs of blank
+    lines collapse to one. report: {"lines_in", "lines_kept", "dropped_by_class", "sections_cut"}."""
+    lines = str(blind_text).split("\n")
+    cls = [_span_of(spans, i)[0] for i in range(len(lines))]
+    keep = [c in STAGE2_PACK_CLASSES for c in cls]
+    dropped: Dict[str, int] = {}
+    for c, k, ln in zip(cls, keep, lines):
+        if not k and ln.strip():
+            dropped[c] = dropped.get(c, 0) + 1
+    level = [len(m.group(1)) if (m := re.match(r"^(#{2,3}) ", ln)) else 0 for ln in lines]
+    sections_cut: List[str] = []
+    for i, ln in enumerate(lines):
+        if not level[i]:
+            continue
+        j = i + 1
+        while j < len(lines) and not (level[j] and level[j] <= level[i]):
+            j += 1
+        body = any(keep[k] and not level[k] and lines[k].strip() for k in range(i + 1, j))
+        if not body:
+            keep[i] = False
+            if ln.strip():
+                sections_cut.append(ln.lstrip("#").strip().split("   [")[0].strip())
+    out: List[str] = []
+    for ln, k in zip(lines, keep):
+        if not k:
+            continue
+        if not ln.strip() and (not out or not out[-1].strip()):
+            continue
+        out.append(ln)
+    return "\n".join(out), {"lines_in": len(lines), "lines_kept": len(out), "dropped_by_class": dropped, "sections_cut": sections_cut}
+
+
+def _number_leak(text: str, forms: Dict[str, List[str]], support: Dict[str, str]) -> Optional[str]:
+    """The first strong number of `text` that is a removed-class number with no filed or derived line holding it too, as `removed_class_number:<origin>`; else None."""
+    for line in str(text).split("\n"):
+        for tok, norm, strong in _tokens(line):
+            if strong and norm in forms and norm not in support:
+                return f"removed_class_number:{forms[norm][0]}"
+    return None
+
+
+def text_leaks(text: str, blind_pack_text: str, facts: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The leaks in `text` (a rendered view): [{"line", "token", "form", "matches"}] - strong numbers equal to a removed-class number that no filed or derived line of the blind
+    pack holds (r26_leak_audit's rule, applied to a text that is not the pack)."""
+    spans = (facts.get("r26_blind_source") or {}).get("spans") or []
+    forms = _leak_forms(removed_numbers(facts))
+    plines = str(blind_pack_text).split(chr(10))
+    support = _filed_support(plines, [_span_of(spans, i) for i in range(len(plines))])
+    out = []
+    for i, line in enumerate(str(text).split("\n")):
+        for tok, norm, strong in _tokens(line):
+            if strong and norm in forms and norm not in support:
+                out.append({"line": i, "token": tok, "form": norm, "matches": forms[norm][:3]})
+    return out
+
+
+def stage2_dossier_view(dossier: Dict[str, Any], blind_pack_text: Optional[str] = None, facts: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """(view, audit): the dossier as stage 2 may read it (items 3). The leak audit of the blind pack, applied to what the dossier carries into stage 2:
+      the research summary   filtered sentence by sentence: a sentence that names consensus, analysts, a price target, the share price, the market cap or a price multiple
+                             (the narrative rule), or holds a removed-class number that no filed line holds, is dropped and listed;
+      each fact              a fact whose quote, metric or entity breaks the same rule, or whose quote holds such a number, is WITHHELD from the view (a verbatim quote
+                             cannot be cut to a sentence) and listed. The view's `withheld_from_stage2` counts them; stage 2 cannot cite them.
+    With no `facts` the number test is not run (stamped `number_audit_not_run`); the sentence rule always is. The input is not changed. The audit holds the drops, the
+    withheld facts and the stamps; a later check of the rendered view belongs to the caller (text_leaks)."""
+    view = dict(dossier)
+    audit: Dict[str, Any] = {"summary_drops": [], "facts_withheld": [], "stamps": []}
+    forms = support = None
+    if facts is not None and blind_pack_text is not None:
+        spans = (facts.get("r26_blind_source") or {}).get("spans") or []
+        forms = _leak_forms(removed_numbers(facts))
+        plines = str(blind_pack_text).split(chr(10))
+        support = _filed_support(plines, [_span_of(spans, i) for i in range(len(plines))])
+    else:
+        audit["stamps"].append("number_audit_not_run")
+
+    def number_rule(unit: str) -> Optional[str]:
+        return _number_leak(unit, forms, support) if forms is not None else None
+
+    text, drops = filter_narrative(str(dossier.get("summary") or ""), "dossier:summary", extra=number_rule)
+    view["summary"] = text
+    audit["summary_drops"] = drops
+    kept, withheld = [], []
+    for f in dossier.get("facts") or []:
+        why = None
+        if isinstance(f, dict) and f.get("usable"):
+            for field in ("quote", "metric", "entity"):
+                t = str(f.get(field) or "")
+                why = names_removed_class(t) or (number_rule(t) if field == "quote" else None)
+                if why:
+                    why = f"{field}:{why}"
+                    break
+        if why:
+            withheld.append({"fact_id": f.get("fact_id"), "rule": why})
+        else:
+            kept.append(f)
+    view["facts"] = kept
+    view["withheld_from_stage2"] = len(withheld)
+    audit["facts_withheld"] = withheld
+    return view, audit
 
 
 # ---- the operating-margin bar ------------------------------------------------------------------------------------------------------------------
