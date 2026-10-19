@@ -351,7 +351,7 @@ def test_the_operating_basis_equivalent_is_pending_until_the_bridge_inversion_ex
     fake.invert_bridge = invert_bridge
     monkeypatch.setitem(sys.modules, "r26_forecast", fake)
     c = rb.consensus_corrected(_est(), 1.5, 2.0, 1e9, 1.0, False, bridge_facts={"k": 1}, base_year=2025)
-    assert [(round(x, 4), y, f, r) for x, y, f, r in seen] == [(0.15, 2026, {"k": 1}, 10e9), (0.1875, 2027, {"k": 1}, 12e9)]
+    assert [(round(x, 4), y, f, r) for x, y, f, r in seen] == [(0.15, 1, {"k": 1}, 10e9), (0.1875, 2, {"k": 1}, 12e9)]   # path years (r26_forecast indexes A_t by path year)
     assert c["operating_basis"]["status"] == "inverted" and math.isclose(c["operating_basis"]["values"]["y1"]["op_margin"], 0.2)
     # no base year: stated, not guessed
     assert rb.consensus_corrected(_est(), 1.5, 2.0, 1e9, 1.0, False)["operating_basis"] == {"status": "no_base_year"}
