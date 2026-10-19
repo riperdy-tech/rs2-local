@@ -1186,7 +1186,7 @@ def pull_record(pre_fc, post_fc, bar, cview):
     return items
 
 
-def _stage3_messages(dossier, fc, vf, forecasts, val, cview, diag, run_date, revealed=None):
+def _stage3_messages(dossier, fc, vf, forecasts, val, cview, diag, run_date, revealed=None, bar=None):
     pi = (vf.get("desk") or {}).get("price_implied")
     import financial_model_tool as fmt
     pi_lines = fmt.price_implied_lines(pi) if isinstance(pi, dict) else ["not computed"]
@@ -1199,7 +1199,7 @@ def _stage3_messages(dossier, fc, vf, forecasts, val, cview, diag, run_date, rev
         "price_implied_inputs": r26_late.render_price_implied(pi_lines),
         "consensus_corrected": r26_late.render_consensus(cview),
         "diagnostics": r26_late.render_diagnostics(diag),
-        "task": r26_late.STAGE3_TASK.format(run_date=run_date),
+        "task": r26_late.stage3_task(bar, run_date),
     }
     if revealed:
         inputs["revealed_price_context"] = revealed
@@ -1244,7 +1244,7 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
         _write_json(run_dir / ARTIFACTS["stage3"], reveal)
         return reveal
     # ---- the session
-    msgs = _stage3_messages(dossier, numbers_only(pre_fc), pre_vf, forecasts, valuation, cview, diag, valuation["run_date"], revealed)
+    msgs = _stage3_messages(dossier, numbers_only(pre_fc), pre_vf, forecasts, valuation, cview, diag, valuation["run_date"], revealed, op_margin_bar)
     st = {"crux": None, "crux_attempts": 0, "crux_state": None, "decision": None, "subs": 0, "revision": None, "form_problems": [], "closed": False, "rev_resolved": False}
     known = rf.dossier_fact_ids(dossier)
 
@@ -1290,7 +1290,7 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
         return {"error": f"unknown tool {name}; the tools of this stage are state_crux and submit_forecast"}, False
 
     sess = dict(think=think, ctx=ctx, num_predict=num_predict, temperature=temperature, num_batch=num_batch, draft_num_predict=draft_num_predict, timeout=timeout, verbose=verbose)
-    res = _session(model, msgs, [r26_late.STATE_CRUX_TOOL, r26_late.SUBMIT_REVISION_TOOL], run_dir, "stage3", handle, seed=seed, max_turns=STAGE3_MAX_TURNS,
+    res = _session(model, msgs, [r26_late.STATE_CRUX_TOOL, r26_late.revision_tool_for(op_margin_bar)], run_dir, "stage3", handle, seed=seed, max_turns=STAGE3_MAX_TURNS,
                    nudge="You ended the turn without calling a tool. Call state_crux (with your decision), and submit_forecast if you revise.", **sess)
     reveal.update(called=True, turns=res["turns"], ended=res["ended"], decision=st["decision"], elapsed_s=round(time.time() - t0))
     reveal["revision"] = {k: v for k, v in (st["revision"] or {"submitted": False, "accepted": False}).items() if k != "forecast"}
@@ -1407,7 +1407,7 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
     inputs = {"dossier": dossier, **({"revealed_price_context": revealed} if revealed else {}), "frozen_desk_result": table_text, "bridge_table": r26_late.render_bridge_table(vf), "crux": crux_txt,
               "crux_verification": "\n".join(ver_lines), "stage2_spread": (f"STAGE-2 SPREAD of the three Base values: {forecasts.get('spread') * 100:.1f}%." if rf._num(forecasts.get("spread"))
                                                                                else "STAGE-2 SPREAD: not defined."),
-              "diagnostics": r26_late.render_diagnostics(diag), "task": r26_late.STAGE4_TASK}
+              "diagnostics": r26_late.render_diagnostics(diag), "task": r26_late.stage4_task(op_margin_bar)}
     msgs = fresh_messages("stage4", inputs)
     opts = {"num_ctx": ctx, **({"num_batch": num_batch} if num_batch else {}), "num_predict": num_predict, "repeat_penalty": 1.05, "presence_penalty": 0.05}
     if seed is not None:
@@ -1458,7 +1458,7 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
     final.update(status="ok" if memo.strip() else "memo_missing", memo=memo, report=report, contract_text=ctext, verdict=verdict, verifier=ver,
                  flags=final["flags"] + list(ver["flags"]) + (["r26_no_call"] if final["no_call"] else []), elapsed_s=round(time.time() - t0),
                  table=rows, actionable=not reasons, non_actionable_reasons=reasons, desk_call=call,
-                 task_sha256=hashlib.sha256(r26_late.STAGE4_TASK.encode("utf-8")).hexdigest())
+                 task_sha256=hashlib.sha256(r26_late.stage4_task(op_margin_bar).encode("utf-8")).hexdigest())
     _write_json(run_dir / ARTIFACTS["stage4"], final)
     _append_snapshot_call(run_dir, call)
     return final

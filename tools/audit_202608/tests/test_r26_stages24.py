@@ -109,13 +109,13 @@ def memo_step(verdict=None, extra="", contract=None, mutate=None):
     return step
 
 
-def run_stages(tmp_path, monkeypatch, steps, *, fcs=None, price=PRICE, cc=None, bridge=None, stages=(2, 3, 4), seed=700, dossier_=None):
+def run_stages(tmp_path, monkeypatch, steps, *, fcs=None, price=PRICE, cc=None, bridge=None, stages=(2, 3, 4), seed=700, dossier_=None, bar=None):
     """Stages 2-4 over a scripted model. Returns (script, forecasts, reveal, final)."""
     script = Script(*steps)
     monkeypatch.setattr(prov, "chat", script)
     val = valuation(price, bridge)
     d = dossier_ or dossier()
-    kw = dict(run_dir=tmp_path, model="m", dossier=d, valuation=val, op_margin_bar=DBAR, verbose=False)
+    kw = dict(run_dir=tmp_path, model="m", dossier=d, valuation=val, op_margin_bar=bar or DBAR, verbose=False)
     fc = r26.run_stage2(blind_pack="BLIND PACK TEXT", seed=seed, **kw)
     rv = r26.run_stage3(consensus_corrected=cc, blind_pack="BLIND PACK TEXT", fetch_calls=FETCH, company="Danaos Corporation", ticker="DAC", facts={}, forecasts=fc, seed=seed, **kw) \
         if 3 in stages else None
@@ -711,3 +711,18 @@ def test_no_filed_operating_income_puts_any_name_on_the_x_basis_with_the_identit
     assert late.stage2_task(dict(DBAR, basis="operating")) is late.STAGE2_TASK
     tool = json.dumps(late.stage2_tool(xbar))
     assert "operating income / revenue" not in tool and "X-basis margin" in tool and late.stage2_tool(DBAR) is late.SUBMIT_FORECAST_TOOL
+
+
+def test_an_x_basis_name_gets_the_x_wording_in_stages_2_3_and_4_and_an_operating_name_the_original(tmp_path, monkeypatch):
+    xbar = dict(DBAR, basis="x")
+    script, _, rv, fi = run_stages(tmp_path / "x", monkeypatch, THREE + [crux_args("keep"), memo_step()], cc=cons_op(0.45), bar=xbar, bridge={"family": "financial"})
+    def text(b):
+        return json.dumps(b["messages"]) + json.dumps(b.get("tools", []))
+    s2, s3, s4 = text(script.bodies[0]), [text(b) for b in script.bodies if any("STAGE 3 OF 4" in m["content"] for m in b["messages"] if isinstance(m.get("content"), str))],         [text(b) for b in script.bodies if any("STAGE 4 OF 4" in m["content"] for m in b["messages"] if isinstance(m.get("content"), str))]
+    assert "Code converts nothing" in s2 and "operating income divided by revenue" not in s2 and "operating income / revenue" not in s2
+    assert s3 and all(late.X_BASIS_NOTE in t and "operating income / revenue" not in t for t in s3)
+    assert s4 and all(late.X_BASIS_NOTE in t for t in s4)
+    script2, _, _, _ = run_stages(tmp_path / "o", monkeypatch, THREE + [crux_args("keep"), memo_step()], cc=cons_op(0.45))
+    allt = " ".join(json.dumps(b["messages"]) + json.dumps(b.get("tools", [])) for b in script2.bodies)
+    assert late.X_BASIS_NOTE not in allt and "Code converts nothing" not in allt
+    assert late.stage3_task(DBAR, "D") == late.STAGE3_TASK.format(run_date="D") and late.stage4_task(DBAR) is late.STAGE4_TASK and late.revision_tool_for(DBAR) is late.SUBMIT_REVISION_TOOL

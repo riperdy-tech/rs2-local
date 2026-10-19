@@ -192,6 +192,31 @@ def revision_tool():
 
 SUBMIT_REVISION_TOOL = revision_tool()
 
+
+X_BASIS_NOTE = ("The basis of every margin in this stage: the forecast, the desk table and the conversion table give the X-basis margin (net income plus the after-tax amortization of acquired "
+                "intangibles, divided by revenue), the valuation desk's own basis. Code converts nothing, and a line named operating margin in them is this margin.")
+
+
+def revision_tool_for(bar=None):
+    """SUBMIT_REVISION_TOOL, in the X-basis wording when the margin bar is on the X basis."""
+    return SUBMIT_REVISION_TOOL if (bar or {}).get("basis") != "x" else json.loads(_x_wording(json.dumps(SUBMIT_REVISION_TOOL)))
+
+
+def stage3_task(bar=None, run_date=""):
+    """STAGE3_TASK formatted; for an X-basis bar the X-basis note follows the first paragraph (same switch as stage2_task)."""
+    t = STAGE3_TASK if (bar or {}).get("basis") != "x" else STAGE3_TASK.replace("\n\nTreat the reveal", " " + X_BASIS_NOTE + "\n\nTreat the reveal", 1)
+    return t.format(run_date=run_date)
+
+
+def stage4_task(bar=None):
+    """STAGE4_TASK; for an X-basis bar the X-basis note follows its first paragraph."""
+    if (bar or {}).get("basis") != "x":
+        return STAGE4_TASK
+    assert "\n\n1. Write SECTION 0" in STAGE4_TASK
+    return STAGE4_TASK.replace("\n\n1. Write SECTION 0", " " + X_BASIS_NOTE + "\n\n1. Write SECTION 0", 1)
+
+
+
 STATE_CRUX_TOOL = {
     "type": "function",
     "function": {
@@ -285,7 +310,8 @@ def render_dossier(dossier):
 
 def render_bar(bar):
     b = bar or {}
-    lines = ["FILED OPERATING MARGIN HISTORY (filed operating margin, operating income / revenue):"]
+    lines = ["X-BASIS MARGIN HISTORY (X-basis margin, net income plus after-tax amortization, over revenue):" if b.get("basis") == "x"
+             else "FILED OPERATING MARGIN HISTORY (filed operating margin, operating income / revenue):"]
     yrs = b.get("years") or b.get("by_year")
     if isinstance(yrs, dict):
         yrs = [{"fy": k, "op_margin": v} for k, v in yrs.items()]
