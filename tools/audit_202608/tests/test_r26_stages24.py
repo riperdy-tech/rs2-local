@@ -425,13 +425,42 @@ def test_dossier_facts_sources_become_crux_sources():
 
 
 def test_bridge_facts_from_a_history_row_measure_nothing_it_cannot():
-    row = {"pretax_income": 100e9, "tax_provision": 25e9, "interest_expense": 5e9, "amortization_intangibles": 4e9}
-    f = r26.bridge_facts_from_row(row, ())
-    assert (f["net_interest"], f["tax_rate"], f["amortization_0"]) == (5.0, 0.25, 4.0) and "net_interest_is_gross_interest_expense" in f["stamps"]
-    g = r26.bridge_facts_from_row({"pretax_income": -5e9, "tax_provision": 1e9, "interest_expense": 5e9}, ("amortization_intangibles",))
-    assert g["tax_rate"] is None and g["amortization_0"] == 0.0
-    h = r26.bridge_facts_from_row({"pretax_income": 100e9, "tax_provision": 50e9}, ())
-    assert h["tax_rate"] == 0.35 and h["net_interest"] is None and h["amortization_0"] is None
+    row = {"pretax_income": 100e9, "tax_provision": 25e9, "operating_income": 12e9, "revenue": 80e9, "interest_expense": 5e9, "amortization_intangibles": 4e9}
+    f = r26.bridge_facts_from_row(row)
+    assert (f["operating_income_0"], f["revenue_0"], f["tax_rate"]) == (12.0, 80.0, 0.25) and "net_interest" not in f and "amortization_0" not in f
+    g = r26.bridge_facts_from_row({"pretax_income": -5e9, "tax_provision": 1e9, "operating_income": -2e9})
+    assert g["tax_rate"] is None and g["operating_income_0"] == -2.0                   # a negative operating income is a value
+    h = r26.bridge_facts_from_row({"pretax_income": 100e9, "tax_provision": 50e9})
+    assert h["tax_rate"] == 0.35 and h["operating_income_0"] is None and h["revenue_0"] is None
+
+
+def test_valuation_inputs_adds_x_0_from_the_pack_and_the_bridge_then_needs_only_tau_oi_0_and_x_0():
+    lr = dict(LR, rev_L=10.0, x_L=0.06)
+    row = {"pretax_income": 4e9, "tax_provision": 1e9, "operating_income": 1.5e9, "revenue": 10e9}           # no interest and no amortization fields at all
+    facts = {"long_run": lr, "owner_earnings_default_b": BASE_CF, "population_ranges": {"family": "operating"}, "op_margin_bar": dict(DBAR, basis="operating"),
+             "r26_bridge_facts": r26.bridge_facts_from_row(row)}
+    v = r26.valuation_inputs(facts, PRICE, _ctx(price=PRICE, desk_schema=None))
+    bf = v["bridge_facts"]
+    assert bf["x_0"] == pytest.approx(0.6) and rf._bridge_inputs(bf)["status"] == "ok" and rf._bridge_inputs(bf)["k_0"] == pytest.approx(1.5 - 0.6 / 0.75)
+    assert bf["stamps"] == [] and bf["operating_income_0"] == pytest.approx(1.5)
+    # the identity at the base year, through the pipeline's own inputs
+    b = rf.bridge_to_x({"years": [{"year": 0, "op_margin": bf["operating_income_0"] / 10.0, "revenue": 10.0}]}, bf)
+    assert b["rows"][0]["x_margin"] == pytest.approx(0.06, rel=0, abs=1e-12)
+    # a missing piece is named, not defaulted; 0.0 is a value
+    no_x = r26.valuation_inputs(dict(facts, long_run=dict(lr, x_L=None)), PRICE, {})["bridge_facts"]
+    assert rf._bridge_inputs(no_x)["status"] == "bridge_unavailable_x_0"
+    no_oi = r26.valuation_inputs(dict(facts, r26_bridge_facts=r26.bridge_facts_from_row(dict(row, operating_income=None))), PRICE, {})["bridge_facts"]
+    assert rf._bridge_inputs(no_oi)["status"] == "bridge_unavailable_operating_income"
+    zero = r26.valuation_inputs(dict(facts, long_run=dict(lr, x_L=0.0)), PRICE, {})["bridge_facts"]
+    assert zero["x_0"] == 0.0 and rf._bridge_inputs(zero)["status"] == "ok"
+    # the desk's rev_L is the filed revenue x pi (here 10 against a filed 12.5): OI_0 goes on the desk's basis, the filed margin 1.5 / 10 = 15% unchanged, and the identity holds at rev_L
+    sc = r26.valuation_inputs(dict(facts, r26_bridge_facts=r26.bridge_facts_from_row(dict(row, revenue=12.5e9, operating_income=1.875e9))), PRICE, {})["bridge_facts"]
+    assert sc["operating_income_0"] == pytest.approx(1.5) and any(x.startswith("operating_income_0_on_desk_revenue_basis") for x in sc["stamps"])
+    b2 = rf.bridge_to_x({"years": [{"year": 0, "op_margin": 1.875 / 12.5, "revenue": 10.0}]}, sc)
+    assert b2["rows"][0]["x_margin"] == pytest.approx(0.06, rel=0, abs=1e-12)
+    # no revenue in the bridge facts: the basis cannot be checked, and that is stamped
+    nr = r26.valuation_inputs(dict(facts, r26_bridge_facts={"family": "operating", "operating_income_0": 1.5, "tax_rate": 0.25, "stamps": []}), PRICE, {})["bridge_facts"]
+    assert nr["stamps"] == ["operating_income_0_revenue_basis_not_checked"]
 
 
 def test_the_consensus_adapter():
@@ -536,7 +565,7 @@ def test_a_missing_code_owned_input_is_named():
     with pytest.raises(r26.R26InputError, match="long_run.rev_L"):
         r26.valuation_inputs({"owner_earnings_default_b": 1.0, "long_run": {}}, 10.0, {})
     v = r26.valuation_inputs({"owner_earnings_default_b": 1.0, "long_run": dict(LR), "r26_bridge_facts": {"family": "x"}, "population_ranges": {"family": "financial"}}, 10.0, {"run_date": "2026-01-01"})
-    assert v["rev0"] == LR["rev_L"] and v["bridge_facts"] == {"family": "financial"} and v["run_date"] == "2026-01-01"
+    assert v["rev0"] == LR["rev_L"] and v["bridge_facts"]["family"] == "financial" and v["run_date"] == "2026-01-01"
 
 
 def test_a_pack_without_the_operating_margin_bar_fails_the_sample_by_name(tmp_path, monkeypatch, stub_world):

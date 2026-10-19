@@ -583,7 +583,7 @@ MIN_EPS_ANALYSTS = 3
 
 def _bridge_hook(x_margins: Dict[str, Optional[float]], years: Dict[str, Optional[Dict[str, Any]]], facts: Dict[str, Any], base_year: Optional[int]) -> Dict[str, Any]:
     """The operating-basis equivalent of each X-basis margin, by inverting the bridge at the same year: `r26_forecast.invert_bridge(x_margin, year, facts, revenue=...)`
-    (tools/r26_forecast.py, R26-C), with the consensus revenue of that year in dollars. {"status": "pending_bridge"} when that module is not importable."""
+    (tools/r26_forecast.py, R26-C), with the consensus revenue of that year in $B. {"status": "pending_bridge"} when that module is not importable."""
     try:
         from r26_forecast import invert_bridge          # noqa: WPS433  (R26-C's module; absent until it lands)
     except (ImportError, AttributeError):
@@ -595,7 +595,7 @@ def _bridge_hook(x_margins: Dict[str, Optional[float]], years: Dict[str, Optiona
         x, y = x_margins.get(label), (years or {}).get(label)
         if x is None or not isinstance(y, dict):
             continue
-        out[label] = invert_bridge(x, n, facts, revenue=y["revenue_b"] * 1e9)      # n is the path year (1, 2): r26_forecast indexes A_t by path year
+        out[label] = invert_bridge(x, n, facts, revenue=y["revenue_b"])      # n is the path year (1, 2); revenue in $B, the unit of the bridge facts
     return {"status": "inverted", "values": out}
 
 

@@ -351,7 +351,7 @@ def test_the_operating_basis_equivalent_is_pending_until_the_bridge_inversion_ex
     fake.invert_bridge = invert_bridge
     monkeypatch.setitem(sys.modules, "r26_forecast", fake)
     c = rb.consensus_corrected(_est(), 1.5, 2.0, 1e9, 1.0, False, bridge_facts={"k": 1}, base_year=2025)
-    assert [(round(x, 4), y, f, r) for x, y, f, r in seen] == [(0.15, 1, {"k": 1}, 10e9), (0.1875, 2, {"k": 1}, 12e9)]   # path years (r26_forecast indexes A_t by path year)
+    assert [(round(x, 4), y, f, r) for x, y, f, r in seen] == [(0.15, 1, {"k": 1}, 10.0), (0.1875, 2, {"k": 1}, 12.0)]   # path years; the consensus revenue in $B, the unit of the bridge facts
     assert c["operating_basis"]["status"] == "inverted" and math.isclose(c["operating_basis"]["values"]["y1"]["op_margin"], 0.2)
     # no base year: stated, not guessed
     assert rb.consensus_corrected(_est(), 1.5, 2.0, 1e9, 1.0, False)["operating_basis"] == {"status": "no_base_year"}
@@ -449,6 +449,22 @@ def test_the_built_pack_carries_the_five_sidecar_keys_and_the_bar_and_the_correc
     src = f["r26_blind_source"]
     assert {r["cls"] for r in src["removed_lines"]} >= {"price", "market_cap", "consensus", "multiple", "price_target", "price_action"}
     assert src["spans"][0]["start"] == 0 and src["spans"][-1]["end"] == str(pk).count("\n")
+
+
+def test_the_margin_bar_basis_follows_the_population_ranges_family_not_the_vendor_sector(gev_r26, monkeypatch):
+    import population_ranges
+    pk, _ = gev_r26
+    assert pk.facts["population_ranges"]["family"] == "operating" and pk.facts["op_margin_bar"]["basis"] == "operating"
+    # a vendor sector that says Financial Services (Gold.com: SIC 5051, operating) does not move the bar to the X basis
+    monkeypatch.setattr(cap.consensus_reference, "FINANCIAL_SECTORS", ("Financial Services", "Real Estate", pk.facts.get("sector") or "Industrials", "Industrials"))
+    op = cap.build_pack("GEV", pilot_arm="r26")
+    assert op.facts["population_ranges"]["family"] == "operating" and op.facts["op_margin_bar"]["basis"] == "operating"
+    # the family the resolver reads is financial: the bar is on the X basis, so the two agree
+    monkeypatch.setattr(population_ranges, "family_for", lambda sic, rows, base_year=None: {"family": "financial", "reason": "test", "stamps": []})
+    fin = cap.build_pack("GEV", pilot_arm="r26")
+    assert fin.facts["op_margin_bar"]["basis"] == "x"
+    import r26_stages
+    assert r26_stages.resolve_family(fin.facts, fin.facts["op_margin_bar"]) == ("financial", None)
 
 
 def test_a_seeded_leak_in_the_built_blind_pack_is_caught(gev_r26):

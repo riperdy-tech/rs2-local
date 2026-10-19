@@ -160,55 +160,49 @@ def flat_path(op, rev=100.0, n=5):
     return {"years": [{"year": t, "op_margin": op, "revenue": rev} for t in range(1, n + 1)]}
 
 
-FACTS = {"family": "operating", "net_interest": 5.0, "tax_rate": 0.25, "amortization_0": 4.0}
+FACTS = {"family": "operating", "operating_income_0": 10.0, "x_0": 6.0, "tax_rate": 0.25}          # K_0 = 10 - 6 / 0.75 = 2.0 (revenue 100 at the base year)
 
 
-def test_bridge_hand_computed_with_a_held_amortization():
-    # X = (0.10 - 5/100 - 0) x 0.75 + 0.75 x 4/100 = 0.0375 + 0.03 = 0.0675
+def test_bridge_is_exact_at_the_base_year_by_construction():
+    # the identity: X_0 = (OI_0 - K_0)(1 - tau), to 1e-12, with the base-year revenue and the filed margin OI_0 / R_0
+    for oi0, x0, tau, r0 in ((10.0, 6.0, 0.25, 100.0), (0.45, 0.0623, 0.35, 1.06), (-3.0, 1.2, 0.0, 7.0), (50.0, 12.5, 0.18, 47.8), (2.0, -1.0, 0.3, 5.0)):
+        f = {"family": "operating", "operating_income_0": oi0, "x_0": x0, "tax_rate": tau}
+        b = r26.bridge_to_x({"years": [{"year": 0, "op_margin": oi0 / r0, "revenue": r0}]}, f)
+        assert b["status"] == "ok" and b["rows"][0]["x_margin"] * r0 == pytest.approx(x0, rel=0, abs=1e-12)
+        assert r26.invert_bridge(x0 / r0, 0, f, revenue=r0)["op_margin"] == pytest.approx(oi0 / r0, rel=0, abs=1e-12)
+
+
+def test_bridge_hand_computed_and_stamped_calibrated():
+    # K_0 = 10 - 6 / 0.75 = 2: at R = 100, op = 0.10 -> X = (0.10 - 0.02) x 0.75 = 0.06 = X_0 / R_0
     b = r26.bridge_to_x(flat_path(0.10), FACTS)
-    assert b["status"] == "ok" and [r["x_margin"] for r in b["rows"]] == pytest.approx([0.0675] * 5, **APPROX)
+    assert b["status"] == "ok" and [r["x_margin"] for r in b["rows"]] == pytest.approx([0.06] * 5, **APPROX)
     r = b["rows"][0]
-    assert (r["net_interest_pct"], r["other_nonop"], r["tax_rate"], r["amortization"], r["amortization_pct"]) == (0.05, 0.0, 0.25, 4.0, 0.04)
-    assert r["amortization_source"] == "base_year_held"
-    assert "other_nonop_assumed_zero" in b["assumptions"] and "net_interest_base_year_filed_dollars_held" in b["assumptions"]
-    assert "amortization_base_year_held_all_years" in b["assumptions"] and "tax_rate_measured" in b["assumptions"]
+    assert (r["k_0"], r["k_0_pct"], r["tax_rate"]) == (2.0, 0.02, 0.25)
+    assert b["stamps"] == ["bridge_calibrated_to_base_year"]
+    assert any(a.startswith("bridge_calibrated_to_base_year") for a in b["assumptions"]) and "tax_rate_measured" in b["assumptions"]
+    assert any("amortization" in a and "held" in a for a in b["assumptions"])                       # the held amortization is listed as an assumption
 
 
-def test_bridge_uses_the_filed_amortization_schedule_where_it_has_a_year_and_holds_a_0_after_it():
-    facts = dict(FACTS, amortization_schedule=[6.0, 0.0])                  # year 1 = 6, year 2 = 0.0 (a value), years 3-5 not in the schedule
-    b = r26.bridge_to_x(flat_path(0.10), facts)
-    assert [r["amortization_source"] for r in b["rows"]] == ["filed_schedule", "filed_schedule", "base_year_held", "base_year_held", "base_year_held"]
-    assert b["rows"][0]["x_margin"] == pytest.approx(0.05 * 0.75 + 0.75 * 0.06, **APPROX)       # 0.0825
-    assert b["rows"][1]["x_margin"] == pytest.approx(0.05 * 0.75, **APPROX)                      # A = 0.0 is a value, not a missing figure
-    assert b["rows"][2]["x_margin"] == pytest.approx(0.0675, **APPROX)
-    assert "amortization_base_year_held_years:3/4/5" in b["assumptions"]
-
-
-def test_bridge_scales_interest_and_amortization_by_each_years_revenue():
+def test_bridge_holds_k_0_in_dollars_so_it_shrinks_as_a_share_of_growing_revenue():
     p = {"years": [{"year": 1, "op_margin": 0.10, "revenue": 100.0}, {"year": 2, "op_margin": 0.10, "revenue": 200.0}]}
     b = r26.bridge_to_x(p, FACTS)
-    assert b["rows"][1]["x_margin"] == pytest.approx((0.10 - 0.025) * 0.75 + 0.75 * 0.02, **APPROX)        
+    assert b["rows"][1]["x_margin"] == pytest.approx((0.10 - 0.01) * 0.75, **APPROX)
 
 
-def test_tax_unavailable_is_stated_and_nothing_is_valued_or_defaulted():
+def test_tax_operating_income_and_x_0_unavailable_are_stated_and_nothing_is_valued_or_defaulted():
     for tau in (None, "n/a", float("nan"), 1.0):
         b = r26.bridge_to_x(flat_path(0.10), dict(FACTS, tax_rate=tau))
         assert b["status"] == "bridge_unavailable_tax" and b["rows"] == [] and "bridge_unavailable_tax" in b["stamps"]
     nf = {k: v for k, v in FACTS.items() if k != "tax_rate"}
     assert r26.bridge_to_x(flat_path(0.10), nf)["status"] == "bridge_unavailable_tax"
-    assert r26.bridge_to_x(flat_path(0.10), dict(FACTS, net_interest=None))["status"] == "bridge_unavailable_net_interest"
-    assert r26.bridge_to_x(flat_path(0.10), dict(FACTS, amortization_0=None))["status"] == "bridge_unavailable_amortization"
+    assert r26.bridge_to_x(flat_path(0.10), dict(FACTS, operating_income_0=None))["status"] == "bridge_unavailable_operating_income"
+    assert r26.bridge_to_x(flat_path(0.10), dict(FACTS, x_0=None))["status"] == "bridge_unavailable_x_0"
+    assert r26.invert_bridge(0.06, 1, dict(FACTS, x_0=None), revenue=100.0)["status"] == "bridge_unavailable_x_0"
 
 
-def test_zero_tax_zero_interest_and_zero_amortization_are_values():
-    b = r26.bridge_to_x(flat_path(0.10), {"family": "operating", "net_interest": 0.0, "tax_rate": 0.0, "amortization_0": 0.0, "other_nonop": 0.0})
-    assert b["status"] == "ok" and b["rows"][0]["x_margin"] == 0.10 and "other_nonop_assumed_zero" not in b["assumptions"]
-
-
-def test_a_supplied_other_nonoperating_figure_is_used_and_not_stamped_zero():
-    b = r26.bridge_to_x(flat_path(0.10), dict(FACTS, other_nonop=2.0))
-    assert b["rows"][0]["x_margin"] == pytest.approx((0.10 - 0.05 - 0.02) * 0.75 + 0.03, **APPROX)
-    assert "other_nonop_assumed_zero" not in b["assumptions"]
+def test_zero_tax_zero_operating_income_and_zero_x_0_are_values():
+    b = r26.bridge_to_x(flat_path(0.10), {"family": "operating", "operating_income_0": 0.0, "x_0": 0.0, "tax_rate": 0.0})
+    assert b["status"] == "ok" and b["rows"][0]["x_margin"] == 0.10 and b["rows"][0]["k_0"] == 0.0
 
 
 def test_the_financial_family_is_an_identity():
@@ -219,8 +213,8 @@ def test_the_financial_family_is_an_identity():
     assert r26.bridge_margin(0.07, 5, 100.0, f)["x_margin"] == 0.07
 
 
-@pytest.mark.parametrize("facts", [FACTS, dict(FACTS, other_nonop=1.5, amortization_schedule={1: 6.0, 2: 0.0, 3: 2.5}),
-                                   dict(FACTS, tax_rate=0.0, net_interest=-3.0)])
+@pytest.mark.parametrize("facts", [FACTS, dict(FACTS, operating_income_0=-1.5, x_0=2.0),
+                                   dict(FACTS, tax_rate=0.0, x_0=13.0)])
 def test_invert_bridge_round_trips_bridge_to_x(facts):
     p = {"years": [{"year": t, "op_margin": m, "revenue": r} for t, m, r in
                    ((1, 0.10, 100.0), (2, -0.02, 120.0), (3, 0.0, 90.0), (4, 0.31, 150.0), (5, 0.18, 210.0))]}
@@ -228,15 +222,15 @@ def test_invert_bridge_round_trips_bridge_to_x(facts):
     for row, y in zip(b["rows"], p["years"]):
         inv = r26.invert_bridge(row["x_margin"], y["year"], facts, revenue=y["revenue"])
         assert inv["status"] == "ok" and inv["op_margin"] == pytest.approx(y["op_margin"], abs=1e-12)
-    assert r26.invert_bridge(0.0675, 1, FACTS, revenue=100.0)["op_margin"] == pytest.approx(0.10, **APPROX)
-    assert r26.invert_bridge(0.0675, 1, dict(FACTS, revenue_by_year={1: 100.0}))["op_margin"] == pytest.approx(0.10, **APPROX)
-    assert r26.invert_bridge(0.0675, 1, FACTS)["status"] == "bridge_unavailable_revenue"
-    assert r26.invert_bridge(0.0675, 1, dict(FACTS, tax_rate=None), revenue=100.0)["status"] == "bridge_unavailable_tax"
+    assert r26.invert_bridge(0.06, 1, FACTS, revenue=100.0)["op_margin"] == pytest.approx(0.10, **APPROX)
+    assert r26.invert_bridge(0.06, 1, dict(FACTS, revenue_by_year={1: 100.0}))["op_margin"] == pytest.approx(0.10, **APPROX)
+    assert r26.invert_bridge(0.06, 1, FACTS)["status"] == "bridge_unavailable_revenue"
+    assert r26.invert_bridge(0.06, 1, dict(FACTS, tax_rate=None), revenue=100.0)["status"] == "bridge_unavailable_tax"
 
 
 # ---- valuing through the existing desk ------------------------------------------------------------------------------------------------------------
 
-DFACTS = {"family": "operating", "net_interest": 2.0, "tax_rate": 0.25, "amortization_0": 1.0}
+DFACTS = {"family": "operating", "operating_income_0": 10.0, "x_0": 6.75, "tax_rate": 0.25}          # K_0 = 10 - 6.75 / 0.75 = 1.0
 DBAR = {"min": 0.30, "p25": 0.34, "median": 0.38, "p75": 0.40, "max": 0.44, "last": 0.40}
 
 
@@ -263,7 +257,7 @@ def test_value_forecast_feeds_the_x_path_and_revenue_to_the_existing_desk():
     R = [100.0]
     for gi in g:
         R.append(R[-1] * (1 + gi))
-    x = lambda op, r: (op - 2.0 / r) * 0.75 + 0.75 * 1.0 / r
+    x = lambda op, r: (op - 1.0 / r) * 0.75
     margins = [x(0.40, R[t]) for t in range(1, 6)]
     entries = [dict(name=n, prob=f["scenarios"][n]["prob"], base_cf=BASE_CF, revenue_growth=g if n == "Base" else res["scenarios"][n]["desk_entry"]["revenue_growth"],
                     earnings_margin=margins if n == "Base" else res["scenarios"][n]["desk_entry"]["earnings_margin"], wacc=0.10, terminal_g=0.03,

@@ -4253,7 +4253,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L += [population_ranges.render_section(facts["population_ranges"], bool(_show_p50)), ""]
     if _r26:
         # revision 26: DATA 5.1, the operating-margin bar (the X basis for the financial family); consensus_corrected for stage 3; the blind pack, the drops and the leak test
-        _fin_family = sector in consensus_reference.FINANCIAL_SECTORS
+        _fin_family = (facts.get("population_ranges") or {}).get("family") == "financial"      # the family r26_stages.resolve_family reads, not the vendor sector (Gold.com: sector Financial Services, SIC 5051, operating)
         _bar = r26_blind.x_margin_bar(facts.get("x_margin_history")) if _fin_family else r26_blind.op_margin_bar(h)
         facts["op_margin_bar"] = _bar
         L.insert_block(_bar_at, r26_blind.op_margin_bar_lines(_bar, _fin_family), r26_blind.FILED)

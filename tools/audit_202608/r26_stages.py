@@ -811,26 +811,21 @@ def _write_json(p, obj):
 
 # ---------------------------------------------------------------- the valuation inputs (code-owned; the model sees none of this)
 
-def bridge_facts_from_row(row, untagged=(), family="operating"):
-    """The inputs of r26_forecast's bridge from the base fiscal year's row of the screener history (dollars -> $B, the unit of the desk's revenue):
-    net_interest the filed interest expense (the history holds no interest income: stamped `net_interest_is_gross_interest_expense`), tax_rate the MEASURED rate
-    tax_provision / pretax_income clipped to [0, 0.35] and None when either is missing or the pretax income is not positive (not the record's 0.21 fallback),
-    amortization_0 the filed amortization of acquired intangibles (0 when the filer never tags it, None when a tagged year is missing). Nothing is defaulted."""
+def bridge_facts_from_row(row, family="operating"):
+    """The filed inputs of r26_forecast's base-year-calibrated bridge from the base fiscal year's row of the screener history (dollars -> $B, the unit of the desk's revenue):
+    operating_income_0 the filed operating income, and tax_rate the MEASURED rate tax_provision / pretax_income clipped to [0, 0.35] (None when either is missing or the
+    pretax income is not positive; not the record's 0.21 fallback). X_0, the X-basis earnings, is the pack's own (x_L x rev_L): valuation_inputs adds it. Net interest and
+    the acquired amortization are not read here: they sit inside K_0 = OI_0 - X_0 / (1 - tau). Nothing is defaulted."""
     row = row or {}
 
     def n(k):
         v = row.get(k)
         return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
 
-    pre, tax, ie, am = n("pretax_income"), n("tax_provision"), n("interest_expense"), n("amortization_intangibles")
-    out = {"family": family, "net_interest": None if ie is None else ie / 1e9, "tax_rate": None, "amortization_0": None,
-           "stamps": ["net_interest_is_gross_interest_expense"]}
+    pre, tax, oi, rev = n("pretax_income"), n("tax_provision"), n("operating_income"), n("revenue")
+    out = {"family": family, "operating_income_0": None if oi is None else oi / 1e9, "revenue_0": None if rev is None else rev / 1e9, "tax_rate": None, "stamps": []}
     if pre is not None and tax is not None and pre > 0:
         out["tax_rate"] = min(0.35, max(0.0, tax / pre))
-    if "amortization_intangibles" in (untagged or ()):
-        out["amortization_0"] = 0.0
-    elif am is not None:
-        out["amortization_0"] = am / 1e9
     return out
 
 
@@ -842,7 +837,7 @@ def load_bridge_facts(ticker, family="operating", root=None):
     yrs = sorted(int(y) for y in h if str(y).isdigit())
     if not yrs:
         return None
-    return bridge_facts_from_row(h.get(str(yrs[-1])) or h.get(yrs[-1]), dr.untagged(ticker), family)
+    return bridge_facts_from_row(h.get(str(yrs[-1])) or h.get(yrs[-1]), family)
 
 
 def default_desk_params():
@@ -876,7 +871,7 @@ def valuation_inputs(facts, price, desk_context, ticker=None, bridge_facts=None)
     """Everything code needs to value a forecast: rev0 and base_cf ($B), the bridge facts, the desk's call arguments and context, the price and the verdict band.
     rev0 is facts["long_run"]["rev_L"] and base_cf facts["owner_earnings_default_b"] (the desk's own base year and cash basis); a missing one raises R26InputError.
     The bridge facts are facts["r26_bridge_facts"] when the pack's facts carry them, else the history's (load_bridge_facts); a name whose history is not held gets
-    {"family": ...} alone, so every sample says `bridge_unavailable_*` and is not valued."""
+    {"family": ...} alone, so every sample says `bridge_unavailable_*` and is not valued. The bridge needs tau, OI_0 and X_0 (x_L x rev_L of the facts' long_run)."""
     lr = (facts or {}).get("long_run") or {}
     rev0, base_cf = lr.get("rev_L"), (facts or {}).get("owner_earnings_default_b")
     for nm, v, owner in (("long_run.rev_L", rev0, "pack facts"), ("owner_earnings_default_b", base_cf, "pack facts")):
@@ -891,6 +886,21 @@ def valuation_inputs(facts, price, desk_context, ticker=None, bridge_facts=None)
             bf = {"family": fam, "stamps": [f"bridge_facts_not_loaded: {type(e).__name__}: {e}"]}
     bf = dict(bf) if bf else {"family": fam, "stamps": ["bridge_facts_not_held"]}
     bf["family"] = fam
+    # X_0, the base year's X-basis earnings, is the pack's own: x_L x rev_L ($B). A figure the bridge facts already carry is kept.
+    x_L = lr.get("x_L")
+    if "x_0" not in bf and rf._num(x_L):
+        bf["x_0"] = float(x_L) * float(rev0)
+    # The desk's rev_L and x_L are the base year's filed figures times the attribution factor (rev_L = filed revenue x pi: BUD's 47.8 against a filed 59.3), so OI_0 goes on the
+    # same basis: the filed operating margin times rev_L. The filed margin is untouched, and X_0 = (OI_0 - K_0)(1 - tau) holds at the desk's own revenue.
+    r0, oi0 = bf.get("revenue_0"), bf.get("operating_income_0")
+    if rf._num(r0) and r0 > 0 and rf._num(oi0):
+        f = float(rev0) / float(r0)
+        if abs(f - 1.0) > 1e-9:
+            bf["operating_income_0"] = float(oi0) * f
+            bf["stamps"] = list(bf.get("stamps") or []) + [f"operating_income_0_on_desk_revenue_basis_x{f:.6f}"]
+        bf["revenue_0"] = float(rev0)
+    elif rf._num(oi0):
+        bf["stamps"] = list(bf.get("stamps") or []) + ["operating_income_0_revenue_basis_not_checked"]
     ctx = dict(desk_context or {})
     return {"family": fam, "family_unresolved": fam_why, "rev0": float(rev0), "base_cf": float(base_cf), "bridge_facts": bf, "desk_params": default_desk_params(), "desk_context": ctx,
             "price": float(price), "min_mos": None, "run_date": ctx.get("run_date") or time.strftime("%Y-%m-%d")}

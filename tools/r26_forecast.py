@@ -3,7 +3,7 @@
 What is here, in the order the spec uses it:
   validate_forecast   structure only: fields, finiteness, enums, fact IDs present in the dossier. Numbers are never bounded.
   build_path          years of revenue growth and operating margin from the model's near term, its normalized state and its transition.
-  bridge_to_x         the operating margin of each year on the desk's X basis (net income + after-tax amortization, over revenue), as a table
+  bridge_to_x         the operating margin of each year on the desk's X basis (net income + after-tax amortization, over revenue; calibrated to the filed base year), as a table
                       with its inputs; invert_bridge goes back (the operating-basis equivalent of an X margin, for the consensus).
   value_forecast      feeds the X-margin path and revenue to the existing desk (execute_financial_model, desk schema 25.2). Nothing of the DCF
                       is re-implemented here, and no existing desk code is touched: every existing desk result is unchanged by this module.
@@ -16,7 +16,7 @@ Rules kept throughout: no model, no I/O, no clock, no random; a missing figure i
 nothing is clamped or refused on its size; every assumption is stamped on the result that used it.
 
 Units. Margins and growth rates are decimals (0.12 = 12%). `delta_pts` is in PERCENTAGE POINTS (2.5 = +0.025), as its name says; DELTA_PTS_SCALE is
-the one place that converts. Dollar quantities (revenue, net interest, amortization) share one unit, whatever it is.
+the one place that converts. Dollar quantities (revenue, operating income, X-basis earnings, K_0) share one unit, whatever it is.
 
 The forecast object:
   {"discount_rate": r, "frame": "equity" | "firm",
@@ -45,8 +45,9 @@ HORIZON = 5                             # the desk's explicit years (25.2 path a
 DESK_SCHEMA = "25.2"
 BRIDGE_OK = "ok"
 UNAVAILABLE_TAX = "bridge_unavailable_tax"
-UNAVAILABLE_INTEREST = "bridge_unavailable_net_interest"
-UNAVAILABLE_AMORTIZATION = "bridge_unavailable_amortization"
+UNAVAILABLE_OPERATING_INCOME = "bridge_unavailable_operating_income"
+UNAVAILABLE_X0 = "bridge_unavailable_x_0"
+CALIBRATED_STAMP = "bridge_calibrated_to_base_year"
 UNAVAILABLE_REVENUE = "bridge_unavailable_revenue"
 
 
@@ -237,84 +238,60 @@ def build_path(forecast: Dict[str, Any], op_margin_bar: Dict[str, Any], rev0: fl
 
 
 # ---- 3. the bridge from the operating basis to the X basis ---------------------------------------------------------------------------------------------
+# Calibrated to the filed base year (coordinator ruling, 2026-10-19). K_0 = OI_0 - X_0 / (1 - tau) in dollars carries the base year's net interest, its other
+# non-operating items and its acquired amortization together; per year X_margin_t = (op_margin_t - K_0 / R_t) x (1 - tau). At the base year the bridge returns X_0 exactly.
 
 def _tax_ok(tau: Any) -> bool:
     return _num(tau) and tau < 1.0
 
 
-def _amortization_for(year: int, facts: Dict[str, Any]) -> Dict[str, Any]:
-    """A_t: the filed schedule's value for `year` when it holds one, else A_0 held (stamped). {"value", "source"} or {"value": None, "source": None}."""
-    sched = facts.get("amortization_schedule")
-    v = None
-    if isinstance(sched, dict):
-        v = sched.get(year, sched.get(str(year)))
-    elif isinstance(sched, (list, tuple)) and 1 <= year <= len(sched):
-        v = sched[year - 1]
-    if _num(v):
-        return {"value": float(v), "source": "filed_schedule"}
-    a0 = facts.get("amortization_0")
-    if _num(a0):
-        return {"value": float(a0), "source": "base_year_held"}
-    return {"value": None, "source": None}
-
-
 def _bridge_inputs(facts: Dict[str, Any]) -> Dict[str, Any]:
     """The scenario-independent inputs of the bridge, or the status naming what is not held.
-    facts: {"family": "operating" | "financial", "net_interest": base-year filed net interest expense (positive = expense), "other_nonop": optional,
-    "tax_rate": the record's MEASURED tax rate or None (not the record's 0.21 fallback), "amortization_schedule": {year: A} | [A_1, ...] | None,
-    "amortization_0": the base-year filed amortization of acquired intangibles}."""
+    facts: {"family": "operating" | "financial", "tax_rate": the record's MEASURED tax rate or None (not the record's 0.21 fallback),
+    "operating_income_0": the base year's filed operating income, "x_0": the base year's X-basis earnings (x_L x rev_L of the pack), both in the unit of the revenue
+    the path carries ($B in the pipeline)}. K_0 = operating_income_0 - x_0 / (1 - tax_rate), in that same unit."""
     if facts.get("family") == "financial":
         return {"status": BRIDGE_OK, "financial": True}
     tau = facts.get("tax_rate")
     if not _tax_ok(tau):
         return {"status": UNAVAILABLE_TAX}
-    ni = facts.get("net_interest")
-    if not _num(ni):
-        return {"status": UNAVAILABLE_INTEREST}
-    if not _num(facts.get("amortization_0")):
-        return {"status": UNAVAILABLE_AMORTIZATION}
-    other = facts.get("other_nonop")
-    return {"status": BRIDGE_OK, "financial": False, "tau": float(tau), "net_interest": float(ni),
-            "other_nonop": float(other) if _num(other) else 0.0, "other_assumed": not _num(other)}
+    oi0, x0 = facts.get("operating_income_0"), facts.get("x_0")
+    if not _num(oi0):
+        return {"status": UNAVAILABLE_OPERATING_INCOME}
+    if not _num(x0):
+        return {"status": UNAVAILABLE_X0}
+    return {"status": BRIDGE_OK, "financial": False, "tau": float(tau), "operating_income_0": float(oi0), "x_0": float(x0),
+            "k_0": float(oi0) - float(x0) / (1.0 - float(tau))}
 
 
-def _x_of_op(op_margin: float, revenue: float, year: int, facts: Dict[str, Any], inp: Dict[str, Any]) -> Dict[str, Any]:
-    """One year: X = (op - NI/R - O/R)(1 - tau) + (1 - tau) A/R. The row with every input."""
+def _x_of_op(op_margin: float, revenue: float, year: int, inp: Dict[str, Any]) -> Dict[str, Any]:
+    """One year: X = (op - K_0 / R)(1 - tau). The row with every input."""
     if inp.get("financial"):
         return {"year": year, "revenue": revenue, "op_margin": op_margin, "x_margin": op_margin, "identity": True}
-    a = _amortization_for(year, facts)
     R, tau = float(revenue), inp["tau"]
-    ni_pct, o_pct, a_pct = inp["net_interest"] / R, inp["other_nonop"] / R, a["value"] / R
-    x = (op_margin - ni_pct - o_pct) * (1.0 - tau) + (1.0 - tau) * a_pct
-    return {"year": year, "revenue": R, "op_margin": op_margin, "net_interest": inp["net_interest"], "net_interest_pct": ni_pct,
-            "other_nonop": inp["other_nonop"], "other_nonop_pct": o_pct, "tax_rate": tau, "amortization": a["value"], "amortization_source": a["source"],
-            "amortization_pct": a_pct, "x_margin": x}
+    k_pct = inp["k_0"] / R
+    return {"year": year, "revenue": R, "op_margin": op_margin, "k_0": inp["k_0"], "k_0_pct": k_pct, "tax_rate": tau, "x_margin": (op_margin - k_pct) * (1.0 - tau)}
 
 
-def _assumptions(facts: Dict[str, Any], inp: Dict[str, Any], rows: Sequence[Dict[str, Any]]) -> List[str]:
+def _assumptions(inp: Dict[str, Any]) -> List[str]:
     if inp.get("financial"):
         return ["financial_family_identity: margins are already on the X basis, no conversion"]
-    a = ["net_interest_base_year_filed_dollars_held"]
-    if inp["other_assumed"]:
-        a.append("other_nonop_assumed_zero")
-    held = [r["year"] for r in rows if r.get("amortization_source") == "base_year_held"]
-    a.append("amortization_filed_schedule" if rows and not held else
-             ("amortization_base_year_held_all_years" if rows and len(held) == len(rows) else
-              "amortization_base_year_held_years:" + "/".join(map(str, held))))
-    a.append("tax_rate_measured")
-    return a
+    return ["bridge_calibrated_to_base_year: K_0 = filed operating income - X-basis earnings / (1 - tax rate), held in dollars",
+            "k_0_carries_net_interest_other_nonoperating_and_acquired_amortization_all_held_flat_in_dollars",
+            "tax_rate_measured"]
 
 
 def bridge_to_x(path: Dict[str, Any], facts: Dict[str, Any]) -> Dict[str, Any]:
-    """The per-year X margin of a path, by the SPEC formula, as a table with its inputs:
+    """The per-year X margin of a path, calibrated to the filed base year, as a table with its inputs:
 
-        X_t = (op_t - NI/R_t - O/R_t) x (1 - tau) + (1 - tau) x A_t / R_t
+        X_t = (op_t - K_0 / R_t) x (1 - tau),     K_0 = OI_0 - X_0 / (1 - tau)
 
-    NI is the base-year filed net interest in dollars, held flat; O (other non-operating) is 0, stamped `other_nonop_assumed_zero`; tau is the record's
-    measured tax rate, and when it is not measured the result is `bridge_unavailable_tax` with no table (that sample is not valued); A_t is the filed
-    amortization schedule's value, else A_0 held (the row says which). The financial family is an identity (its margins are on the X basis already).
+    K_0 is held in dollars and stamped `bridge_calibrated_to_base_year`; it carries the base year's net interest, other non-operating items and acquired
+    amortization together (the held amortization is listed as an assumption, not refined by a schedule). tau is the record's measured tax rate. If tau, OI_0 or X_0
+    is not held the result is `bridge_unavailable_tax` / `_operating_income` / `_x_0` with no table (that sample is not valued). The financial family is an identity.
 
-    Worked example (MSGE-like): R = 100, op = 0.10, NI = 5, O = 0, tau = 0.25, A = 4 -> (0.10 - 0.05) x 0.75 + 0.75 x 0.04 = 0.0375 + 0.03 = 0.0675.
+    Worked example: OI_0 = 10, X_0 = 6, tau = 0.25 -> K_0 = 10 - 6 / 0.75 = 2. At R_0 = 100 and op = 0.10: X = (0.10 - 0.02) x 0.75 = 0.06 = X_0 / R_0 (exact).
+    At R = 200 and op = 0.10: X = (0.10 - 0.01) x 0.75 = 0.0675.
 
     Returns {"status", "rows": [...], "assumptions": [...], "family", "stamps"}; `status` is "ok" or the name of what is not held."""
     inp = _bridge_inputs(facts)
@@ -328,9 +305,9 @@ def bridge_to_x(path: Dict[str, Any], facts: Dict[str, Any]) -> Dict[str, Any]:
             out.update(status=UNAVAILABLE_REVENUE, rows=[])
             out["stamps"].append(UNAVAILABLE_REVENUE)
             return out
-        out["rows"].append(_x_of_op(float(y["op_margin"]), float(y["revenue"]), int(y["year"]), facts, inp))
-    out["assumptions"] = _assumptions(facts, inp, out["rows"])
-    out["stamps"] = [a for a in out["assumptions"] if a == "other_nonop_assumed_zero" or a.startswith("amortization_base_year_held")]
+        out["rows"].append(_x_of_op(float(y["op_margin"]), float(y["revenue"]), int(y["year"]), inp))
+    out["assumptions"] = _assumptions(inp)
+    out["stamps"] = [] if inp.get("financial") else [CALIBRATED_STAMP]
     return out
 
 
@@ -342,17 +319,17 @@ def bridge_margin(op_margin: float, year: int, revenue: float, facts: Dict[str, 
         return {"status": inp["status"], "x_margin": None, "row": None}
     if not (_num(revenue) and revenue > 0):
         return {"status": UNAVAILABLE_REVENUE, "x_margin": None, "row": None}
-    row = _x_of_op(float(op_margin), float(revenue), int(year), facts, inp)
+    row = _x_of_op(float(op_margin), float(revenue), int(year), inp)
     return {"status": BRIDGE_OK, "x_margin": row["x_margin"], "row": row}
 
 
 def invert_bridge(x_margin: float, year: int, facts: Dict[str, Any], revenue: Optional[float] = None) -> Dict[str, Any]:
     """The operating-basis margin whose X margin at `year` is `x_margin` (for the consensus, SPEC section 5). Exact inverse of bridge_to_x:
 
-        op = (X - (1 - tau) x A_t / R_t) / (1 - tau) + NI/R_t + O/R_t
+        op = X / (1 - tau) + K_0 / R_t
 
-    `revenue` is that year's revenue (the consensus revenue for a consensus margin); when omitted it is read from facts["revenue_by_year"][year].
-    Returns {"status", "op_margin", "inputs"}; status is "ok" or what is not held. The financial family returns x_margin unchanged."""
+    `revenue` is that year's revenue in the unit of the facts' OI_0 and X_0 ($B in the pipeline; the consensus revenue for a consensus margin); when omitted it is read
+    from facts["revenue_by_year"][year]. Returns {"status", "op_margin", "inputs"}; status is "ok" or what is not held. The financial family returns x_margin unchanged."""
     inp = _bridge_inputs(facts)
     if inp["status"] != BRIDGE_OK:
         return {"status": inp["status"], "op_margin": None, "inputs": None}
@@ -362,12 +339,9 @@ def invert_bridge(x_margin: float, year: int, facts: Dict[str, Any], revenue: Op
         revenue = (facts.get("revenue_by_year") or {}).get(year)
     if not (_num(revenue) and revenue > 0) or not _num(x_margin):
         return {"status": UNAVAILABLE_REVENUE, "op_margin": None, "inputs": None}
-    a = _amortization_for(int(year), facts)
     R, tau = float(revenue), inp["tau"]
-    op = (float(x_margin) - (1.0 - tau) * a["value"] / R) / (1.0 - tau) + inp["net_interest"] / R + inp["other_nonop"] / R
-    return {"status": BRIDGE_OK, "op_margin": op,
-            "inputs": {"revenue": R, "net_interest": inp["net_interest"], "other_nonop": inp["other_nonop"], "tax_rate": tau,
-                       "amortization": a["value"], "amortization_source": a["source"]}}
+    op = float(x_margin) / (1.0 - tau) + inp["k_0"] / R
+    return {"status": BRIDGE_OK, "op_margin": op, "inputs": {"revenue": R, "k_0": inp["k_0"], "tax_rate": tau}}
 
 
 # ---- 4. valuing: the existing desk, schema 25.2 ----------------------------------------------------------------------------------------------------

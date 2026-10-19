@@ -407,10 +407,10 @@ def consensus_view(cc, bridge_facts):
         return {"status": "not_comparable", "reason": cc.get("reason") or cc.get("consensus_not_comparable") or "consensus_not_comparable", "years": {}}
     xs, rev = _year_map(cc.get("x_margins") or cc.get("x_margin")), _year_map(cc.get("revenue"))
     ops = _year_map(cc.get("op_margins")) if not isinstance(cc.get("op_margins"), str) else {}
-    # R26-B's shape (r26_blind.consensus_corrected): the revenue is years.<y>.revenue_b ($B) and the operating equivalent is operating_basis.values.<y>.op_margin
+    # R26-B's shape (r26_blind.consensus_corrected): the revenue is years.<y>.revenue_b ($B, the unit of the bridge facts) and the operating equivalent is operating_basis.values.<y>.op_margin
     for k, yv in _year_map(cc.get("years")).items():
         if isinstance(yv, dict) and _num(yv.get("revenue_b")) and k not in rev:
-            rev[k] = float(yv["revenue_b"]) * 1e9
+            rev[k] = float(yv["revenue_b"])
     ob = cc.get("operating_basis") if isinstance(cc.get("operating_basis"), dict) else {}
     if ob.get("status") == "inverted":
         for k, inv in _year_map(ob.get("values")).items():
@@ -521,8 +521,8 @@ def render_bridge_table(vf):
         if r.get("identity"):
             out.append(f"  year {r['year']}: margin {_p(r['x_margin'], 2)} (financial family: no conversion)")
         else:
-            out.append(f"  year {r['year']}: operating margin {_p(r['op_margin'], 2)}; less net interest {_p(r['net_interest_pct'], 2)} of revenue; less other non-operating {_p(r['other_nonop_pct'], 2)};"
-                       f" tax rate {_p(r['tax_rate'], 1)}; plus after-tax amortization {_p(r['amortization_pct'] * (1 - r['tax_rate']), 2)} of revenue ({r['amortization_source']}); valuation-basis margin {_p(r['x_margin'], 2)}")
+            out.append(f"  year {r['year']}: operating margin {_p(r['op_margin'], 2)}; less net interest, other non-operating items and acquired amortization, held at their base-year dollars,"
+                       f" {_p(r['k_0_pct'], 2)} of revenue; tax rate {_p(r['tax_rate'], 1)}; valuation-basis margin {_p(r['x_margin'], 2)}")
     out.append("Assumptions: " + ("; ".join(br.get("assumptions") or []) or "none"))
     return "\n".join(out)
 
