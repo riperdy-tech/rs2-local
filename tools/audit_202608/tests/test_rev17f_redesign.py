@@ -552,7 +552,7 @@ def test_the_long_run_explanation_names_the_series_the_margin_record_is_on():
 
 
 def test_reference_base_b_is_a_printed_fact_read_back_as_none_from_an_older_sidecar_or_block(tmp_path):
-    assert "reference_base_b" in pack_facts.KEYS and pack_facts.FACTS_VERSION == 11      # revision 24 step 2b: 10 -> 11
+    assert "reference_base_b" in pack_facts.KEYS and pack_facts.FACTS_VERSION == 12      # revision 26: 11 -> 12; revision 24 step 2b: 10 -> 11
     assert pack_facts.empty()["reference_base_b"] is None
     f = dict(pack_facts.empty(), reference_base_b=pack_facts.q_b(0.0939412345))
     block = pack_facts.render_defaults_block(f)

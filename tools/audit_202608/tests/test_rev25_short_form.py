@@ -35,6 +35,7 @@ from test_rev25_bridge import BASE_CF, LABELS, NORM, _call, _ctx, _dcf, _run, _s
 
 CONS = {"y1": {"x_margin": 0.30}, "y2": {"x_margin": 0.30}}
 NEW_KEYS = ("x_margin_history", "x_margin_consensus_y1y2")
+R26_KEYS = ("r26_blind_drops", "op_margin_bar", "consensus_corrected", "r26_leak_audit", "r26_blind_source")      # revision 26: None on every other arm
 DEFAULT_LINES = ("- earnings_margin_basis:", "- x_margin_history:", "- x_margin_consensus_y1y2:")
 
 
@@ -149,7 +150,9 @@ def test_every_other_arms_pack_and_facts_are_byte_identical_to_the_commit_before
     import hashlib
     for arm, (pack_sha, facts_sha) in LEGACY_8E2CB8A.items():
         pk = built(pilot_arm=arm) if arm else built()
-        facts = {k: v for k, v in pk.facts.items() if k not in NEW_KEYS}
+        facts = {k: v for k, v in pk.facts.items() if k not in NEW_KEYS + R26_KEYS}
+        facts["version"] = 11          # revision 26 bumped FACTS_VERSION 11 -> 12 and added five None keys (R26_KEYS); the pinned hashes are of the version-11 facts
+        assert all(pk.facts[k] is None for k in R26_KEYS)
         assert pk.facts["x_margin_history"] is None and pk.facts["x_margin_consensus_y1y2"] is None
         assert hashlib.sha256(str(pk).encode()).hexdigest() == pack_sha, arm
         assert hashlib.sha256(json.dumps(facts, sort_keys=True, default=str).encode()).hexdigest() == facts_sha, arm

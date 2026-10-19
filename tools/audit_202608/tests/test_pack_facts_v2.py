@@ -113,18 +113,21 @@ def test_facts_version_and_key_count():
     # ranges_show_p50: 49 -> 53
     # revision 25 (Stage 0.3): the sidecar-only desk_schema: 53 -> 54; FACTS_VERSION stays 11 (an older sidecar reads it as None)
     # revision 25 short form (desk schema 25.2): the sidecar-only x_margin_history and x_margin_consensus_y1y2: 54 -> 56; FACTS_VERSION stays 11
-    assert pack_facts.FACTS_VERSION == 11
-    assert len(pack_facts.KEYS) == 56
+    # revision 26 (BRIEF_R26_B_blind_pack.md): FACTS_VERSION 11 -> 12 and the sidecar-only r26_blind_drops, op_margin_bar, consensus_corrected, r26_leak_audit and r26_blind_source: 56 -> 61
+    assert pack_facts.FACTS_VERSION == 12
+    assert len(pack_facts.KEYS) == 61
     scope = ["nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
              "vendor_revenue_basis"]
-    assert pack_facts.KEYS[-31:-7] == ["long_run", "working_capital", "base_year_cap", "split_after_last_filing",
+    assert pack_facts.KEYS[-36:-12] == ["long_run", "working_capital", "base_year_cap", "split_after_last_filing",
                                      "reference_base_b", "excess_cash", "coe_premium_source", "base_year_cash_and_investments_b",
                                      "rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_defaults", "price_implied_price"] + scope + [
                                          "primary_sources", "reference_withheld", "reference_line"]
-    assert pack_facts.KEYS[-7:] == ["long_run_defaults_withheld", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema",
-                                    "x_margin_history", "x_margin_consensus_y1y2"]
+    assert pack_facts.KEYS[-12:] == ["long_run_defaults_withheld", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema",
+                                     "x_margin_history", "x_margin_consensus_y1y2",
+                                     "r26_blind_drops", "op_margin_bar", "consensus_corrected", "r26_leak_audit", "r26_blind_source"]
     assert pack_facts.SIDECAR_ONLY == ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price") + tuple(scope) + (
-        "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema", "x_margin_history", "x_margin_consensus_y1y2")
+        "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema", "x_margin_history", "x_margin_consensus_y1y2",
+        "r26_blind_drops", "op_margin_bar", "consensus_corrected", "r26_leak_audit", "r26_blind_source")
 
 
 def test_empty_has_all_24_keys():
@@ -232,7 +235,7 @@ def test_defaults_block_round_trip_ezpw_example():
     for expected in expected_lines:
         assert expected in block, expected
     f = pack_facts.from_text(_rev15(block))
-    assert f["version"] == pack_facts.FACTS_VERSION == 11
+    assert f["version"] == pack_facts.FACTS_VERSION == 12
     assert pack_facts.parity(facts, f) == []
     assert "exit multiple" not in block.lower() and "default_exit_multiple" not in block
 
@@ -338,7 +341,7 @@ def test_revision_15_marker_only_on_first_line():
     text = "# DATA PACK - X\n\nsome text mentioning (pack revision 15) later on\n"
     # No DEFAULTS block and no raise: falls to the legacy reader.
     f = pack_facts.from_text(text)
-    assert f["version"] == pack_facts.FACTS_VERSION == 11
+    assert f["version"] == pack_facts.FACTS_VERSION == 12
     assert f["source"] == "text"
 
 
@@ -389,7 +392,7 @@ def test_revision_14_reads_as_legacy():
     text = "# DATA PACK - X   (pack revision 14)\n\nsome text with no defaults block\n"
     assert pack_facts.is_revision_15(text) is False
     f = pack_facts.from_text(text)
-    assert f["version"] == pack_facts.FACTS_VERSION == 11 and f["source"] == "text"
+    assert f["version"] == pack_facts.FACTS_VERSION == 12 and f["source"] == "text"
 
 
 def test_revisions_15_and_16_read_the_same():

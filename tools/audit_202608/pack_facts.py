@@ -23,7 +23,7 @@ import pi_text  # noqa: E402
 import throughcycle_record  # noqa: E402
 import x_margin_basis  # noqa: E402
 
-FACTS_VERSION = 11
+FACTS_VERSION = 12
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -134,13 +134,24 @@ KEYS: list[str] = [
     # (render_x_margin_lines), and a text read gives None.
     "x_margin_history",
     "x_margin_consensus_y1y2",
+    # revision 26 (BRIEF_R26_B_blind_pack.md, SPEC_rev26_staged_analyst.md section 5; FACTS_VERSION 11 -> 12): the blind pack's sidecar. `r26_blind_drops` the narrative
+    # sentences the blind pack dropped, each with its source and rule; `op_margin_bar` the filed operating-margin history bar (r26_blind.op_margin_bar); `consensus_corrected`
+    # the basis-corrected consensus for stage 3 (r26_blind.consensus_corrected; never printed in the blind pack); `r26_leak_audit` the leak test's result;
+    # `r26_blind_source` the removed lines and the blind pack's line spans by source class, which the leak test reads (it is given the blind text and the facts). All five are
+    # None for every pack but an r26 one, and SIDECAR_ONLY.
+    "r26_blind_drops",
+    "op_margin_bar",
+    "consensus_corrected",
+    "r26_leak_audit",
+    "r26_blind_source",
 ]
 
 # keys the DEFAULTS text does not carry: a frozen replay reads them from the sidecar, and a text read gives None (parity ignores them)
 SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price",
                 "nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
                 "vendor_revenue_basis", "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema",
-                "x_margin_history", "x_margin_consensus_y1y2")
+                "x_margin_history", "x_margin_consensus_y1y2",
+                "r26_blind_drops", "op_margin_bar", "consensus_corrected", "r26_leak_audit", "r26_blind_source")
 # revision 24 (R24.2): the facts a stage-A DEFAULTS block does not print; a text read of such a block gives None for them, so the CIV is taken from
 # the facts or the sidecar, never from text, and the parity check leaves them out when either side is a withheld-reference pack
 WITHHELD_KEYS = ("consensus_implied_value", "reference_status")
@@ -199,6 +210,18 @@ _TERM_ANC_RE = re.compile(r"Long-run nominal growth anchor for terminal_g:\s*([\
 
 _OE_SOURCE_RE = re.compile(r"OWNER EARNINGS \(default base_cf\):[^\n]*?\(owner_earnings_source: ([\w+]+)\)")
 _COE_ANCHOR_RE = re.compile(r"COE ANCHOR for this name:[^\n]*?= ([\d.]+)%")
+
+
+class _Keyed(str):
+    """A DEFAULTS line that knows the fact key it prints (revision 26: the blind pack's source classes are decided by the key, never by the line's text). A str in every
+    other respect: joined and printed, it is the same bytes."""
+    key: str | None = None
+
+
+def _keyed(key: str, text: str) -> "_Keyed":
+    s = _Keyed(text)
+    s.key = key
+    return s
 
 
 def empty() -> dict[str, Any]:
@@ -458,6 +481,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "reference_withheld": None, "reference_line": None,
         "long_run_defaults_withheld": None, "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
         "desk_schema": None, "x_margin_history": None, "x_margin_consensus_y1y2": None,
+        "r26_blind_drops": None, "op_margin_bar": None, "consensus_corrected": None, "r26_leak_audit": None, "r26_blind_source": None,
     }
 
 
@@ -699,7 +723,10 @@ def _fnum(v, fmt):
     return _NONE if v is None else format(v, fmt)
 
 
-def _render_long_run(lr: dict[str, Any], withhold_long_run: bool = False) -> str:
+BLIND_LONG_RUN_MEMBERS = ("e5", "oe5", "m5")        # revision 26: the consensus year-5 earnings and margin, not printed in the blind pack
+
+
+def _render_long_run(lr: dict[str, Any], withhold_long_run: bool = False, blind: bool = False) -> str:
     """The long_run members as `name=value, ...` (`, `-separated; values carry no comma). `withhold_long_run` (revision 24 step 2b): the members
     of the reference's margin rule (om_5, m_long, margin_ratio) are not printed."""
     if not lr:
@@ -738,6 +765,8 @@ def _render_long_run(lr: dict[str, Any], withhold_long_run: bool = False) -> str
     ]
     if withhold_long_run:
         parts = [x for x in parts if x.split("=", 1)[0] not in WITHHELD_LONG_RUN_MEMBERS]
+    if blind:
+        parts = [x for x in parts if x.split("=", 1)[0] not in BLIND_LONG_RUN_MEMBERS]
     return ", ".join(parts)
 
 
@@ -991,17 +1020,19 @@ def _x_margin_year_text(y: dict[str, Any], show_ex: bool) -> str:
     return f"{head} ({detail})"
 
 
-def render_x_margin_lines(facts: dict[str, Any]) -> list[str]:
+def render_x_margin_lines(facts: dict[str, Any], blind: bool = False) -> list[str]:
     """Revision 25 short form (desk schema 25.2): the three DEFAULTS lines that state the earnings-margin basis in plain words and give the record and the consensus on it:
     earnings_margin_basis, x_margin_history (per filed year, with and without one-offs, each source stamped; `none filed` said where none are) and
-    x_margin_consensus_y1y2. [] for every other pack, so no other pack's block changes."""
+    x_margin_consensus_y1y2. [] for every other pack, so no other pack's block changes. `blind` (revision 26): the basis line does not name the long_run members m5 and x_L or
+    the consensus line, which the blind pack does not print."""
     if facts.get("desk_schema") != "25.2":
         return []
 
     def line(key, value, explanation):
-        return f"- {key}: {value} | {explanation}"
+        return _keyed(key, f"- {key}: {value} | {explanation}")
     out = [line("earnings_margin_basis", "the X basis",
-                x_margin_basis.BASIS_WORDS + ". It is the basis of x_L, m_tc and m5 in long_run, of the history and consensus lines below and of the earnings_margin you declare "
+                x_margin_basis.BASIS_WORDS + (". It is the basis of m_tc in long_run, of the history line below and of the earnings_margin you declare " if blind else
+                ". It is the basis of x_L, m_tc and m5 in long_run, of the history and consensus lines below and of the earnings_margin you declare ") +
                 "for years 1-5. Operating margins (om_tc, om_L, om_trend, om_5) are another basis, context only; no input takes one.")]
     hist = facts.get("x_margin_history")
     if isinstance(hist, dict) and hist.get("years"):
@@ -1057,7 +1088,8 @@ def insert_x_margin_lines(pack_text: str, facts: dict[str, Any]) -> str:
 
 
 def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = None, no_marker: bool = False,
-                          withhold_reference: bool = False, withhold_long_run: bool = False) -> str:
+                          withhold_reference: bool = False, withhold_long_run: bool = False, tags_out: list | None = None,
+                          blind_long_run: bool = False) -> str:
     """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
     TASK. Prints every one of the `KEYS` (one fact per line; revision 17: `base_year_cap` only when
     the cap applied, `split_after_last_filing` only when a split was detected), plus two display-only lines that carry no facts key: the fixed rule lines
@@ -1070,11 +1102,14 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     consensus_implied_value and reference_status lines are not printed; the facts keep both. `withhold_long_run` (revision 24 step 2b,
     BRIEF_R24_S2b_ranges_gate.md item 2): a long-run judgment gets no default - the terminal_g_default, terminal_ronic and price_implied lines are
     not printed, the long_run line drops the reference's margin rule (om_5, m_long, margin_ratio) and explains the record and the desk's long run,
-    and the levels and next_fy_revenue_growth lines print the consensus as evidence (the desk holds nothing at them); the facts keep every value."""
+    and the levels and next_fy_revenue_growth lines print the consensus as evidence (the desk holds nothing at them); the facts keep every value.
+    `tags_out` (revision 26): when a list is passed, the fact key of each line after the header is appended to it, in order (None for a line that prints no key), so a
+    caller can classify the lines by key. `blind_long_run` (revision 26, the blind pack): the long_run line drops its consensus members e5, oe5 and m5 and the
+    sentence that describes them; every other line is as without it."""
     f = facts
 
     def line(key, value, explanation):
-        return f"- {key}: {value} | {explanation}"
+        return _keyed(key, f"- {key}: {value} | {explanation}")
 
     lines = [
         line("shares_outstanding", _dv_count(f.get("shares_outstanding")),
@@ -1155,12 +1190,14 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
                           _terminal_ronic_explanation(f, no_marker)))
     lr_series = throughcycle_record.margin_series_name((f.get("long_run") or {}).get("om_basis"))
     if withhold_long_run:
-        lines.append(line("long_run", _render_long_run(f.get("long_run") or {}, withhold_long_run=True),
+        lines.append(line("long_run", _render_long_run(f.get("long_run") or {}, withhold_long_run=True, blind=blind_long_run),
                           f"not available: {consensus_reference.NO_MARKER_REASON}" if no_marker else
                           "your record and the year-5 anchor of the desk's long run, not defaults: the desk values years 6 on from X_5 (earnings "
-                          "before acquired-intangible amortization; e5 and m5 are the year-5 earnings and earnings margin at the consensus estimates of years 1-2 "
-                          "and next-FY revenue growth fading toward the base-rate median in years 3-5, "
-                          "and with no year-5 revenue m5 is your base fiscal year's filed earnings margin), pays for growth at a return that "
+                          "before acquired-intangible amortization" + (
+                              "; X_5 is the year-5 earnings of your own declared path" if blind_long_run else
+                              "; e5 and m5 are the year-5 earnings and earnings margin at the consensus estimates of years 1-2 "
+                              "and next-FY revenue growth fading toward the base-rate median in years 3-5, "
+                              "and with no year-5 revenue m5 is your base fiscal year's filed earnings margin") + "), pays for growth at a return that "
                           + _long_run_start_clause(f) + " your terminal_ronic, and moves each scenario's earnings margin from its year-5 margin "
                           "to your long_run_margin by the end of the fade; m_tc is your record's 8-year median earnings margin, om_tc, om_L and "
                           f"om_trend its 8-year median, base-year and trend-level {lr_series} margins, r_tc and p its returns on tangible "
@@ -1177,7 +1214,7 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
                           "margin (to zero for a loss record). The members are the record "
                           "behind it."))
 
-    lines += render_x_margin_lines(f)          # revision 25 short form: [] unless the pack is a 25.2 one
+    lines += render_x_margin_lines(f, blind=blind_long_run)          # revision 25 short form: [] unless the pack is a 25.2 one
 
     lines.append(line("net_debt_b", _dv_money(f.get("net_debt_b")),
                       "the firm frame's net debt; another figure needs net_debt_reason (the "
@@ -1259,13 +1296,15 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     lines.append(line("revenue_cagr_5y_pct", f"{rc5:+.1f}%" if isinstance(rc5, (int, float)) else _NA,
                       "the desk compares the market-implied growth with it"))
 
-    lines.append('- cash_flow_life: required on every desk call ("perpetual" or years), with '
-                 'cash_flow_life_reason')
-    lines.append("- price: a Bull value below today's price needs bull_below_price_reason; a "
-                 "Bear value above it needs bear_above_price_reason")
+    lines.append(_keyed("cash_flow_life", '- cash_flow_life: required on every desk call ("perpetual" or years), with '
+                 'cash_flow_life_reason'))
+    lines.append(_keyed("price", "- price: a Bull value below today's price needs bull_below_price_reason; a "
+                 "Bear value above it needs bear_above_price_reason"))
 
     header = ("## DEFAULTS   [each desk input takes this value unless you pass another; a "
              "departure needs the named reason, and the desk asks for it]")
+    if tags_out is not None:
+        tags_out.extend(getattr(ln, "key", None) for ln in lines)
     return header + "\n" + "\n".join(lines)
 
 
@@ -1440,6 +1479,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "long_run_defaults_withheld": True if withheld else None,
         "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
         "desk_schema": None, "x_margin_history": None, "x_margin_consensus_y1y2": None,
+        "r26_blind_drops": None, "op_margin_bar": None, "consensus_corrected": None, "r26_leak_audit": None, "r26_blind_source": None,
     }
 
 

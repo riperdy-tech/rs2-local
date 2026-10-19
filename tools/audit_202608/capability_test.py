@@ -55,6 +55,7 @@ import population_ranges  # noqa: E402
 import throughcycle_record  # noqa: E402
 import input_scope  # noqa: E402
 import pack_facts  # noqa: E402
+import r26_blind  # noqa: E402
 import pi_text  # noqa: E402
 import x_margin_basis  # noqa: E402
 
@@ -256,11 +257,19 @@ TIMEOUT = 14400
 #   revision-22 pack byte for byte). Step 2c (BRIEF_R24_S2c_ranges_fix.md): ranges per rebuild I1 (margin, ROIC level), 10-year revenue CAGR,
 #   terminal_g by anchor, working capital on own path, rev22 control desk. Step 2d (BRIEF_R24_S2d_ronic_diagnostics.md): RONIC as stated (no floor
 #   at r), TV share and reinvestment diagnostics; terminal_ronic's ROIC-five-years range annotates only (TASK item 3d).
+# Revision 26 (BRIEF_R26_B_blind_pack.md, SPEC_rev26_staged_analyst.md section 5; operator-approved 2026-10-19): the pilot arm r26 is the staged analyst's pack. It runs desk schema 25.2 on the
+#   revision-24 briefing (as r25_sf does) and its marker is R26_REVISION 26 for this arm only; PACK_REVISION stays 24, so no book name re-triggers and every other arm's pack is
+#   byte-identical. The text build_pack returns for it is the BLIND pack: the full pack's elements carry a source class each (r26_blind.PackLines, a side list never printed), and
+#   the classes consensus, price_target, price, market_cap, multiple, price_action and reference are left out; the narrative sources (news, the catalyst brief, guidance, the
+#   earnings call, the research brief) are filtered sentence by sentence by one rule (r26_blind.names_removed_class) and every dropped sentence is listed in the facts
+#   (r26_blind_drops). The DEFAULTS lines are classed by their fact key; the long_run line prints without the consensus members e5, oe5 and m5. DATA 5.1 prints the
+#   operating-margin history bar (op_margin_bar; the X basis for the financial family). The facts gain r26_blind_drops, op_margin_bar, consensus_corrected (for stage 3, never
+#   printed), r26_leak_audit and r26_blind_source (FACTS_VERSION 12). The full text, with every class, is PackText.full_text.
 PACK_REVISION = 24
 # Revision 24 step 2b: the pilot arms (PHASE_4_REV24_MUSE.md step 3). `rev22` is the revision-22 briefing byte for byte (the control: its marker,
 # the CONSENSUS-IMPLIED VALUE, the DEFAULTS of revision 22 and its TASK); the two `iii` arms are the revision-24 briefing and differ only by P50 in
 # the POPULATION RANGES section.
-PILOT_ARMS = ("rev22", "iii_p50", "iii_no_p50", "r25_b", "r25_c", "r25_sf")
+PILOT_ARMS = ("rev22", "iii_p50", "iii_no_p50", "r25_b", "r25_c", "r25_sf", "r26")
 REV22_REVISION = 22
 # Revision 25 (Stage 0.3, SPEC_rev25_normalization_bridge.md): the pilot arms B and C run desk schema 25.1 (the normalization bridge) with the
 # revision-25 briefing (PACK_REVISION 25 for these packs only, TASK_REV25, P50 omitted). Their difference (consensus withheld until pass 2) is Stage 0.6.
@@ -276,6 +285,9 @@ DESK_SCHEMA_25 = "25.1"
 R25_SF_ARM = "r25_sf"
 R25_SF_REVISION = 26
 DESK_SCHEMA_252 = "25.2"
+# Revision 26 (see the comment log above PACK_REVISION): the arm r26 and its marker.
+R26_ARM = "r26"
+R26_REVISION = 26
 
 
 def pack_flags(pilot_arm=None, ranges_show_p50=None):
@@ -289,7 +301,7 @@ def pack_flags(pilot_arm=None, ranges_show_p50=None):
     flag = None if flag is None else (flag is True)
     if arm == "rev22":
         return arm, None
-    if arm in ("iii_p50", "iii_no_p50", "r25_b", "r25_c", R25_SF_ARM):
+    if arm in ("iii_p50", "iii_no_p50", "r25_b", "r25_c", R25_SF_ARM, R26_ARM):
         want = arm == "iii_p50"
         if flag is not None and flag != want:
             raise ValueError(f"pilot_arm {arm} and ranges_show_p50 {flag} contradict each other")
@@ -309,6 +321,7 @@ LAST_PACK_FACTS = None
 
 
 class PackText(str):
+    full_text: str = ""        # revision 26: the pack with every source class (the text itself is the blind pack); "" for every other arm
     macro_degraded: bool = False
     flags: list = []
     facts: dict = {}
@@ -1914,6 +1927,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     _ref_fy_na = None   # E18: why that fiscal year cannot anchor the consensus path
     _aligned = None     # E18: the vendor's estimates start from the filed fiscal year (vintage test)
     _byc_printed = False  # the BASE-YEAR CHECK line printed its numbers (the window line points to it)
+    _r26_base = {}      # revision 26: the base year's vendor and filed EPS and the two basis tests, for consensus_corrected (set where the BASE-YEAR CHECK is built)
     _cash = None        # revision 18: consensus_reference.cash_term's dict for the base fiscal year (cash at face)
     section10_printed = False   # S3 5.5/5.10: SECTION 12's Q&A pointer names SECTION 10 only if it ran
     facts = pack_facts.empty()
@@ -1923,7 +1937,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     facts["pilot_arm"] = _arm
     facts["ranges_show_p50"] = _show_p50
     _r25 = _arm in R25_ARMS
-    _sf = _arm == R25_SF_ARM
+    _r26 = _arm == R26_ARM
+    _sf = _arm in (R25_SF_ARM, R26_ARM)          # revision 26 runs desk schema 25.2 on the revision-24 briefing, as the short form does
+    if _r26 and asof is not None:
+        raise ValueError("pilot_arm r26 has no point-in-time build: the blind pack's source classes are defined for the live pack")
     facts["desk_schema"] = DESK_SCHEMA_25 if _r25 else (DESK_SCHEMA_252 if _sf else None)        # revision 25: the desk's schema (pack_facts.KEYS), absent for every existing arm
     # revision 24 (R24.2): the reference is computed and kept in the facts, never printed; stage B shows it after the memorandum. Step 2b: nor is a
     # default for a long-run judgment. The rev22 arm prints both, as revision 22 did.
@@ -1939,7 +1956,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # S3 5.1: the revision marker. from_text() dispatches on "(pack revision N)", N >= 15, appearing
     # in this first line (pack_facts._REVISION_RE) to read the DEFAULTS block instead of the legacy
     # regexes.
-    L = [f"# DATA PACK - {t}   (pack revision {REV22_REVISION if _rev22 else (R25_REVISION if _r25 else (R25_SF_REVISION if _sf else PACK_REVISION))})", ""]
+    L = r26_blind.PackLines([f"# DATA PACK - {t}   (pack revision {REV22_REVISION if _rev22 else (R25_REVISION if _r25 else (R26_REVISION if _r26 else (R25_SF_REVISION if _sf else PACK_REVISION)))})", ""])
     if asof_date is not None:
         L += [f"**POINT-IN-TIME BRIEFING — as of {asof_date.isoformat()}; you must not use "
               f"knowledge of events after this date.**",
@@ -2221,6 +2238,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
           "- Rows below are labelled by FISCAL year, not calendar year.", ""]
 
     # ---- SECTION 1.5 / 1.6 - MACRO REGIME, COST OF CAPITAL, STATE OF THE WORLD --------------
+    L.cls = r26_blind.DERIVED
     if asof_date is not None:
         # Point-in-time reconstruction (Phase 4 E4.3) — read-only queries against MRI's own
         # duckdb store, never today's *_anchor.json/current_regime.json/shock_register.json
@@ -2685,6 +2703,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L += L16
 
     # ---- SECTION 2 -------------------------------------------------------------------------
+    L.cls = r26_blind.AGGREGATOR
     asof_price_data = None
     if asof_date is not None:
         # asof mode owns its own price sourcing entirely — any `price_override` the caller
@@ -2732,7 +2751,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         diluted_shares=_dsh, ttm_fields=f, quarterly_rows=qs)
     if data_warnings:
         L += ["## DATA WARNINGS   [T2 sanity checks — read before trusting DATA 2's figures]"]
-        L += [f"- {w['message']}" for w in data_warnings]
+        L += [r26_blind.tag(r26_blind.WARNING_CLASS.get(w["warning"], r26_blind.DERIVED), f"- {w['message']}") for w in data_warnings]
         L.append("")
 
     # P-2: SHARES ALERT. Live packs only: a point-in-time pack's count IS the filed one, there is no vendor count to differ.
@@ -2756,17 +2775,17 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
         facts["shares_warning"] = _sd_warning
         L += [f"## DATA 2 - MARKET   [point-in-time, as of {asof_date.isoformat()}]",
-              price_line,
+              r26_blind.tag(r26_blind.PRICE, price_line),
               f"- Shares outstanding: {_n(sh)}   [source: shares_diluted, "
               f"FY{max((int(y) for y in h if str(y).isdigit()), default=NULL)} "
               f"(fundamentals_history.json) — the most recent allowed fiscal year, not TODAY's "
               f"vendor share count]" if sh is not None else f"- Shares outstanding: {ASOF_NULL}"]
-        L += _share_default_lines(facts["shares_outstanding"], _sd_default, _sd_k, _sd_period, _sd_warning,
-                                  point_in_time=True)
+        L += [r26_blind.tag(r26_blind.DERIVED, x) for x in _share_default_lines(facts["shares_outstanding"], _sd_default, _sd_k, _sd_period, _sd_warning,
+                                                                              point_in_time=True)]
         # revision 20 (brief 1.4): the per-share check's two figures when the identity fails (annotation; the reference is still printed)
         if _ps["status"] == "unverified":
             L.append(input_scope.per_share_data_line(_ps))
-        L += [f"- Market cap: {_b(mcap) if mcap is not None else ASOF_NULL}",
+        L += [r26_blind.tag(r26_blind.MARKET_CAP, f"- Market cap: {_b(mcap) if mcap is not None else ASOF_NULL}"),
               f"- Beta: {ASOF_NULL}   [same-day vendor snapshot, no stored history]",
               "",
               f"- Total cash (vendor): {ASOF_NULL}   [same-day vendor snapshot; see DATA 6 for "
@@ -2797,16 +2816,16 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
         facts["shares_warning"] = _sd_warning
         L += [f"## DATA 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
-              price_line,
+              r26_blind.tag(r26_blind.PRICE, price_line),
               f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
               f"{_v(fin, 'Data_Fetched_Date')}]"
               + ("   <- ZERO on file. No per-share value is derivable for this name."
                  if sh == 0 else "")]
-        L += _share_default_lines(facts["shares_outstanding"], _sd_default, _sd_k, _sd_period, _sd_warning)
+        L += [r26_blind.tag(r26_blind.DERIVED, x) for x in _share_default_lines(facts["shares_outstanding"], _sd_default, _sd_k, _sd_period, _sd_warning)]
         # revision 20 (brief 1.4): the per-share check's two figures when the identity fails (annotation; the reference is still printed)
         if _ps["status"] == "unverified":
             L.append(input_scope.per_share_data_line(_ps))
-        L += [f"- Market cap: {_b(fin.get('Market_Cap'))}",
+        L += [r26_blind.tag(r26_blind.MARKET_CAP, f"- Market cap: {_b(fin.get('Market_Cap'))}"),
               f"- Beta: {_v(cm, 'Beta')}   [Aggregator - the vendor does not state its window or "
               f"benchmark. No RS2 code consumes beta; it is here only if you want to build your own "
               f"cost of equity.]",
@@ -2832,16 +2851,16 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
         facts["shares_warning"] = _sd_warning
         L += [f"## DATA 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
-              price_line,
+              r26_blind.tag(r26_blind.PRICE, price_line),
               f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
               f"{_v(fin, 'Data_Fetched_Date')}]"
               + ("   <- ZERO on file. No per-share value is derivable for this name."
                  if sh == 0 else "")]
-        L += _share_default_lines(facts["shares_outstanding"], _sd_default, _sd_k, _sd_period, _sd_warning)
+        L += [r26_blind.tag(r26_blind.DERIVED, x) for x in _share_default_lines(facts["shares_outstanding"], _sd_default, _sd_k, _sd_period, _sd_warning)]
         # revision 20 (brief 1.4): the per-share check's two figures when the identity fails (annotation; the reference is still printed)
         if _ps["status"] == "unverified":
             L.append(input_scope.per_share_data_line(_ps))
-        L += [f"- Market cap: {_b(fin.get('Market_Cap'))}",
+        L += [r26_blind.tag(r26_blind.MARKET_CAP, f"- Market cap: {_b(fin.get('Market_Cap'))}"),
               f"- Beta: {_v(cm, 'Beta')}   [Aggregator - the vendor does not state its window or "
               f"benchmark. No RS2 code consumes beta; it is here only if you want to build your own "
               f"cost of equity.]",
@@ -2856,6 +2875,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               f"Prefer the filed per-year SBC series in DATA 5 where it is present]", ""]
 
     # ---- SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [P4.1, amended by B1] ---
+    L.cls = r26_blind.PRICE_ACTION
     if asof_date is not None:
         # D10/E4.3: recomputed directly from historical closes ending at `asof`, never from
         # factor_scores.json (a same-day snapshot with no history).
@@ -2964,6 +2984,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         LAST_PACK_ACTIVE_SHOCKS = active_shocks
 
     # ---- RECENT COMPANY NEWS   [Item 2] ----------------------------------------------------
+    L.cls = r26_blind.NARRATIVE
     if asof_date is not None:
         L += ["## RECENT COMPANY NEWS   [not available (point-in-time) \u2014 the news search cannot be restricted to the briefing date]",
               ""]
@@ -2976,7 +2997,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         mom_1m_str = f"{m1*100:+.1f}%" if isinstance(m1, (int, float)) else NULL
         mom_6m_str = f"{m6*100:+.1f}%" if isinstance(m6, (int, float)) else NULL
         L += [f"## RECENT COMPANY NEWS   [SearXNG news search (Reuters, Bing News), last 30 days, fetched {cnews_date}; third-party claims \u2014 the five most recent carry their opening text, read by code from the page shown after the arrow]",
-              f"- The stock moved {mom_1m_str} in 1 month and {mom_6m_str} in 6 months (DATA 2.5)."]
+              r26_blind.tag(r26_blind.PRICE, f"- The stock moved {mom_1m_str} in 1 month and {mom_6m_str} in 6 months (DATA 2.5).")]
         news_rows = cnews.get("rows") or []
         not_naming = cnews.get("rows_not_naming", 0)     # rows the search returned whose headline did not name the company
         if news_rows:
@@ -3024,6 +3045,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L.append("")
 
     # ---- SECTION 3 -------------------------------------------------------------------------
+    L.cls = r26_blind.FILED
     # S3 5.6: one typed line (Revenue | net income | ...), bare numbers, unit stated once in the
     # header.
     if asof_date is not None:
@@ -3317,7 +3339,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L.append(f"{NULL} - no fiscal-year record held.")
     L.append("")
 
+    _bar_at = len(L)      # revision 26: where DATA 5.1 (the operating-margin bar) is inserted, once the X-basis history is known
     # ---- GROWTH BASE RATES   [D11 / AMENDMENTS.md E2] --------------------------------------
+    L.cls = r26_blind.DERIVED
     # Measured fresh from our OWN fundamentals_history.json corpus at pack build (base_rates.py,
     # cached per data-file sha within this run), not a hard-coded snapshot of the one-off
     # measurement the orchestrator published in E2 — this stays current with the corpus.
@@ -3386,6 +3410,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
           ""]
 
     # ---- SECTION 6 -------------------------------------------------------------------------
+    L.cls = r26_blind.FILED
     # S3 5.7: the money tables below (6A, 6B, 6C) carry their $B unit once, in their own header.
     L.append("## DATA 6 - FISCAL-YEAR BALANCE SHEET & CAPITAL STRUCTURE   [Filed, except columns marked [Arithmetic]; $B]")
     if yrs:
@@ -3544,19 +3569,20 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         fg = ob.get("forward_growth") or {}
         ob_stale = _not_fresh(ob)
         en_stale = _not_fresh(en)
+        L.cls = r26_blind.CONSENSUS
         L += [f"## DATA 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age_label(ob)}]",
               # price_to_sales dropped 2026-08-20: measured non-null on 0 of 294 vendor records, so
               # the line could never print a value. Market cap and revenue are both in this pack;
               # the model can divide. A field that is structurally always absent is noise, not a
               # disclosed gap.
-              f"- Trailing P/E: {_sv(met, 'pe_ratio', ob_stale)}   |   P/B: "
+              r26_blind.tag(r26_blind.MULTIPLE, f"- Trailing P/E: {_sv(met, 'pe_ratio', ob_stale)}   |   P/B: "
               f"{_sv(met, 'price_to_book', ob_stale)}   |   PEG: {_sv(met, 'peg_ratio', ob_stale)}   "
-              f"[trailing; the vendor does not state the period]",
-              f"- Return on equity: {_sv(met, 'return_on_equity', ob_stale)}   |   gross margin: "
+              f"[trailing; the vendor does not state the period]"),
+              r26_blind.tag(r26_blind.MULTIPLE, f"- Return on equity: {_sv(met, 'return_on_equity', ob_stale)}   |   gross margin: "
               f"{_sv(met, 'gross_margin', ob_stale)}   |   operating margin: "
               f"{_sv(met, 'operating_margin', ob_stale)}   |   dividend yield: "
               f"{_sv(met, 'dividend_yield', ob_stale)}   [vendor-computed, expressed as fractions not "
-              f"percents]"]
+              f"percents]")]
         est = en.get("estimates") if en else None
         _civ_na = None   # why SECTION 8 has no CONSENSUS-IMPLIED VALUE (E10)
         if en_stale:
@@ -3632,6 +3658,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             # across a split, ADS names read +290% and +2168%)
             _sh_ok = (isinstance(sh, (int, float)) and sh > 0 and isinstance(_fy_sh_x, (int, float))
                       and abs(_fy_sh_x / sh - 1) <= consensus_reference.LEVEL_TOL)
+            _r26_base.update({"vendor_eps": _ya,
+                              "filed_eps": (_fy_ni_x / _fy_sh_x) if (isinstance(_fy_ni_x, (int, float)) and isinstance(_fy_sh_x, (int, float))
+                                                                      and _fy_sh_x > 0 and _fy_ni_x != 0) else None,
+                              "aligned": _aligned, "shares_agree": bool(_sh_ok)})
             if (isinstance(_ya, (int, float)) and _ya > 0 and isinstance(_fy_ni_x, (int, float))
                     and isinstance(_fy_sh_x, (int, float)) and _fy_sh_x > 0 and _fy_ni_x != 0
                     and not (_aligned is True and _sh_ok)):
@@ -3837,11 +3867,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             else:
                 facts["reference_line"] = f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}"   # revision 24: not printed
         if en:
-            L += [f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
+            L += [r26_blind.tag(r26_blind.PRICE_TARGET, f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
                   f"{_sv(en, 'analyst_target_mean', en_stale)} / median "
                   f"{_sv(en, 'analyst_target_median', en_stale)} / high "
                   f"{_sv(en, 'analyst_target_high', en_stale)}   [Aggregator - 12-month sell-side "
-                  f"targets, {_age_label(en)}]"]
+                  f"targets, {_age_label(en)}]")]
             sib = en.get("analyst_targets_sibling")
             own_low = en.get("analyst_target_low")
             own_high = en.get("analyst_target_high")
@@ -3857,19 +3887,20 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                         sib_stale = bool(sib_days is not None and sib_days > STALE_SUPPRESS_DAYS)
                         sib_tk = _v(sib, "ticker")
                         n_analysts = _v(sib, "count")
-                        L.append(
+                        L.append(r26_blind.tag(r26_blind.PRICE_TARGET,
                             f"- Analyst price targets, share class {sib_tk} "
                             f"(this class has none; scaled by the price ratio {ratio:.4f}): "
                             f"low {_sv(scaled_dict, 'low', sib_stale)} / "
                             f"median {_sv(scaled_dict, 'median', sib_stale)} / "
                             f"high {_sv(scaled_dict, 'high', sib_stale)}   "
                             f"[Aggregator - {n_analysts} analysts, {_age_label(sib)}]"
-                        )
-            L += [f"- 52-week range: {_sv(en, 'fifty_two_week_low', en_stale)} - "
-                  f"{_sv(en, 'fifty_two_week_high', en_stale)}"]
+                        ))
+            L += [r26_blind.tag(r26_blind.PRICE, f"- 52-week range: {_sv(en, 'fifty_two_week_low', en_stale)} - "
+                  f"{_sv(en, 'fifty_two_week_high', en_stale)}")]
         L.append("")
 
         # ---- SECTION 8.5 - PEER CONTEXT [Aggregator, context not an anchor]   [P4.10] -----------
+        L.cls = r26_blind.MULTIPLE
         L.append("## DATA 8.5 - PEER CONTEXT   [Aggregator, context not an anchor]")
         fs_cluster = fs_row.get("cluster")
         stocks_list = rs2_data.load_json(SD / "stocks.json") or []
@@ -3969,6 +4000,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L.append("")
 
         # ---- SECTION 9 -------------------------------------------------------------------------
+        L.cls = r26_blind.AGGREGATOR
         if en:
             if en_stale:
                 L += [f"## DATA 9 - POSITIONING   [Aggregator, {_age_label(en)}]",
@@ -3986,6 +4018,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
 
         # ---- SECTION 10 ------------------------------------------------------------------------
         tr = ob.get("earnings_transcript") or ob.get("transcript_excerpt")
+        L.cls = r26_blind.NARRATIVE
         if tr:
             section10_printed = True   # S3 5.5/5.10: SECTION 12's Q&A pointer fires only here
             L += ["## DATA 10 - EARNINGS CALL EXCERPT   [Verbatim management speech - an assertion "
@@ -4033,6 +4066,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                   file=sys.stderr, flush=True)
 
     # ---- GUIDANCE & CONSENSUS   [D4/D4b] -----------------------------------------------------
+    L.cls = r26_blind.NARRATIVE
     L.append("## GUIDANCE & CONSENSUS   [company's own earnings release from SEC EDGAR, then research-brief claims]")
 
     asof_str = asof_date.isoformat() if asof_date is not None else None
@@ -4089,11 +4123,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     L.append("")
 
     # ---- PRIMARY SOURCES   [revision 21] -----------------------------------------------------
+    L.cls = r26_blind.FILED
     L += sec_primary.section_lines(primary)
     L.append("")
 
     # ---- SECTION 11 - DEEP RESEARCH BRIEF   [D8] -------------------------------------------
     research_omitted = []
+    L.cls = r26_blind.NARRATIVE
     if rb_text is not None and brief_ok:
         # S3 5.9 (C2): drop each off-topic sub-section (its own text says the sources were not
         # about this company) and annotate what was dropped, rather than silently shortening the
@@ -4109,6 +4145,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L += [rb_filtered[:25000], ""]
 
     # ---- SECTION 12 ------------------------------------------------------------------------
+    L.cls = r26_blind.FILED
     # S3 5.5: the "Declared so..." line becomes a header bracket, and each _decl line shrinks to
     # one line (HELD .../ NOT MAPPED ...) using the phrase table verbatim.
     L += ["## DATA 12 - WHAT WE DO NOT HOLD   [declared so you can source it or carry the "
@@ -4183,13 +4220,52 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     if _sf:
         # revision 25 short form: the earnings-margin basis facts, computed from this build's own record, estimates and the filed companyfacts (the DEFAULTS block prints them)
         facts.update(x_margin_basis_facts(t, h, _hist_doc, en.get("estimates") if en else None, facts))
-    L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker,
-                                           withhold_reference=not _rev22, withhold_long_run=not _rev22), ""]
+    L.cls = r26_blind.DERIVED
+    if _r26:
+        # revision 26: the DEFAULTS lines are classed by their fact key (pack_facts records it); the long_run line also carries the text the blind pack prints in its place
+        _dkeys = []
+        _dargs26 = dict(split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker, withhold_reference=True, withhold_long_run=True)
+        _dfull = pack_facts.render_defaults_block(facts, tags_out=_dkeys, **_dargs26).split("\n")
+        _dblind = pack_facts.render_defaults_block(facts, blind_long_run=True, **_dargs26).split("\n")
+        assert len(_dfull) == len(_dkeys) + 1 == len(_dblind), "a DEFAULTS line holds a line break"
+        _lr26 = facts.get("long_run") or {}
+        L.append(_dfull[0])
+        for _line, _bline, _key in zip(_dfull[1:], _dblind[1:], _dkeys):
+            _cls = r26_blind.DEFAULTS_KEY_CLASS.get(_key, r26_blind.DERIVED)
+            if _bline != _line:        # the long_run line (without its consensus members) and the earnings_margin_basis line (which no longer names them)
+                L.append(r26_blind.tag(_cls, _line, blind=_bline, removed_text=(
+                    ", ".join(f"{m}={_lr26.get(m)!r}" for m in pack_facts.BLIND_LONG_RUN_MEMBERS) if _key == "long_run" else None)))
+            else:
+                L.append(r26_blind.tag(_cls, _line))
+        L.append("")
+    else:
+        L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker,
+                                               withhold_reference=not _rev22, withhold_long_run=not _rev22), ""]
     # revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md item 2): the population ranges of the long-run inputs, after DEFAULTS; the rev22 arm
     # prints none. The facts keep them for the plausibility gate.
     facts["population_ranges"] = _population_ranges_for(t, h, _record, asof_date, _hist_doc)
     if not _rev22:
         L += [population_ranges.render_section(facts["population_ranges"], bool(_show_p50)), ""]
+    if _r26:
+        # revision 26: DATA 5.1, the operating-margin bar (the X basis for the financial family); consensus_corrected for stage 3; the blind pack, the drops and the leak test
+        _fin_family = sector in consensus_reference.FINANCIAL_SECTORS
+        _bar = r26_blind.x_margin_bar(facts.get("x_margin_history")) if _fin_family else r26_blind.op_margin_bar(h)
+        facts["op_margin_bar"] = _bar
+        L.insert_block(_bar_at, r26_blind.op_margin_bar_lines(_bar, _fin_family), r26_blind.FILED)
+        _pi26 = (facts.get("nci_attribution") or {}).get("pi")
+        _vb26 = str((facts.get("vendor_revenue_basis") or {}).get("status") or "")
+        _xh = facts.get("x_margin_history") or {}
+        _xh_last = (_xh.get("years") or [None])[-1]
+        facts["consensus_corrected"] = r26_blind.consensus_corrected(
+            en.get("estimates") if en else None, _r26_base.get("filed_eps"), _r26_base.get("vendor_eps"), facts.get("shares_default"), _pi26,
+            _vb26.startswith("break"), vintage_aligned=_r26_base.get("aligned"), shares_agree=bool(_r26_base.get("shares_agree")),
+            filed_x_margins=({"fy": _xh_last["fy"], "x_margin": _xh_last["x_margin"]} if isinstance(_xh_last, dict) else None),
+            bridge_context={"ticker": t})
+        _split26 = r26_blind.blind_split(L)
+        facts["r26_blind_drops"] = _split26["drops"]
+        facts["r26_blind_source"] = {"removed_lines": _split26["removed"], "spans": _split26["spans"], "dropped_sections": _split26["dropped_sections"],
+                                     "removed_ids": _split26["removed_ids"], "partial_ids": _split26["partial_ids"]}
+        facts["r26_leak_audit"] = r26_blind.r26_leak_audit(_split26["blind_text"], facts)
 
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS
     LAST_PACK_MACRO_DEGRADED = macro_degraded
@@ -4197,6 +4273,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     if asof_date is not None:
         LAST_PACK_FLAGS.append("point_in_time")
     LAST_PACK_FACTS = facts
+    if _r26:
+        _pt = PackText(_split26["blind_text"], macro_degraded=macro_degraded, flags=LAST_PACK_FLAGS, facts=facts, research_omitted=research_omitted)
+        _pt.full_text = _split26["full_text"]
+        return _pt
     return PackText("\n".join(L), macro_degraded=macro_degraded, flags=LAST_PACK_FLAGS, facts=facts,
                     research_omitted=research_omitted)
 
