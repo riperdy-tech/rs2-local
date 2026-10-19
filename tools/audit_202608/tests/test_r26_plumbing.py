@@ -46,6 +46,8 @@ def test_pilot_arm_r26_runs_the_staged_analyst_not_chat_with_tools(monkeypatch, 
     (d,) = list(out.glob("GEV_*"))
     assert seen["run_dir"] == d / "sample1_research" and seen["seed"] == 41 and seen["ticker"] == "GEV" and seen["think"] == "high"
     assert seen["pack"] == pack.read_text(encoding="utf-8")
+    # stages 2-4 (brief R26-A2) are handed the code-owned inputs: the pack facts, the harness price and the desk context
+    assert seen["price"] == 100.0 and seen["facts"]["pilot_arm"] == "r26" and "long_run" in seen["facts"] and seen["desk_context"]["price"] == 100.0
 
 
 def test_arm_r26_without_tools_is_refused(monkeypatch, tmp_path, screener_data_stub):

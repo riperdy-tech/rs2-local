@@ -2389,7 +2389,8 @@ def main():
                     model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT, num_batch=num_batch,
                     seed=i + seed_base, draft_num_predict=draft_num_predict, temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
-                    url_cache=evidence_url_cache if evidence_store_dir is not None else None, ticker=t, company=company_name)
+                    url_cache=evidence_url_cache if evidence_store_dir is not None else None, ticker=t, company=company_name,
+                    facts=facts, price=price, desk_context=desk_context)           # stages 2-4 (brief R26-A2): the code-owned inputs of the forecast and its desk
                 if not (rep or "").strip():
                     # no report is a failed sample for this arm: the empty-report retry below runs the single-session analyst, which is not this arm
                     print(f"  sample {i}: arm r26 returned no report", flush=True)
@@ -2537,7 +2538,10 @@ def main():
 
         # S3 5.12: a revision-15 pack (its own first-line marker, not just cap.PACK_REVISION —
         # a frozen `--pack-file` reuse may carry an older stamp) never publishes a blend.
-        filled, prov = contract_fill.fill(calls, scorecard, facts, price, ticker=t,
+        # revision 26 (brief R26-A2): the staged analyst's one desk call is code's (a synthetic run_financial_model record in the snapshot), so the fill reads it
+        # as a plain revision-24 run: no 25.x bridge fill and no plausibility gate (the arm asks for no input_rationale)
+        fill_facts = dict(facts, desk_schema=None, long_run_defaults_withheld=False) if facts.get("pilot_arm") == "r26" else facts
+        filled, prov = contract_fill.fill(calls, scorecard, fill_facts, price, ticker=t,
                                           allow_blend=not pack_facts.is_revision_15(pack),
                                           pack_text=pack, company=company_name)
         scorecard.update(filled)
@@ -2615,6 +2619,11 @@ def main():
         if (_memo_word is not None and scorecard.get("verdict_label") in ("undervalued", "overvalued", "hold")
                 and _memo_word != scorecard.get("verdict_label") and "memo_verdict_mismatch" not in flags):
             flags = list(flags) + ["memo_verdict_mismatch"]
+        if facts.get("pilot_arm") == "r26":
+            # revision 26 (brief R26-A2): the stage-4 verifier's flags and the no-call status ride on the sample as flags (annotation; depth_gates stays the one owner of actionable)
+            for _f in ((((meta or {}).get("r26") or {}).get("stage4") or {}).get("flags")) or []:
+                if _f not in flags:
+                    flags = list(flags) + [_f]
 
         research_calls = meta.get("research_calls", 0)
         repeat_calls = meta.get("repeat_calls", 0)

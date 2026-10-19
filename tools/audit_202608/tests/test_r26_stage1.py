@@ -395,9 +395,8 @@ def test_the_stage_sessions_take_only_the_artifacts_the_spec_names():
         r26.fresh_messages("stage3", {"dossier": {}, "stage2_reasoning": "text"})
     with pytest.raises(ValueError, match="may not be handed"):
         r26.fresh_messages("stage2", {"blind_pack": "", "consensus_corrected": {}})
-    for fn in (r26.run_stage2, r26.run_stage3, r26.run_stage4):
-        with pytest.raises(NotImplementedError, match="R26-A2"):
-            fn(run_dir="x")
+    # stages 2-4 are built (brief R26-A2, tests/test_r26_stages24.py): their sessions are made from the same allow-lists
+    assert r26.fresh_messages("stage2", {"blind_pack": "P", "task": "T"})[0]["content"].endswith("T")
     assert set(r26.ARTIFACTS.values()) == {"dossier.json", "forecasts.json", "reveal.json", "final.json"}
 
 

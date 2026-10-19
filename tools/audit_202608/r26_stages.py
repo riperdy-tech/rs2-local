@@ -1,9 +1,9 @@
 """r26_stages.py - the staged analyst of revision 26 (SPEC_rev26_staged_analyst.md): four separate model sessions joined only by artifacts.
 
     stage1  research and the fact ledger      -> dossier.json     (built here: brief R26-A1)
-    stage2  the blind forecast, K = 3 samples -> forecasts.json   (stub: brief R26-A2, on R26-C's functions)
-    stage3  reveal and reconcile, one revision-> reveal.json      (stub: brief R26-A2)
-    stage4  the memorandum                    -> final.json       (stub: brief R26-A2)
+    stage2  the blind forecast, K = 3 samples -> forecasts.json   (brief R26-A2, on R26-C's functions)
+    stage3  reveal and reconcile, one revision-> reveal.json      (brief R26-A2)
+    stage4  the memorandum                    -> final.json       (brief R26-A2)
 
 Every stage starts from a FRESH message list built only from the artifacts the SPEC names for it (ALLOWED_INPUTS; `fresh_messages` refuses any
 other); no stage reads another stage's messages, reasoning or tool results. The artifacts are written under the run directory. Every model turn of
@@ -56,9 +56,14 @@ if _AUDIT_DIR not in sys.path:
 _REPO = str(Path(__file__).resolve().parents[2])
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
+_TOOLS = str(Path(__file__).resolve().parents[1])
+if _TOOLS not in sys.path:
+    sys.path.insert(0, _TOOLS)
 
 import analyst_tools  # noqa: E402
 import llm_provider  # noqa: E402
+import r26_forecast as rf  # noqa: E402
+import r26_late  # noqa: E402
 import sec_primary  # noqa: E402
 import turn_log  # noqa: E402
 
@@ -545,17 +550,40 @@ def stage1_task(pack_text):
     return STAGE1_TASK.format(section_ids=ids)
 
 
+STAGE_ORDER = {
+    "stage2": ("blind_pack", "dossier", "op_margin_bar", "task"),
+    "stage3": ("dossier", "median_forecast", "median_desk_result", "base_values", "price", "price_implied_inputs", "consensus_corrected", "diagnostics", "task"),
+    "stage4": ("dossier", "frozen_desk_result", "bridge_table", "crux", "crux_verification", "stage2_spread", "diagnostics", "task"),
+}
+
+
+def _as_text(name, v):
+    """An input as the words a session reads: text is used as it is; the dossier, the operating-margin bar and a forecast have their renderers (r26_late)."""
+    if isinstance(v, str):
+        return v
+    if name == "dossier":
+        return r26_late.render_dossier(v)
+    if name == "op_margin_bar":
+        return r26_late.render_bar(v)
+    if name == "median_forecast":
+        return r26_late.render_forecast_numbers(v)
+    return json.dumps(v, indent=1, default=str)
+
+
 def fresh_messages(stage, inputs):
-    """The message list of a new session: one user message built only from `inputs`, whose names must all be in ALLOWED_INPUTS[stage]. Stage 1 is
-    built here; stages 2-4 are assembled by brief R26-A2 and refuse to start until then."""
+    """The message list of a new session: one user message built only from `inputs`, whose names must all be in ALLOWED_INPUTS[stage]; a stage never reads another
+    stage's messages, reasoning or tool results. Stage 1: the blind pack and the TASK. Stages 2-4: the named artifacts in STAGE_ORDER, then the TASK."""
     if stage not in ALLOWED_INPUTS:
         raise ValueError(f"unknown stage {stage!r}")
     extra = sorted(set(inputs) - ALLOWED_INPUTS[stage])
     if extra:
         raise ValueError(f"{stage} may not be handed {', '.join(extra)} (SPEC revision 26 names only {', '.join(sorted(ALLOWED_INPUTS[stage]))})")
-    if stage != "stage1":
-        raise NotImplementedError(f"{stage}: the session is built by brief R26-A2 on R26-C's functions")
-    return [{"role": "user", "content": inputs["blind_pack"].rstrip() + "\n\n---\n\n" + inputs["task"]}]
+    if stage == "stage1":
+        return [{"role": "user", "content": inputs["blind_pack"].rstrip() + "\n\n---\n\n" + inputs["task"]}]
+    head = inputs["blind_pack"].rstrip() + "\n\n---\n\n" if "blind_pack" in inputs else ""
+    body = "\n\n".join(_as_text(n, inputs[n]) for n in STAGE_ORDER[stage] if n in inputs and n not in ("blind_pack", "task"))
+    task = ("\n\n---\n\n" + inputs["task"]) if inputs.get("task") else ""
+    return [{"role": "user", "content": head + body + task}]
 
 
 # ---------------------------------------------------------------- stage 1: the session
@@ -751,29 +779,694 @@ def _research_call(name, args, call_index, snap_rec, evidence, q_cache, u_cache,
 
 
 # ---------------------------------------------------------------- stages 2-4 (brief R26-A2)
+#
+# STAGE 2   K = 3 sessions (seeds s, s+1, s+2), each fresh from the blind pack, the usable dossier, the operating-margin bar and the stage-2 TASK. One tool, submit_forecast.
+#           Structure only is checked; a first failure gets one repair turn, a second drops the sample (forecast_invalid). Code builds the path, bridges it to the X basis,
+#           values it (r26_forecast.value_forecast) and values the alternative paths. forecasts.json.
+# STAGE 3   a fresh session; no model call when the samples split by direction or no sample was valued. It sees the median sample's forecast NUMBERS (the reason text of
+#           the normalized state is dropped), its desk result, the three Base values, the price, the price-implied inputs, the basis-corrected consensus and the diagnostics.
+#           Tools: state_crux (the crux, and keep or revise) and submit_forecast (one revision, citing a fact id). reveal.json.
+# STAGE 4   a fresh session, no tools: the memorandum over the frozen table. Every numeric contract field is filled by code (contract_fill.fill over a synthetic desk call
+#           of the final valuation); the verifier annotates; final.json holds the verdict for the existing ledger path (pilot_arm r26, desk_schema "26").
 
-def run_stage2(*, run_dir, **artifacts):
-    """Stage 2, the blind forecast (K = 3 samples, seeds s, s+1, s+2). Reads dossier.json; hands the session only blind_pack, dossier (usable facts and the
-    summary), op_margin_bar and its TASK; writes forecasts.json (SPEC section 2). Built by brief R26-A2 on R26-C's functions."""
-    fresh_messages("stage2", artifacts)
-    raise NotImplementedError("stage2 is built by brief R26-A2")
+R26_DESK_SCHEMA = "26"
+SCEN = rf.SCENARIOS
+CODE_REASON = "revision 26: set by code; the inputs are the forecast of stage 2 and stage 3 (forecasts.json, reveal.json) and nothing the desk was asked to approve"
+STAGE2_MAX_TURNS = 4
+STAGE3_MAX_TURNS = 8
+CRUX_FORM_ATTEMPTS = 2
 
 
-def run_stage3(*, run_dir, **artifacts):
-    """Stage 3, reveal and reconcile (one revision at most). Reads dossier.json and forecasts.json; writes reveal.json (SPEC section 3)."""
-    fresh_messages("stage3", artifacts)
-    raise NotImplementedError("stage3 is built by brief R26-A2")
+class R26InputError(ValueError):
+    """A code-owned input of stages 2-4 is missing; the message names it and its owner."""
 
 
-def run_stage4(*, run_dir, **artifacts):
-    """Stage 4, the memorandum. Reads dossier.json and the frozen final desk result; writes final.json (SPEC section 4)."""
-    fresh_messages("stage4", artifacts)
-    raise NotImplementedError("stage4 is built by brief R26-A2")
+def _read_json(p):
+    return json.loads(Path(p).read_text(encoding="utf-8"))
 
+
+def _write_json(p, obj):
+    Path(p).write_text(json.dumps(obj, indent=1, default=str), encoding="utf-8")
+
+
+# ---------------------------------------------------------------- the valuation inputs (code-owned; the model sees none of this)
+
+def bridge_facts_from_row(row, untagged=(), family="operating"):
+    """The inputs of r26_forecast's bridge from the base fiscal year's row of the screener history (dollars -> $B, the unit of the desk's revenue):
+    net_interest the filed interest expense (the history holds no interest income: stamped `net_interest_is_gross_interest_expense`), tax_rate the MEASURED rate
+    tax_provision / pretax_income clipped to [0, 0.35] and None when either is missing or the pretax income is not positive (not the record's 0.21 fallback),
+    amortization_0 the filed amortization of acquired intangibles (0 when the filer never tags it, None when a tagged year is missing). Nothing is defaulted."""
+    row = row or {}
+
+    def n(k):
+        v = row.get(k)
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+
+    pre, tax, ie, am = n("pretax_income"), n("tax_provision"), n("interest_expense"), n("amortization_intangibles")
+    out = {"family": family, "net_interest": None if ie is None else ie / 1e9, "tax_rate": None, "amortization_0": None,
+           "stamps": ["net_interest_is_gross_interest_expense"]}
+    if pre is not None and tax is not None and pre > 0:
+        out["tax_rate"] = min(0.35, max(0.0, tax / pre))
+    if "amortization_intangibles" in (untagged or ()):
+        out["amortization_0"] = 0.0
+    elif am is not None:
+        out["amortization_0"] = am / 1e9
+    return out
+
+
+def load_bridge_facts(ticker, family="operating", root=None):
+    """bridge_facts_from_row for `ticker`'s base fiscal year in the screener history (capability_test.DataRoot); None when the history holds no year for it."""
+    import capability_test as cap
+    dr = root if root is not None else cap.DataRoot()
+    h = dr.history(ticker)
+    yrs = sorted(int(y) for y in h if str(y).isdigit())
+    if not yrs:
+        return None
+    return bridge_facts_from_row(h.get(str(yrs[-1])) or h.get(yrs[-1]), dr.untagged(ticker), family)
+
+
+def default_desk_params():
+    """The scenario-independent arguments of the desk call that code makes. The reasons the desk asks for when an input leaves its default are all set to CODE_REASON
+    (the forecast is the evidence; the model is not asked to defend a desk call)."""
+    import contract_fill
+    p = {k: CODE_REASON for k in contract_fill.REASONS_11}
+    p.update(cash_flow_life="perpetual", sbc_treatment="deducted_in_cf")
+    return p
+
+
+def valuation_inputs(facts, price, desk_context, ticker=None, bridge_facts=None, family=None):
+    """Everything code needs to value a forecast: rev0 and base_cf ($B), the bridge facts, the desk's call arguments and context, the price and the verdict band.
+    rev0 is facts["long_run"]["rev_L"] and base_cf facts["owner_earnings_default_b"] (the desk's own base year and cash basis); a missing one raises R26InputError.
+    The bridge facts are facts["r26_bridge_facts"] when the pack's facts carry them, else the history's (load_bridge_facts); a name whose history is not held gets
+    {"family": ...} alone, so every sample says `bridge_unavailable_*` and is not valued."""
+    lr = (facts or {}).get("long_run") or {}
+    rev0, base_cf = lr.get("rev_L"), (facts or {}).get("owner_earnings_default_b")
+    for nm, v, owner in (("long_run.rev_L", rev0, "pack facts"), ("owner_earnings_default_b", base_cf, "pack facts")):
+        if not rf._num(v):
+            raise R26InputError(f"facts[{nm!r}] is not a number ({v!r}); owner: {owner}")
+    fam = family or (facts or {}).get("family") or "operating"
+    bf = bridge_facts if bridge_facts is not None else (facts or {}).get("r26_bridge_facts")
+    if bf is None and ticker:
+        try:
+            bf = load_bridge_facts(ticker, fam)
+        except Exception as e:                                                    # noqa: BLE001 - stated, not defaulted
+            bf = {"family": fam, "stamps": [f"bridge_facts_not_loaded: {type(e).__name__}: {e}"]}
+    bf = dict(bf) if bf else {"family": fam, "stamps": ["bridge_facts_not_held"]}
+    ctx = dict(desk_context or {})
+    return {"rev0": float(rev0), "base_cf": float(base_cf), "bridge_facts": bf, "desk_params": default_desk_params(), "desk_context": ctx,
+            "price": float(price), "min_mos": None, "run_date": ctx.get("run_date") or time.strftime("%Y-%m-%d")}
+
+
+def _value(forecast, val, bar):
+    try:
+        return rf.value_forecast(forecast, bar, val["rev0"], val["bridge_facts"], base_cf=val["base_cf"], desk_params=val["desk_params"], desk_context=val["desk_context"])
+    except (KeyError, TypeError, ValueError, ZeroDivisionError, IndexError) as e:
+        return {"status": "valuation_error", "values": None, "base_value": None, "scenarios": {}, "desk": None, "stamps": [], "message": f"{type(e).__name__}: {e}"}
+
+
+def _alt_paths(forecast, dossier, val, bar):
+    try:
+        return rf.alt_paths(forecast, dossier, bar, val["rev0"], val["bridge_facts"], base_cf=val["base_cf"], desk_params=val["desk_params"], desk_context=val["desk_context"])
+    except (KeyError, TypeError, ValueError, ZeroDivisionError, IndexError) as e:
+        return [{"label": "alt_path_after_evidence_expiry", "status": f"alt_path_error: {type(e).__name__}: {e}", "value": None, "fact_id": None, "duration_years": 0.0, "stamps": []}]
+
+
+def trim_valuation(vf):
+    """The JSON a stage artifact keeps of a value_forecast result (the desk's full record is recomputed from the forecast when needed)."""
+    out = {"status": vf.get("status"), "values": vf.get("values"), "base_value": vf.get("base_value"), "stamps": vf.get("stamps"), "scenarios": {}}
+    if vf.get("message"):
+        out["message"] = vf["message"]
+    for n, sp in (vf.get("scenarios") or {}).items():
+        out["scenarios"][n] = {"status": sp.get("status"), "path": sp.get("path"), "bridge": sp.get("bridge"), "long_run": sp.get("long_run")}
+    desk = vf.get("desk")
+    if isinstance(desk, dict):
+        out["price_implied"] = desk.get("price_implied")
+    return out
+
+
+def published_values(vf):
+    """{scenario: per_share_iv} as the desk publishes it (two decimals) - the figures contract_fill and the table use."""
+    out = {}
+    for it in ((vf.get("desk") or {}).get("scenario_dcfs") or []):
+        nm = str(it.get("name", ""))
+        for n in SCEN:
+            if nm.lower().startswith(n.lower()):
+                out[n] = (it.get("dcf") or {}).get("per_share_iv")
+    return out
+
+
+# ---------------------------------------------------------------- a session
+
+def _session(model, msgs, tools, run_dir, label, handle, *, think, ctx, num_predict, seed, temperature=None, num_batch=None, draft_num_predict=None,
+             timeout=14400, max_turns=4, nudge="", verbose=True):
+    """A short tool session on the message list `msgs` (appended to). Every model turn is logged under <run_dir>/turns/<label>_<n>.json. `handle(name, args)` returns
+    (result, stop). Returns {"turns", "ended"}: ended is `closed` (handle said stop), `no_tool_call`, `turn_budget` or `server_error`."""
+    opts = {"num_ctx": ctx, **({"num_batch": num_batch} if num_batch else {}), "num_predict": num_predict, "repeat_penalty": 1.05, "presence_penalty": 0.05}
+    if seed is not None:
+        opts["seed"] = seed
+    if draft_num_predict is not None:
+        opts["draft_num_predict"] = draft_num_predict
+    if temperature is not None:
+        opts["temperature"] = temperature
+    cpt, nudged, server_errors, ended, turns = None, False, 0, "turn_budget", 0
+    for turn in range(1, max_turns + 1):
+        req_opts, _est, _np = _turn_options(opts, msgs, cpt, ctx, num_predict)
+        body = {"model": model, "stream": False, "think": think, "messages": msgs, "options": req_opts, "tools": tools}
+        try:
+            with turn_log.logging_to(Path(run_dir) / "turns", label):
+                resp = llm_provider.chat(body, timeout)
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                raise
+            server_errors += 1
+            resp = {"message": {}, "done_reason": "server_error"}
+            if server_errors >= 2:
+                turns = turn
+                ended = "server_error"
+                break
+        turns = turn
+        if resp.get("prompt_eval_count"):
+            cpt = len(json.dumps(msgs)) / resp["prompt_eval_count"]
+        msg = resp.get("message") or {}
+        tcs = msg.get("tool_calls") or []
+        if not tcs:
+            if nudged:
+                ended = "no_tool_call"
+                break
+            nudged = True
+            msgs.append({"role": "assistant", "content": msg.get("content") or ""})
+            msgs.append({"role": "user", "content": nudge})
+            continue
+        msgs.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tcs})
+        stop = False
+        for tc in tcs:
+            fn = tc.get("function") or {}
+            name, args = fn.get("name"), fn.get("arguments") or {}
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except ValueError:
+                    args = {}
+            result, st = handle(name, args if isinstance(args, dict) else {})
+            msgs.append({"role": "tool", "content": json.dumps(result, default=str)})
+            stop = stop or st
+            if verbose:
+                print(f"    [{label} tool] {name}", flush=True)
+        if stop:
+            ended = "closed"
+            break
+    return {"turns": turns, "ended": ended}
+
+
+# ---------------------------------------------------------------- stage 2
+
+SUBMIT_NUDGE = "You ended the turn without calling a tool. Call submit_forecast with your forecast; that is the only thing this stage asks."
+
+
+def _structure_message(problems):
+    return ("Structure only is checked, never the size of a number. Problems: "
+            + "; ".join(f"{p['field']}: {p['problem']}" + (f" ({p['detail']})" if p.get("detail") else "") for p in problems))
+
+
+def _cites_unusable(forecast, dossier):
+    bad = {f["fact_id"] for f in (dossier or {}).get("facts", []) if isinstance(f, dict) and not f.get("usable")}
+    cited = set()
+    for sc in (forecast.get("scenarios") or {}).values():
+        if isinstance(sc, dict):
+            cited |= set((sc.get("near_term") or {}).get("fact_ids") or []) | set((sc.get("normalized") or {}).get("fact_ids") or []) | set(sc.get("long_run_fact_ids") or [])
+    return sorted(cited & bad)
+
+
+def _stage2_sample(model, msgs0, dossier, run_dir, k, seed, sess):
+    """One of the K sessions. Returns the sample record without its valuation."""
+    state = {"subs": 0, "forecast": None, "problems": [], "history": []}
+    msgs = copy.deepcopy(msgs0)
+
+    def handle(name, args):
+        if name != "submit_forecast":
+            return {"error": f"unknown tool {name}; this stage's only tool is submit_forecast"}, False
+        state["subs"] += 1
+        probs = rf.validate_forecast(args, dossier)
+        state["history"].append(probs)
+        if not probs:
+            state["forecast"], state["problems"] = copy.deepcopy(args), []
+            return {"accepted": True}, True
+        state["problems"] = probs
+        if state["subs"] == 1:
+            return {"accepted": False, "message": _structure_message(probs) + ". You have one correction: call submit_forecast again with the whole forecast."}, False
+        return {"accepted": False, "message": _structure_message(probs) + ". This is the second failure: this sample is dropped."}, True
+
+    res = _session(model, msgs, [r26_late.SUBMIT_FORECAST_TOOL], run_dir, f"stage2_k{k}", handle, seed=seed, max_turns=STAGE2_MAX_TURNS, nudge=SUBMIT_NUDGE, **sess)
+    status = "forecast_invalid" if (state["subs"] and state["forecast"] is None) else ("no_forecast" if state["forecast"] is None else "submitted")
+    return {"k": k, "seed": seed, "status": status, "forecast": state["forecast"], "submissions": state["subs"], "repair_used": state["subs"] >= 2,
+            "problems": state["problems"], "problem_history": state["history"], "turns": res["turns"], "ended": res["ended"], "stamps": []}
+
+
+def run_stage2(*, run_dir, model, blind_pack, dossier, op_margin_bar, valuation, seed=0, k=3, think="high", ctx=98304, num_predict=49152, temperature=None,
+               num_batch=None, draft_num_predict=None, timeout=14400, verbose=True):
+    """Stage 2: K sessions with seeds seed, seed+1, ... (each a FRESH message list from blind_pack, dossier, op_margin_bar and STAGE2_TASK), the path, the bridge and the
+    value of each valid forecast, its alternative paths, and the aggregate. Writes <run_dir>/forecasts.json and returns it."""
+    t0 = time.time()
+    run_dir = Path(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    msgs0 = fresh_messages("stage2", {"blind_pack": blind_pack, "dossier": dossier, "op_margin_bar": op_margin_bar, "task": r26_late.STAGE2_TASK})
+    sess = dict(think=think, ctx=ctx, num_predict=num_predict, temperature=temperature, num_batch=num_batch, draft_num_predict=draft_num_predict, timeout=timeout, verbose=verbose)
+    samples = []
+    for i in range(int(k)):
+        s = _stage2_sample(model, msgs0, dossier, run_dir, i + 1, (seed if seed is not None else 0) + i, sess)
+        if s["forecast"] is not None:
+            cu = _cites_unusable(s["forecast"], dossier)
+            if cu:
+                s["stamps"].append("cites_unusable_fact:" + ",".join(cu))
+            vf = _value(s["forecast"], valuation, op_margin_bar)
+            s["status"] = "valued" if vf["status"] == rf.BRIDGE_OK else vf["status"]
+            s["valuation"] = trim_valuation(vf)
+            s["base_value"] = vf.get("base_value") if vf["status"] == rf.BRIDGE_OK else None
+            s["alt_paths"] = _alt_paths(s["forecast"], dossier, valuation, op_margin_bar) if vf["status"] == rf.BRIDGE_OK else []
+        else:
+            s["valuation"], s["base_value"], s["alt_paths"] = None, None, []
+        samples.append(s)
+        if verbose:
+            print(f"    [stage2] sample {i + 1}: {s['status']}" + (f" base ${s['base_value']:.2f}" if rf._num(s["base_value"]) else ""), flush=True)
+    agg = rf.aggregate([s["base_value"] for s in samples])
+    stamps = [f"samples_valued:{agg['n']}_of_{int(k)}"] if agg["n"] < int(k) else []
+    out = {"schema": "r26.forecasts.v1", "stage": "stage2", "pack_revision": PACK_REVISION_R26, "k": int(k), "seeds": [s["seed"] for s in samples],
+           "samples": samples, "aggregate": agg, "median_index": agg["median_index"], "spread": agg["spread"],
+           "base_values": [s["base_value"] for s in samples], "op_margin_bar": op_margin_bar,
+           "valuation_inputs": {"rev0": valuation["rev0"], "base_cf": valuation["base_cf"], "bridge_facts": valuation["bridge_facts"], "price": valuation["price"]},
+           "stamps": stamps, "elapsed_s": round(time.time() - t0), "task_sha256": hashlib.sha256(r26_late.STAGE2_TASK.encode("utf-8")).hexdigest()}
+    _write_json(run_dir / ARTIFACTS["stage2"], out)
+    return out
+
+
+# ---------------------------------------------------------------- stage 3
+
+CRUX_SOURCE_MAP = (("guidance-consensus", "GUIDANCE"),)
+
+
+def translate_source(src):
+    """A dossier fact's source -> the name crux_check reads: pack:primary-pN -> PRIMARY PN, pack:data-N -> DATA N (3..6, 6a/b/c as DATA 6x), pack:guidance-consensus ->
+    GUIDANCE, page:<url> -> the url; anything else (a search result, another pack section) is returned as written and is context, never company evidence."""
+    s = (src or "").strip()
+    m = re.match(r"^(pack|page|query):(.*)$", s, re.S)
+    if not m:
+        return s
+    kind, key = m.group(1), m.group(2).strip()
+    if kind == "page":
+        return key
+    if kind == "query":
+        return s
+    k = key.lower()
+    mm = re.match(r"^primary-p(\d+)$", k)
+    if mm:
+        return f"PRIMARY P{mm.group(1)}"
+    mm = re.match(r"^data-(\d)([a-c]?)$", k)
+    if mm:
+        return f"DATA {mm.group(1)}{mm.group(2).upper()}"
+    return dict(CRUX_SOURCE_MAP).get(k, s)
+
+
+def translate_crux(crux):
+    out = copy.deepcopy(crux)
+    for e in out if isinstance(out, list) else []:
+        for c in (e.get("citations") if isinstance(e, dict) and isinstance(e.get("citations"), list) else []):
+            if isinstance(c, dict) and isinstance(c.get("source"), str):
+                c["source"] = translate_source(c["source"])
+    return out
+
+
+def fetch_calls_from_cache(url_cache):
+    """The fetch_page records crux_check reads (what stage 1 fetched), from the evidence url cache {url: {"full_text"/"text", ...}}."""
+    out = []
+    for u, rec in (url_cache or {}).items():
+        if not isinstance(rec, dict):
+            continue
+        text = rec.get("full_text") if rec.get("full_text") is not None else rec.get("text")
+        out.append({"tool": "fetch_page", "params": {"url": u}, "url": u, "text": text if isinstance(text, str) else ""})
+    return out
+
+
+def _diagnostics(forecast, vf, cview, dossier, val, bar):
+    """alt_paths of the Base, the consensus divergence (the forecast's filed operating margin of years 1-2 against the consensus equivalent), and the stamps."""
+    alts = _alt_paths(forecast, dossier, val, bar) if vf.get("status") == rf.BRIDGE_OK else []
+    div = None
+    if cview.get("status") == "ok":
+        div = []
+        rows = {r["year"]: r for r in r26_late.path_rows(vf, "Base")}
+        for y, c in sorted(cview["years"].items()):
+            if y in rows and rf._num(c.get("op")):
+                div.append({"year": y, "forecast_op": rows[y]["op_margin"], "consensus_op": c["op"], "gap_pts": (rows[y]["op_margin"] - c["op"]) * 100.0})
+    return {"alt_paths": alts, "consensus_divergence": div, "consensus_status": cview.get("status"), "stamps": list((vf.get("stamps") or []))}
+
+
+def _margin_items(fc, bar):
+    """{(scenario, item): operating-basis margin} of a forecast: year-1 and year-2 margins, the normalized margin (code's sum) and the long-run margin."""
+    out = {}
+    for n in SCEN:
+        s = fc["scenarios"][n]
+        out[(n, "op_margin_y1")], out[(n, "op_margin_y2")] = float(s["near_term"]["op_margin"][0]), float(s["near_term"]["op_margin"][1])
+        nm = rf.normalized_margin(s["normalized"], bar)
+        out[(n, "normalized_margin")] = nm["value"]
+        out[(n, "long_run_margin_op")] = float(s["long_run_margin_op"])
+    return out
+
+
+def pull_record(pre_fc, post_fc, bar, cview):
+    """For each margin that changed in the revision: pre, post, the consensus margin (years 1 and 2 only, operating basis) and C's pull ratio."""
+    pre, post = _margin_items(pre_fc, bar), _margin_items(post_fc, bar)
+    cons = {"op_margin_y1": ((cview.get("years") or {}).get(1) or {}).get("op"), "op_margin_y2": ((cview.get("years") or {}).get(2) or {}).get("op")}
+    items = []
+    for key in pre:
+        a, b = pre[key], post.get(key)
+        if a is None or b is None or a == b:
+            continue
+        c = cons.get(key[1]) if cview.get("status") == "ok" else None
+        items.append({"scenario": key[0], "item": key[1], "pre": a, "post": b, "consensus": c, "pull_ratio": rf.pull_ratio(a, b, c)})
+    return items
+
+
+def _stage3_messages(dossier, fc, vf, forecasts, val, cview, diag, run_date):
+    pi = (vf.get("desk") or {}).get("price_implied")
+    import financial_model_tool as fmt
+    pi_lines = fmt.price_implied_lines(pi) if isinstance(pi, dict) else ["not computed"]
+    inputs = {
+        "dossier": dossier,
+        "median_forecast": r26_late.render_forecast_numbers(fc),
+        "median_desk_result": r26_late.render_desk_result(vf, val["price"], fc),
+        "base_values": r26_late.render_sample_values(forecasts["base_values"], forecasts["median_index"], forecasts["spread"]),
+        "price": r26_late.render_price(val["price"]),
+        "price_implied_inputs": r26_late.render_price_implied(pi_lines),
+        "consensus_corrected": r26_late.render_consensus(cview),
+        "diagnostics": r26_late.render_diagnostics(diag),
+        "task": r26_late.STAGE3_TASK.format(run_date=run_date),
+    }
+    return fresh_messages("stage3", inputs)
+
+
+def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_corrected=None, blind_pack="", fetch_calls=(), company=None, ticker=None, facts=None,
+               forecasts=None, seed=0, think="high", ctx=98304, num_predict=49152, temperature=None, num_batch=None, draft_num_predict=None, timeout=14400, verbose=True):
+    """Stage 3: reveal and reconcile. Reads forecasts.json (or `forecasts`), writes reveal.json and returns it. See the section comment above and the module docs."""
+    import crux_check
+    t0 = time.time()
+    run_dir = Path(run_dir)
+    forecasts = forecasts if forecasts is not None else _read_json(run_dir / ARTIFACTS["stage2"])
+    price = valuation["price"]
+    cview = r26_late.consensus_view(consensus_corrected, valuation["bridge_facts"])
+    reveal = {"schema": "r26.reveal.v1", "stage": "stage3", "pack_revision": PACK_REVISION_R26, "called": False, "no_call": False, "no_call_reasons": [], "price": price,
+              "median_index": forecasts.get("median_index"), "consensus": cview, "decision": None, "crux": None, "revision": {"submitted": False, "accepted": False},
+              "stamps": [], "turns": 0, "ended": None, "final_source": None, "final_forecast": None, "pre": None, "post": None, "pull": None, "diagnostics": None}
+    mi = forecasts.get("median_index")
+    if mi is None:
+        reveal["no_call"], reveal["no_call_reasons"] = True, ["no_valued_sample"]
+        _write_json(run_dir / ARTIFACTS["stage3"], reveal)
+        return reveal
+    pre_fc = forecasts["samples"][mi]["forecast"]
+    pre_vf = _value(pre_fc, valuation, op_margin_bar)
+    if pre_vf["status"] != rf.BRIDGE_OK:
+        reveal["no_call"], reveal["no_call_reasons"] = True, [f"median_not_valued:{pre_vf['status']}"]
+        _write_json(run_dir / ARTIFACTS["stage3"], reveal)
+        return reveal
+    reveal["pre"] = {"forecast": pre_fc, "valuation": trim_valuation(pre_vf), "base_value": pre_vf["base_value"]}
+    reveal["final_source"], reveal["final_forecast"] = "stage2_median", pre_fc
+    band = {"price": price, "min_mos": valuation.get("min_mos")}
+    split = rf.direction_split(forecasts["base_values"], band)
+    diag = _diagnostics(pre_fc, pre_vf, cview, dossier, valuation, op_margin_bar)
+    reveal["diagnostics"] = diag
+    if split:
+        reveal["no_call"], reveal["no_call_reasons"] = True, ["samples_split_by_direction"]
+        reveal["directions"] = rf.sample_directions(forecasts["base_values"], price, valuation.get("min_mos"))
+        _write_json(run_dir / ARTIFACTS["stage3"], reveal)
+        return reveal
+    # ---- the session
+    msgs = _stage3_messages(dossier, numbers_only(pre_fc), pre_vf, forecasts, valuation, cview, diag, valuation["run_date"])
+    st = {"crux": None, "crux_attempts": 0, "crux_state": None, "decision": None, "subs": 0, "revision": None, "form_problems": [], "closed": False, "rev_resolved": False}
+    known = rf.dossier_fact_ids(dossier)
+
+    def done():
+        return st["crux_state"] is not None and (st["rev_resolved"] or st["decision"] == "keep")
+
+    def handle(name, args):
+        if name == "state_crux":
+            if st["crux_state"] is not None:
+                return {"error": "the crux is already stated"}, done()
+            st["crux_attempts"] += 1
+            crux = args.get("crux")
+            if args.get("decision") in ("keep", "revise"):
+                st["decision"] = args["decision"]
+            probs = crux_check.form_problems(crux, valuation["run_date"])
+            if probs and st["crux_attempts"] < CRUX_FORM_ATTEMPTS:
+                st["form_problems"] = probs
+                return {"accepted": False, "message": "The crux is malformed. Correct it once: " + "; ".join(probs)}, False
+            st["crux"] = crux
+            st["form_problems"] = probs
+            st["crux_state"] = "form_failed" if probs else "accepted"
+            return ({"accepted": False, "message": "The crux is still malformed; it stands as invalid. " + "; ".join(probs)} if probs else {"accepted": True}), done()
+        if name == "submit_forecast":
+            st["subs"] += 1
+            if st["subs"] >= 2:
+                st["closed"] = True
+                return {"accepted": False, "message": "Only one revision is accepted. This second call is refused and the stage is closed."}, True
+            body = {k: v for k, v in args.items() if k not in ("revision_fact_ids", "revision_reason")}
+            rids, rreason = args.get("revision_fact_ids"), args.get("revision_reason")
+            probs = [dict(p) for p in rf.validate_forecast(body, dossier)]
+            if not (isinstance(rids, list) and rids and all(isinstance(x, str) for x in rids)):
+                probs.append({"field": "revision_fact_ids", "problem": "a revision must cite at least one fact id"})
+            elif [x for x in rids if x not in known]:
+                probs.append({"field": "revision_fact_ids", "problem": "fact_id_not_in_dossier", "detail": ", ".join(x for x in rids if x not in known)})
+            if not (isinstance(rreason, str) and rreason.strip()):
+                probs.append({"field": "revision_reason", "problem": "missing_text"})
+            st["revision"] = {"submitted": True, "accepted": not probs, "problems": probs, "fact_ids": rids if isinstance(rids, list) else None,
+                              "reason": rreason, "forecast": body if not probs else None, "submitted_forecast": body}
+            st["rev_resolved"] = True
+            return ({"accepted": True} if not probs else {"accepted": False, "message": "The revision is not accepted and the forecast stays as shown: " + _structure_message(probs)}), done()
+        return {"error": f"unknown tool {name}; the tools of this stage are state_crux and submit_forecast"}, False
+
+    sess = dict(think=think, ctx=ctx, num_predict=num_predict, temperature=temperature, num_batch=num_batch, draft_num_predict=draft_num_predict, timeout=timeout, verbose=verbose)
+    res = _session(model, msgs, [r26_late.STATE_CRUX_TOOL, r26_late.SUBMIT_REVISION_TOOL], run_dir, "stage3", handle, seed=seed, max_turns=STAGE3_MAX_TURNS,
+                   nudge="You ended the turn without calling a tool. Call state_crux (with your decision), and submit_forecast if you revise.", **sess)
+    reveal.update(called=True, turns=res["turns"], ended=res["ended"], decision=st["decision"], elapsed_s=round(time.time() - t0))
+    reveal["revision"] = {k: v for k, v in (st["revision"] or {"submitted": False, "accepted": False}).items() if k != "forecast"}
+    if st["subs"] >= 2:
+        reveal["revision"]["second_call_refused"] = True
+    final_fc, final_vf = pre_fc, pre_vf
+    post = None
+    if st["revision"] and st["revision"]["accepted"]:
+        rvf = _value(st["revision"]["forecast"], valuation, op_margin_bar)
+        if rvf["status"] == rf.BRIDGE_OK:
+            final_fc, final_vf = st["revision"]["forecast"], rvf
+            post = {"forecast": final_fc, "valuation": trim_valuation(rvf), "base_value": rvf["base_value"]}
+            reveal["final_source"] = "stage3_revision"
+            reveal["pull"] = pull_record(pre_fc, final_fc, op_margin_bar, cview)
+        else:
+            reveal["revision"].update(accepted=False, not_valued=rvf["status"])
+            reveal["stamps"].append(f"revision_not_valued:{rvf['status']}")
+    reveal["post"] = post
+    reveal["final_forecast"] = final_fc
+    reveal["diagnostics"] = _diagnostics(final_fc, final_vf, cview, dossier, valuation, op_margin_bar) if post else diag
+    # ---- the crux, resolved against the final run
+    crux_t = translate_crux(st["crux"]) if st["crux"] is not None else None
+    chk = crux_check.check(crux_t, (final_vf.get("desk") or {}).get("price_implied"), blind_pack, list(fetch_calls), company, ticker, facts or {})
+    if st["crux_state"] == "form_failed":
+        chk = dict(chk, valid=False, reason="crux_form: " + "; ".join(st["form_problems"]))
+    reveal["crux"] = {"stated": st["crux"], "translated": crux_t, "form_problems": st["form_problems"], "state": st["crux_state"] or "not_stated", "check": chk, "valid": bool(chk.get("valid"))}
+    if not chk.get("valid"):
+        reveal["no_call"] = True
+        reveal["no_call_reasons"].append(f"crux_invalid:{chk.get('reason')}")
+    _write_json(run_dir / ARTIFACTS["stage3"], reveal)
+    return reveal
+
+
+def numbers_only(fc):
+    """The forecast as stage 3 is shown it: the reason text of each normalized state (stage 2's reasoning) is removed."""
+    out = copy.deepcopy(fc)
+    for sc in out["scenarios"].values():
+        sc["normalized"].pop("reason", None)
+    return out
+
+
+# ---------------------------------------------------------------- stage 4
+
+CONTRACT_NUMERIC_FROM_FILL = ("base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability", "kelly_fraction_pct", "asymmetric_payoff_skew")
+
+
+def synthetic_desk_call(vf, valuation, forecast, crux_translated):
+    """The final valuation as the run_financial_model record contract_fill reads (params with the three scenario entries and the crux; the desk's own result merged in,
+    as the snapshots hold a call)."""
+    entries = [vf["scenarios"][n]["desk_entry"] for n in SCEN]
+    params = {**valuation["desk_params"], "valuation_frame": forecast.get("frame", "equity"), "scenarios": entries}
+    if crux_translated is not None:
+        params["crux"] = crux_translated
+    return {"tool": "run_financial_model", "call_index": 1, "params": copy.deepcopy(params), **copy.deepcopy(vf["desk"])}
+
+
+def code_earnings(vf, valuation):
+    """near_term_earnings = the Base's year-1 earnings on the valuation basis (margin x revenue); normalized_earnings = the Base's normalized valuation-basis margin on
+    the base year's revenue. Both $B; None when the bridge did not give a margin."""
+    rows = r26_late.path_rows(vf, "Base")
+    near = rows[0]["x_margin"] * rows[0]["revenue"] if rows and rf._num(rows[0].get("x_margin")) else None
+    br = (((vf.get("scenarios") or {}).get("Base") or {}).get("bridge") or {}).get("rows") or []
+    nm = (((vf.get("scenarios") or {}).get("Base") or {}).get("path") or {}).get("normalized") or {}
+    n_year = (((vf.get("scenarios") or {}).get("Base") or {}).get("path") or {}).get("normalized_year")
+    xn = next((r["x_margin"] for r in br if r.get("year") == n_year), None)
+    norm = xn * valuation["rev0"] if rf._num(xn) else None
+    return near, norm
+
+
+def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None, blind_pack="", fetch_calls=(), company=None, ticker=None, forecasts=None, reveal=None,
+               seed=0, think="high", ctx=98304, num_predict=49152, temperature=None, num_batch=None, draft_num_predict=None, timeout=14400, verbose=True):
+    """Stage 4: the memorandum over the frozen result. Reads forecasts.json and reveal.json (or the arguments), writes final.json and returns it. The final valuation is
+    recomputed from the final forecast (deterministic), frozen into a table, and the contract's numbers are filled by code."""
+    import contract_fill
+    t0 = time.time()
+    run_dir = Path(run_dir)
+    forecasts = forecasts if forecasts is not None else _read_json(run_dir / ARTIFACTS["stage2"])
+    reveal = reveal if reveal is not None else _read_json(run_dir / ARTIFACTS["stage3"])
+    price = valuation["price"]
+    fc = reveal.get("final_forecast")
+    final = {"schema": "r26.final.v1", "stage": "stage4", "pack_revision": PACK_REVISION_R26, "pilot_arm": ARM, "desk_schema": R26_DESK_SCHEMA, "status": None,
+             "no_call": bool(reveal.get("no_call")), "no_call_reasons": list(reveal.get("no_call_reasons") or []), "actionable": False, "non_actionable_reasons": [],
+             "flags": [], "table": None, "memo": "", "report": "", "contract_text": {}, "verdict": None, "verifier": None, "turns": 0}
+    if fc is None:
+        final.update(status="no_forecast", flags=["r26_no_call"], non_actionable_reasons=["no_call"] + final["no_call_reasons"])
+        _write_json(run_dir / ARTIFACTS["stage4"], final)
+        return final
+    vf = _value(fc, valuation, op_margin_bar)
+    if vf["status"] != rf.BRIDGE_OK or not isinstance(vf.get("desk"), dict):
+        final.update(status=f"final_not_valued:{vf['status']}", no_call=True, flags=["r26_no_call"], non_actionable_reasons=["no_call", f"final_not_valued:{vf['status']}"])
+        final["no_call_reasons"].append(f"final_not_valued:{vf['status']}")
+        _write_json(run_dir / ARTIFACTS["stage4"], final)
+        return final
+    pub = published_values(vf)
+    code_direction = contract_fill.label(pub.get("Base"), price)
+    verdict_word = "no_call" if final["no_call"] else _label19_word(reveal, valuation, pub)
+    rows = r26_late.table_rows(price=price, values=pub, forecast=fc, vf=vf, verdict=verdict_word,
+                               pre_base=(reveal.get("pre") or {}).get("base_value") if reveal.get("post") else None, spread=forecasts.get("spread"))
+    cview = reveal.get("consensus") or {"status": "unavailable", "reason": None, "years": {}}
+    cview = {**cview, "years": {int(k): v for k, v in (cview.get("years") or {}).items()}}
+    diag = reveal.get("diagnostics") or _diagnostics(fc, vf, cview, dossier, valuation, op_margin_bar)
+    crux = reveal.get("crux") or {}
+    crux_txt = json.dumps(crux.get("stated"), indent=1) if crux.get("stated") else "(no crux was stated)"
+    chk = crux.get("check") or {}
+    ver_lines = [f"Crux valid: {bool(crux.get('valid'))}" + (f" (reason: {chk.get('reason')})" if chk.get("reason") else "")]
+    for e in chk.get("entries") or []:
+        ver_lines.append(f"  {e.get('input')}: reachable {e.get('reachable')}; valid {e.get('valid')}" + (f" ({e.get('reason')})" if e.get("reason") else "")
+                         + "; citations: " + ", ".join(f"{c['source']} [{c['class']}, quote found {c['quote_found']}]" for c in e.get("citations") or []))
+    table_text = r26_late.render_table(rows)
+    if final["no_call"]:
+        table_text += "\n[No call]\n" + "\n".join(f"Reason: {r}" for r in final["no_call_reasons"])
+    inputs = {"dossier": dossier, "frozen_desk_result": table_text, "bridge_table": r26_late.render_bridge_table(vf), "crux": crux_txt,
+              "crux_verification": "\n".join(ver_lines), "stage2_spread": (f"STAGE-2 SPREAD of the three Base values: {forecasts.get('spread') * 100:.1f}%." if rf._num(forecasts.get("spread"))
+                                                                               else "STAGE-2 SPREAD: not defined."),
+              "diagnostics": r26_late.render_diagnostics(diag), "task": r26_late.STAGE4_TASK}
+    msgs = fresh_messages("stage4", inputs)
+    opts = {"num_ctx": ctx, **({"num_batch": num_batch} if num_batch else {}), "num_predict": num_predict, "repeat_penalty": 1.05, "presence_penalty": 0.05}
+    if seed is not None:
+        opts["seed"] = seed
+    if draft_num_predict is not None:
+        opts["draft_num_predict"] = draft_num_predict
+    if temperature is not None:
+        opts["temperature"] = temperature
+    req_opts, _e, _n = _turn_options(opts, msgs, None, ctx, num_predict)
+    with turn_log.logging_to(run_dir / "turns", "stage4"):
+        resp = llm_provider.chat({"model": model, "stream": False, "think": think, "messages": msgs, "options": req_opts}, timeout)
+    final["turns"] = 1
+    content = ((resp.get("message") or {}).get("content")) or ""
+    memo, ctext, cproblem = r26_late.parse_contract_text(content)
+    ver = r26_late.verify_memo(memo, rows) if memo.strip() else {"flags": ["memo_missing"], "details": [{"flag": "memo_missing"}]}
+    # ---- the contract: numbers by code
+    crux_t = crux.get("translated")
+    call = synthetic_desk_call(vf, valuation, fc, crux_t)
+    ffacts = dict(facts or {}, desk_schema=None, long_run_defaults_withheld=False)
+    filled, prov = contract_fill.fill(list(fetch_calls) + [call], {}, ffacts, price, ticker=ticker, allow_blend=False, pack_text=blind_pack, company=company)
+    near, norm = code_earnings(vf, valuation)
+    verdict = dict(filled)
+    verdict.update(near_term_earnings=near, normalized_earnings=norm)
+    for k in r26_late.TEXT_FIELDS:
+        if k in ctext:
+            verdict[k] = ctext[k]
+    if final["no_call"]:
+        verdict["code_label"] = verdict.get("verdict_label")
+        verdict["verdict_label"] = "hold"
+        verdict["no_call"] = {"reasons": list(final["no_call_reasons"])}
+    reasons = (["no_call"] + final["no_call_reasons"] if final["no_call"] else []) + list(ver["flags"])
+    if cproblem:
+        reasons.append(cproblem)
+    if reveal.get("revision", {}).get("submitted") and not reveal["revision"].get("accepted"):
+        final["flags"].append("revision_not_accepted")
+    verdict["r26"] = {"pilot_arm": ARM, "desk_schema": R26_DESK_SCHEMA, "pack_revision": PACK_REVISION_R26, "actionable": not reasons, "non_actionable_reasons": reasons,
+                      "no_call": final["no_call"], "verifier": ver, "final_source": reveal.get("final_source"), "spread": forecasts.get("spread"),
+                      "pre_reveal_base": (reveal.get("pre") or {}).get("base_value"), "post_reveal_base": (reveal.get("post") or {}).get("base_value"),
+                      "contract_unfilled": list(r26_late.UNFILLED_NUMERIC), "model_typed_numbers_in": [k for k in r26_late.MODEL_TYPED_NUMBERS if k in ctext],
+                      "contract_fill": prov, "code_directionection_m": code_direction}
+    verdict["pilot_arm"], verdict["desk_schema"], verdict["pack_revision"] = ARM, R26_DESK_SCHEMA, PACK_REVISION_R26
+    block = {k: verdict[k] for k in (*CONTRACT_NUMERIC_FROM_FILL, "near_term_earnings", "normalized_earnings", "verdict_label") if k in verdict and verdict[k] is not None}
+    block.update({k: ctext[k] for k in ctext})
+    report = memo.rstrip() + "\n\n```json:underwriting\n" + json.dumps(block, indent=1, default=str) + "\n```\n"
+    final.update(status="ok" if memo.strip() else "memo_missing", memo=memo, report=report, contract_text=ctext, verdict=verdict, verifier=ver,
+                 flags=final["flags"] + list(ver["flags"]) + (["r26_no_call"] if final["no_call"] else []), elapsed_s=round(time.time() - t0),
+                 table=rows, actionable=not reasons, non_actionable_reasons=reasons, desk_call=call,
+                 task_sha256=hashlib.sha256(r26_late.STAGE4_TASK.encode("utf-8")).hexdigest())
+    _write_json(run_dir / ARTIFACTS["stage4"], final)
+    _append_snapshot_call(run_dir, call)
+    return final
+
+
+def _label19_word(reveal, valuation, pub):
+    """The code's verdict word for a result that is not a no call: the revision-19 label (the base against the price band, directional only with a valid crux)."""
+    import crux_check
+    chk = (reveal.get("crux") or {}).get("check")
+    lab, _dm, _st = crux_check.label19(pub.get("Base"), valuation["price"], chk)
+    return lab or "hold"
+
+
+def _append_snapshot_call(run_dir, call):
+    """The final desk run goes into the sample's _research_snapshot.json calls, where the harness reads the desk calls of a sample (extract_desk_snapshot_metrics,
+    contract_fill): the staged analyst's desk is code's, and it is recorded as the one run_financial_model call."""
+    p = Path(run_dir) / "_research_snapshot.json"
+    try:
+        doc = _read_json(p) if p.exists() else {"calls": []}
+        doc.setdefault("calls", [])
+        doc["calls"] = [c for c in doc["calls"] if not (isinstance(c, dict) and c.get("tool") == "run_financial_model" and c.get("call_index") == call["call_index"])]
+        doc["calls"].append(call)
+        _write_json(p, doc)
+    except (OSError, ValueError):
+        pass
+
+
+# ---------------------------------------------------------------- the sample
 
 def run_sample(model, pack, run_dir, **kw):
-    """The arm r26's counterpart of analyst_tools.chat_with_tools for consensus_valuation: returns (report, thinking, meta). Stage 1 runs and writes
-    dossier.json; stages 2-4 follow in brief R26-A2 (until then the NotImplementedError of stage 2 fails the sample after the dossier is on disk)."""
+    """The arm r26's counterpart of analyst_tools.chat_with_tools for consensus_valuation: returns (report, thinking, meta). Runs the four stages in order under
+    <run_dir>: stage 1 (dossier.json, from `kw` as run_stage1 takes them), stage 2 (forecasts.json), stage 3 (reveal.json), stage 4 (final.json). `kw` also carries
+    facts (the pack's facts: op_margin_bar, consensus_corrected, long_run, owner_earnings_default_b), price and desk_context; the report is the memorandum with the contract
+    block code filled (an empty report fails the sample, as in every arm)."""
+    run_dir = Path(run_dir)
+    facts, price, desk_context = kw.pop("facts", None), kw.pop("price", None), kw.pop("desk_context", None)
+    verbose = kw.get("verbose", True)
     dossier = run_stage1(model, pack, run_dir, **kw)
-    run_stage2(run_dir=run_dir)
-    return "", "", {"r26": {"stage1": dossier["counts"]}}
+    bar = (facts or {}).get("op_margin_bar")
+    if not isinstance(bar, dict) or not bar:
+        raise R26InputError("facts['op_margin_bar'] is missing: owner R26-B (the operating-margin history bar)")
+    if not rf._num(price):
+        raise R26InputError("price is missing")
+    ticker, company = kw.get("ticker"), kw.get("company")
+    val = valuation_inputs(facts, price, desk_context, ticker)
+    blind_pack, _ = split_task(pack)
+    cache = kw.get("url_cache")
+    if cache is None and (run_dir / "evidence_url_cache.json").exists():
+        cache = _read_json(run_dir / "evidence_url_cache.json")
+    fetch_calls = fetch_calls_from_cache(cache)
+    sess = {k: kw[k] for k in ("think", "ctx", "num_predict", "temperature", "num_batch", "draft_num_predict", "timeout") if k in kw}
+    seed = kw.get("seed")
+    forecasts = run_stage2(run_dir=run_dir, model=model, blind_pack=blind_pack, dossier=dossier, op_margin_bar=bar, valuation=val, seed=seed if seed is not None else 0,
+                           verbose=verbose, **sess)
+    reveal = run_stage3(run_dir=run_dir, model=model, dossier=dossier, valuation=val, op_margin_bar=bar, consensus_corrected=facts.get("consensus_corrected"),
+                        blind_pack=blind_pack, fetch_calls=fetch_calls, company=company, ticker=ticker, facts=facts, forecasts=forecasts,
+                        seed=seed if seed is not None else 0, verbose=verbose, **sess)
+    final = run_stage4(run_dir=run_dir, model=model, dossier=dossier, valuation=val, op_margin_bar=bar, facts=facts, blind_pack=blind_pack, fetch_calls=fetch_calls,
+                       company=company, ticker=ticker, forecasts=forecasts, reveal=reveal, seed=seed if seed is not None else 0, verbose=verbose, **sess)
+    meta = {"r26": {"stage1": dossier["counts"], "stage2": {"statuses": [s["status"] for s in forecasts["samples"]], "spread": forecasts["spread"]},
+                    "stage3": {"called": reveal["called"], "no_call": reveal["no_call"], "reasons": reveal["no_call_reasons"], "final_source": reveal["final_source"]},
+                    "stage4": {"status": final["status"], "flags": final["flags"], "actionable": final["actionable"]}},
+            "done_reason": "stop", "research_calls": (dossier.get("research") or {}).get("search_and_fetch_calls", 0), "repeat_calls": 0}
+    return final["report"], "", meta
