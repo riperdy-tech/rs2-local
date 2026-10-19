@@ -1,0 +1,47 @@
+# R26-A2 TASK texts (generated from tools/audit_202608/r26_late.py)
+
+## Stage 2 TASK - 681 words
+
+```
+STAGE 2 OF 4: THE BLIND FORECAST.
+
+You are the analyst for the company in the data pack above. In this stage you forecast, and you do it blind: you are not shown the market price, the analysts' forecasts, or any default or reference value, and you have no tools to look for them. You see the data pack, the research dossier of stage 1 (the facts, each with a quote that code has verified, and the research summary) and the company's filed operating-margin history. Code does every calculation after you. Make exactly one call to submit_forecast.
+
+1. The margin basis. Every margin you give is the filed operating margin: operating income divided by revenue, the operating-income line of the income statement. It is not a net margin, an after-tax margin or an adjusted margin. Code converts your operating margins to the basis the valuation desk uses, and shows the conversion afterwards. Revenue growth is the annual growth of revenue. Margins and growth are decimals; delta_pts alone is in percentage points.
+2. Three scenarios: Base, Bull and Bear. For each, give the two near-term years (revenue growth and operating margin for year 1 and year 2), then the normalized state the business reaches.
+3. The normalized state. Choose the year N, a whole number from 3 to 5, by which the business is in its normalized state, and its revenue growth. The normalized margin is a baseline plus a delta: choose a baseline from the filed history (min, p25, median, p75, max or last) and delta_pts, the percentage points added to that baseline (a negative number subtracts, zero keeps the baseline). A delta_pts of one is one percentage point. You never type the normalized margin; code adds the two.
+4. The transition from year 2 to the normalized state: linear (a straight line from year 2 to year N), step_at_year (the year-2 values until transition_year, the normalized values from it) or hold_then_linear (the year-2 values through transition_year, then a straight line reaching the normalized values in year N). Growth moves the same way as the margin. After year N the normalized values hold to year 5.
+5. A normalization that comes later than year 5 (a contract that runs for many years, a ramp, a cycle) is not given as N. Give the state of year 5, and express the later normalization through long_run_margin_op, the operating margin the business earns when the fade after year 5 has finished, and fade_years, the whole years that fade takes (growth also moves from year 5 to terminal_g over it).
+6. Also give for each scenario terminal_g, terminal_ronic (the return on new investment that pays for growth after the fade), prob (the three probabilities add to one), and for the forecast the discount_rate and the frame (equity: flows after interest at the cost of equity; firm: flows before interest at the cost of capital). The pack's flows are after interest.
+7. Evidence. In near_term.fact_ids and normalized.fact_ids cite the dossier facts each rests on, and in long_run_fact_ids the facts behind long_run_margin_op. A fact speaks only for the span its duration states: code values what happens when that evidence expires and reports it, so rest the normalized state and the long run on evidence of matching duration. Cite the facts listed as usable; a fact listed as unusable cannot be cited as evidence. Give in normalized.reason, in at most 60 words, why this is the normalized state.
+8. Classify the Base, each with the dossier facts it rests on (fact_ids): margin_persistence says whether the margin level rests on lasting advantages (structural), only partly does (partly_structural) or is a passing condition (transient); cycle_position says where the business is in its cycle now (trough, mid, peak or not_cyclical); growth_trajectory says whether revenue growth is accelerating, steady, decelerating or shrinking. Each is judged from its own evidence and none is forced by another.
+9. Code checks the structure only: the fields, finite numbers, the enums and that the fact ids exist. It never bounds a number, so the judgment is yours. If the structure is wrong you get one correction.
+```
+
+## Stage 3 TASK (run date shown as YYYY-MM-DD) - 412 words
+
+```
+STAGE 3 OF 4: THE REVEAL AND THE AUDIT.
+
+In stage 2 a forecast was made blind, in three samples. You now see the forecast of the median sample (the numbers only, with its valuation), the values of all three samples, the market price, what the price implies for each judgment input, and the analysts' consensus converted by code to the same basis as the forecast, when it is comparable. Today's date is YYYY-MM-DD.
+
+Treat the reveal as an audit of the market's view, not as an answer. The price is the market's opinion; the consensus is analysts' opinion; neither is evidence. Ask what the market must believe for the price to be right, and whether the dossier's facts support that belief, your forecast, or neither. Move a number only for a reason that a fact in the dossier supplies.
+
+(a) The crux. Call state_crux. Name one to three of the desk's judgment inputs (coe, fade_years, terminal_g, terminal_ronic, long_run_margin) that decide whether the price is right; the growth of years 3 to 5 and the year-2 level are declared in the forecast and are not offered. For each give your reason (why this company's value of the input is what you say, against what the price implies, and by how much) and one to five citations {source, date, quote} of this company's own evidence, taken from the dossier: the source exactly as a dossier fact lists it, the date of the source document (when you cannot tell, today's date), and a quote of 30 to 600 characters copied exactly from that source. Code resolves every quote. A crux is required whatever your view: if the evidence supports the price, name the inputs on which it does. One entry that fails makes the whole crux invalid, and without a valid crux there is no call.
+(b) Keep or revise. In the same state_crux call give decision: keep, or revise. To revise, call submit_forecast once with the full revised forecast, revision_fact_ids (at least one dossier fact) and revision_reason (why that fact was underweighted in the forecast you were shown). Code accepts one revision only; a second call is refused and the stage closes. A revision with no fact that supports it is not accepted, and a number that moved toward the consensus or the price without a fact is recorded by code as a pull toward it.
+
+You cannot see the reasoning behind the stage-2 forecast, only its numbers; judge it by the dossier.
+```
+
+## Stage 4 TASK (the memo TASK) - 416 words
+
+```
+STAGE 4 OF 4: THE MEMORANDUM.
+
+The valuation is finished and frozen. Below are the revealed price and momentum facts, the final desk table (every number in it was computed by code), the conversion table, the crux with code's verification of its quotes, the stage-2 spread, the diagnostics, and the research dossier. Write the memorandum that explains the locked numbers. You cannot change a number, and you must never restate a number that is not in the table.
+
+1. Write SECTION 0 first: its first line is `Verdict: undervalued`, `Verdict: overvalued`, `Verdict: hold` or `Verdict: no call`, the word the table gives under "Verdict", with one sentence on why. Then the sections you need: the business and what drives its economics; the forecast and why (the normalized state, the transition and the baseline, with the dossier facts behind them by id); the crux, the quotes that support it and what code found; what the diagnostics show (the alternative path if a fact's evidence expires, the consensus divergence, the spread); the risks and what would change the view.
+2. Quote a number only under its label from the table, written exactly as the label is written (for example `Base value per share: $...`), and never round it more coarsely than the table does by more than the digits you write. Do not compute new numbers: no averages, differences or ratios of your own. In SECTION 2 state the forecast's labels exactly as the table writes them (for example `Base transition: ...`, `Base baseline: ...`, `Base margin persistence: ...`). Code checks every labelled number, the verdict word and these labels against the table and flags a difference.
+3. If the table says no call, say so in SECTION 0 and state the reasons the table gives; do not argue a verdict.
+4. End with the contract: a ```json:underwriting block holding only the text fields listed here, each as the system text describes: catalysts (a list of {date, event, direction, estimates_moved, scenario}), cycle_evidence, normalization_reason, margin_persistence_evidence, cycle_position_evidence, growth_trajectory_evidence (one line each: where the evidence for the Base classification in the table is; the classifications themselves are the forecast's and code fills them), momentum_view (confirming, neutral or contradicting; ground it in the REVEALED block), entry_timing (buy_now, wait_for_momentum or avoid), position_basis (value, momentum or none), momentum_evidence, momentum_flip_condition and momentum_break_rule ({metric, comparator, threshold, window_days}), invalidation_rules (a list of {metric, comparator, threshold, window, source}) and thesis_invalidation_trigger. Code fills every number of the contract (values, probabilities, sizes, margins) from the frozen table; leave them out.
+```

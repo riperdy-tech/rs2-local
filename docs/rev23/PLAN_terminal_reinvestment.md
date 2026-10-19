@@ -522,3 +522,99 @@ Each claim tested by the coordinator before ruling.
   - **B1:** the year that `normalized_earnings` refers to is undefined, so `normalized_vs_path_gap` measured revenue growth.
   - **B3:** SECTION 11 can deny that earlier complete desk runs existed.
 - **Ruling: the short form as tested is rejected on coherence.** It removed the loops, but printing a consensus margin line invited anchoring (2 of 3 copied it), and the analyst errors are real. The registered rule says no further form iterations. Option B is next, and it needs its own coherence assessment (cross-check 21).
+
+### Rulings on cross-check 22: controlling the analyst's output (2026-10-19)
+Both reviews independently recommend the same change of architecture rather than another form. The first paste labelled "Gemini" was a duplicate of ChatGPT's; the real Gemini reply arrived afterwards.
+
+**Gemini's claims about our setup, tested before ruling:**
+- **Rejected: prior thinking accumulating in the history.** `analyst_tools` appends assistant turns as content plus tool_calls only (line 2656); no reasoning is passed back, so the template's `preserve_thinking` path never sees any.
+- **Rejected: a q4 KV cache.** It is already `OLLAMA_KV_CACHE_TYPE=q8_0` with flash attention.
+- **Not a bug: `min_p 0`.** It is Qwen's own recommended thinking setting; testable, one variable at a time.
+
+**Accepted: the staged design, with separate sessions and a controlled information transfer.**
+1. **Stage 1, research and a verified fact ledger** (both reviews). Every material fact carries entity, metric, period, unit, basis, source and exact quote, all verified by code. This answers the dry-bulk/container class of error; Gemini's per-industry term lists are rejected as narrow patches.
+2. **Stage 2, a price-blind and consensus-blind forecast** (both).
+   - No price, consensus, reference value or default path is visible; this is enforced by software, with a leak audit of every pack section, the research summary and tool results.
+   - The analyst states operating-basis anchors (Gemini): years 1–2, a normalized state with its year (baseline plus a stated delta, with a reason and a fact ID), and the transition shape.
+   - Code interpolates and bridges to the X basis and owner earnings, with every bridge assumption shown (code-owned bases).
+   - Gemini's caution is accepted: no numeric bounds inside the grammar, only structure and enums.
+3. **K = 3 cheap Stage-2 samples on the same frozen dossier** (Gemini). The spread is a gate: if direction is not unanimous, or the spread crosses the decision boundary, the result is "no call". The median is reported, not crowned as truth (ChatGPT).
+4. **Stage 3, reveal the price and a basis-corrected consensus, then exactly one revision** (both).
+   - A revision must cite a Stage-1 fact (Gemini, against sycophantic collapse).
+   - The pre- and post-reveal values are both kept, and the pull ratio is logged.
+   - Audit questions are put as questions, never with a prescribed answer (Gemini's DAC wording is rejected).
+5. **Stage 4, the memo is written after the desk is frozen** (Gemini), with a final verifier that annotates or returns "no call" (ChatGPT).
+
+**Accepted: the evaluation, which ends trial and error.**
+- **A frozen benchmark** of about 12 stocks with cached Stage-1 dossiers (Gemini). Stages 2–4 take about 10 minutes per stock, so one design iteration costs about 2 GPU hours.
+- **Two independent masked readers,** scoring against a registered rubric (ChatGPT).
+- **The registered metrics:** loops, basis and memo-desk fidelity, anchor immunity (the perturbed-consensus canary), K = 3 reproducibility, fact and quote verification, and coherence.
+- **At most 3 iterations,** then an end-to-end unseen holdout. A pass authorizes further testing, never live use.
+
+**Later, one variable at a time:** a lower temperature with thinking off for structured turns; `num_ctx` lowered once staging shortens the context; an MTP on/off determinism check; a model change only if fact errors persist.
+
+**Warning on the record:** revision 25 arm C (consensus withheld in pass 1, with Muse, in one session) scored worst, 4 of 10. The new design differs (separate sessions, price also hidden, a verified ledger, one revision). The precedent is a caution, not support.
+- **Gemini's cheap replay experiment: checked, not usable (2026-10-19).**
+  - **Rebuildable:** the prompt, tool arguments, verbatim results and compaction.
+  - **Not rebuildable:** per-turn assistant content and the SYSTEM-text hash are not logged.
+  - **Not clean:** the first user message (the pack) holds the consensus margin line and the consensus tables. The pre-desk reasoning used them in all three runs. DAC: "these are consensus-implied, I'll use them". MSGE calibrated against them; TASK recorded them.
+  - Redacting the pack changes the first turn's conditioning, which defeats a replay. So the staged build goes ahead without it.
+- **For the staged build** (from the same check):
+  - the leak audit must remove every consensus-derived line from the blind stage, not only `x_margin_consensus_y1y2`: DATA 8's consensus table, the BASE-YEAR CHECK, estimate trend and revisions, price targets, the DEFAULTS `levels` (year1/2, bull2/bear2), `consensus_data_status`, the TASK lines naming those levels, and consensus prose in the catalyst brief and guidance block;
+  - the harness must log raw completions per turn, plus a hash of the SYSTEM text, so that later runs can be replayed and cached.
+
+### Revision 26 build log
+- **R26-C forecast desk** (`review-2026-10/r26-desk` @ `7208e68`): 47 tests; full suite has the same 42 failures. No desk code changed; `value_forecast` calls the desk at 25.2.
+  - Rulings: ambiguities 1–7 and 9 accepted. Transitions are defined in the docstrings; `delta_pts` is in percentage points (the TASK must say so); optional `long_run_fact_ids`; nothing defaulted in the bridge; direction split at the depth gate's 10%.
+  - **Changed (8):** the normalized year N is limited to 3..5; a normalization after year 5 is expressed through `long_run_margin_op` and `fade_years`. The SPEC's 3..5+F is amended accordingly.
+- **R26-A1 harness, stage 1** (`review-2026-10/r26-harness` @ `5c2c293`).
+  - 85 new tests; full suite has the same 42 failures. Request bytes are unchanged with logging on.
+  - Built: per-turn logging under `ollama_raw`; the stage runner with allow-listed session inputs; `register_facts` with all ten fields; the three checks; `dossier.json`.
+  - Rulings:
+    - its `pack_sections()` ids (heading slugs, `primary-p#`) are canonical, and R26-B aligns its tags to them;
+    - for `pack:` sources, entity words matching the pack company's name or ticker are satisfied (stamped `entity_from_pack_company`);
+    - the per-fact status feedback to the model, repeat-id rejection, `Q<n>` query ids and fetched-pages-only are accepted.
+  - Still open: the logging gaps in the no-tools and `continue_report` paths (not used by r26); "r26" goes into `PILOT_ARMS` via R26-B.
+  - Housekeeping: the builder left a baseline worktree at the scratchpad path `base6bc`, to remove with the operator's OK.
+- Integration branch `review-2026-10/r26-int` (r26-harness at `481d0cf` + r26-desk at `4d2504f`, merge `1cd4e9e`; 133 r26 tests pass). R26-A2 (stages 2–4, reveal, memo, verifier) is building on it.
+- **R26-B blind pack** (`review-2026-10/r26-pack` @ `2eec324`).
+  - Zero leaks on MSGE, TASK and DAC (the audit caught two real leaks, a price and a Street target, and the filter was fixed). Every other arm is byte-identical.
+  - The blind pack is about 70 KB, against about 78–83 KB for the revision-24 pack without the TASK.
+  - Rulings: 1, 3–5, 7, 8, 10–12 accepted.
+  - **Changed:**
+    - **(2)** the r26 marker becomes 27, because `R25_SF_REVISION` already uses 26 (SPEC amended: revision 27 for the staged arm);
+    - **(6)** the DATA 8 ROE / gross margin / operating margin line is kept, with only the dividend yield stripped;
+    - **(9)** import `r26_forecast.invert_bridge`.
+  - **Merge note:** `FACTS_VERSION` 12 is also used by `d2-facts` (different keys); reconcile at merge.
+- **R26-A2 stages 2–4** (`91cf2bc`; 55 tests) merged with R26-B (`f15395d`). Coordinator fixes at `5f313cb` and `00801a3`:
+  - `consensus_view` reads R26-B's shape;
+  - the bridge hook indexes A_t by path year.
+  - 208 r26 tests pass; the full suite is back to the 42.
+- **TASK-text review and rulings:**
+  - **(a)** The three labels move to stage 2, committed with the numbers; code copies them into the contract.
+  - **(b)** Price-derived momentum lines are revealed to stages 3 and 4, so the momentum fields are grounded. Consensus classes reach stage 3 only through `consensus_corrected`.
+  - **(c)** The family comes from the pack's existing classification, not a default "operating"; unknown means `no_call family_unresolved`.
+  - **(d)** Confirm the stage-3 crux inputs against the solver on the 25.2 path.
+  - A2 ambiguities 3, 5, 6 and 7 accepted.
+  - **(4) Must resolve before any book-wide run:** `conviction_score`, `business_quality_moat` and `reentry_tranches` have no code source.
+- **A2 follow-up** `372a6dc`: labels in stage 2; the REVEALED price/momentum block for stages 3 and 4; family from `population_ranges.family` (unknown means `no_call family_unresolved`); stage-3 crux inputs limited to what the 25.2 solver supports (coe, fade_years, terminal_g, terminal_ronic, long_run_margin). 202 r26 tests pass; full suite has the 42. R26-D (the benchmark mode) is building.
+- **R26-D benchmark mode built** (pilot folder; 60 tests; nothing launched).
+  - **Its offline probe found that stages 2–4 could not value most of the panel:**
+    - net interest is missing for MSGE, TASK, DAC, BUD and MCY, and A_0 for MSGE;
+    - PACS has no base_cf;
+    - GOLD has a family/basis mismatch;
+    - consensus is comparable only for TASK and GOLD.
+  - **Coordinator ruling:** the bridge is calibrated to the filed base year. K_0 = OI_0 − X_0/(1 − τ) is held in dollars, so the bridge is exact at the base year and needs only τ, OI_0 and X_0. This replaces the separate interest and amortization inputs.
+  - The PACS, GOLD and consensus causes are under investigation (R26-E). Comparability rules change only by ruling. If the registered canary names lack comparable consensus, the canary set is re-registered before any run, with the operator told.
+  - R26-D choices accepted: the scorecard's all-12 completeness item; loops counted as guard markers + a refused second revision + `turn_budget` endings; the canary shift on the valuation basis; the reader extract including the revealed consensus and the revision; seed base 2502.
+- **R26-E** (`c32c206`):
+  - The base-year-calibrated bridge is built. The identity holds to ≤1.4e-17 on the real names, and OI_0 is put on the desk's revenue basis.
+  - A unit bug in the consensus inversion was fixed ($ against $B).
+  - GOLD's bar now reads `population_ranges.family`.
+  - Readiness of the 7 restoration names: the bridge is ok for MSGE, TASK, DAC, BUD and MCY; GOLD has no filed operating income; PACS has no base_cf (D&A not filed in 10-Ks). Consensus is comparable for TASK and PACS, and for GOLD in year 2 only.
+- **Rulings:**
+  - **PACS:** `no_call base_cf_unavailable` (a recorded data no-call, not a run-stopping defect). r26 invents no base.
+  - **GOLD and any such name (generic):** with no filed operating income in the window, the X basis is used throughout (the X bar, X wording, the identity bridge), stamped `x_basis_no_operating_income`.
+  - **BUD:** with no filed diluted shares, the consensus correction may use the pack's code-owned share count, stamped `filed_eps_from_pack_shares`.
+  - The vintage test and the ≥3-analyst rule are unchanged: DAC has 1 analyst, and MCY has a real 24% basis gap.
+  - **The canary:** the registered names (MSGE, TASK, DAC, BUD) stay. Where consensus is not comparable, the canary reveals a **constructed test consensus** (the stage-2 median Base margins ± 3 points), so the pull is measurable on all four. This is test-only, never present in a production run, and labelled in the run record.
