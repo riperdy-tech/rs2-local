@@ -399,3 +399,24 @@ def test_the_stage_sessions_take_only_the_artifacts_the_spec_names():
         with pytest.raises(NotImplementedError, match="R26-A2"):
             fn(run_dir="x")
     assert set(r26.ARTIFACTS.values()) == {"dossier.json", "forecasts.json", "reveal.json", "final.json"}
+
+
+# ---------------------------------------------------------------- coordinator ruling 2: the pack company's name for pack: sources only
+
+def test_pack_company_name_and_ticker_satisfy_entity_words_for_pack_sources_only():
+    q = "Operating revenues increased by $12.2 million."
+    pack_text = "## DATA 5 - X\n" + q + (" ." * 300) + "\n"
+    ev = r26.Evidence(pack_text, {})
+    led = r26.Ledger(ev, company="Danaos Corporation", ticker="DAC")
+    f = _fact(source="pack:data-5", quote=q, entity="Danaos Corporation DAC", metric="operating revenues", value=12.2)
+    led.register({"facts": [f]})
+    r = led.facts[0]
+    assert r["usable"] and r["statuses"]["entity_from_pack_company"] == ["danaos"] and r["statuses"]["missing_words"] == []
+    # a metric word is never waived, and other entity words still count
+    led.register({"facts": [dict(f, fact_id="F2", entity="Danaos fleet", metric="danaos revenues")]})
+    assert led.facts[1]["statuses"]["missing_words"] == ["danaos", "fleet"] and not led.facts[1]["usable"]
+    # page: sources stay strict
+    ev.fetched["https://x.test/a"] = "https://x.test/a"
+    ev.url_cache["https://x.test/a"] = {"full_text": q + (" ." * 300)}
+    led.register({"facts": [dict(f, fact_id="F3", source="page:https://x.test/a")]})
+    assert led.facts[2]["statuses"]["missing_words"] == ["danaos"] and "entity_from_pack_company" not in led.facts[2]["statuses"] and not led.facts[2]["usable"]

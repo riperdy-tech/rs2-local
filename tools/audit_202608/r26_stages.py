@@ -317,7 +317,12 @@ def validate_fact_shape(f):
     return bad
 
 
-def check_fact(fact, source_text):
+def company_words(company, ticker):
+    """The folded content words of the pack company's name plus its ticker (lower case): the entity words a `pack:` fact need not find near its quote."""
+    return content_words(company) | ({_stem(ticker.lower())} if ticker else set())
+
+
+def check_fact(fact, source_text, waived=None):
     """The SPEC section 1 annotations of one well-formed fact against the text of its source (None when the source could not be resolved).
     Returns {"quote_status", "quote_over_400_chars", "proximity_status", "missing_words", "value_status", "usable", "unusable_reason"}."""
     quote = fact["quote"]
@@ -328,6 +333,12 @@ def check_fact(fact, source_text):
     rec["quote_status"] = "quote_verified" if spans else "quote_not_found"
     if spans:
         miss, _ = proximity(source_text, spans, fact["entity"], fact["metric"])
+        if waived and miss:
+            # a `pack:` source: the pack is about the company, so its name tokens and ticker as ENTITY words count as satisfied (never as metric words)
+            keep = {w: w for w in content_word_forms(fact["entity"]).values() if _stem(w) not in waived}
+            miss2, _ = proximity(source_text, spans, " ".join(keep), fact["metric"])
+            rec["entity_from_pack_company"] = sorted(set(miss) - set(miss2))
+            miss = miss2
         rec["missing_words"] = miss
         rec["proximity_status"] = "metric_not_near_quote" if miss else "near"
     rec["usable"] = rec["quote_status"] == "quote_verified" and rec["proximity_status"] != "metric_not_near_quote"
@@ -380,8 +391,9 @@ class Evidence:
 class Ledger:
     """The facts of stage 1 with their annotations."""
 
-    def __init__(self, evidence):
+    def __init__(self, evidence, company=None, ticker=None):
         self.evidence = evidence
+        self.waived = company_words(company, ticker)
         self.facts = []             # annotated facts, in registration order
         self.rejected = []          # {"fact_id", "why"} - a fact that could not be kept (a repeated fact_id)
         self.done = False
@@ -419,8 +431,10 @@ class Ledger:
                 shown.append({"fact_id": rec["fact_id"], "status": rec["unusable_reason"]})
                 continue
             text, why = self.evidence.resolve(f["source"])
-            chk = check_fact(f, text)
+            chk = check_fact(f, text, self.waived if f["source"].strip().lower().startswith("pack:") else None)
             statuses = {k: chk[k] for k in ("quote_status", "proximity_status", "missing_words", "value_status", "quote_over_400_chars")}
+            if chk.get("entity_from_pack_company"):
+                statuses["entity_from_pack_company"] = chk["entity_from_pack_company"]
             if why:
                 statuses["source_problem"] = why
             rec = {**f, "statuses": statuses, "usable": chk["usable"], "unusable_reason": chk["unusable_reason"]}
@@ -564,7 +578,7 @@ def _result_text(result):
 
 
 def run_stage1(model, pack, run_dir, think="high", ctx=98304, num_predict=49152, seed=None, timeout=14400, verbose=True, draft_num_predict=None,
-               temperature=None, query_cache=None, url_cache=None, max_search_calls=25, max_turns=MAX_TURNS, num_batch=None, ticker=None):
+               temperature=None, query_cache=None, url_cache=None, max_search_calls=25, max_turns=MAX_TURNS, num_batch=None, ticker=None, company=None):
     """Run the stage-1 session on `pack` (the blind pack; a trailing valuation TASK is cut off) and write <run_dir>/dossier.json. Returns the dossier.
     Also written: _research_snapshot.json (the tool calls, in the format of chat_with_tools), evidence_query_cache.json, evidence_url_cache.json and the
     turn log under turns/ (stage1_<n>.json, run_hashes.json). The session uses the tools search_web, fetch_page and register_facts only."""
@@ -577,7 +591,7 @@ def run_stage1(model, pack, run_dir, think="high", ctx=98304, num_predict=49152,
     q_cache = query_cache if query_cache is not None else {}
     u_cache = url_cache if url_cache is not None else {}
     evidence = Evidence(body_pack, u_cache)
-    ledger = Ledger(evidence)
+    ledger = Ledger(evidence, company, ticker)
     primary_items = sec_primary.parse_pack(body_pack)
     opts = {"num_ctx": ctx, **({"num_batch": num_batch} if num_batch else {}), "num_predict": num_predict, "repeat_penalty": 1.05, "presence_penalty": 0.05}
     if seed is not None:

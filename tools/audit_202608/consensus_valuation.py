@@ -2389,7 +2389,7 @@ def main():
                     model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT, num_batch=num_batch,
                     seed=i + seed_base, draft_num_predict=draft_num_predict, temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
-                    url_cache=evidence_url_cache if evidence_store_dir is not None else None, ticker=t)
+                    url_cache=evidence_url_cache if evidence_store_dir is not None else None, ticker=t, company=company_name)
                 if not (rep or "").strip():
                     # no report is a failed sample for this arm: the empty-report retry below runs the single-session analyst, which is not this arm
                     print(f"  sample {i}: arm r26 returned no report", flush=True)
