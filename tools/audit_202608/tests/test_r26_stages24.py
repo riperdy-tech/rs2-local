@@ -43,7 +43,7 @@ def dossier():
 
 
 def valuation(price=PRICE, bridge=None):
-    return {"rev0": 100.0, "base_cf": BASE_CF, "bridge_facts": dict(DFACTS if bridge is None else bridge), "desk_params": r26.default_desk_params(),
+    return {"family": "operating", "family_unresolved": None, "rev0": 100.0, "base_cf": BASE_CF, "bridge_facts": dict(DFACTS if bridge is None else bridge), "desk_params": r26.default_desk_params(),
             "desk_context": _ctx(price=price, desk_schema=None), "price": price, "min_mos": None, "run_date": RUN_DATE}
 
 
@@ -56,8 +56,20 @@ def fcast(m=0.40, **over):
         s["long_run_margin_op"] = m + d
         s["normalized"]["baseline"] = "last"
         s["normalized"]["reason"] = "REASON-MARKER of stage two"
+    f["scenarios"]["Base"].update(margin_persistence={"label": "structural", "fact_ids": ["F1"]}, cycle_position={"label": "mid", "fact_ids": ["F2"]},
+                                  growth_trajectory={"label": "decelerating", "fact_ids": ["F1"]})
     f.update(over)
     return f
+
+
+REMOVED = {"removed_lines": [
+    {"cls": "price", "section": "DATA 2 - PRICE", "id": "a", "text": "- Price: $400.00 (2026-10-16)"},
+    {"cls": "price_action", "section": "DATA 2.5 - PRICE ACTION", "id": "b", "text": "- 12-1 momentum: +31.0%; above the 200-day mean"},
+    {"cls": "market_cap", "section": "DATA 2 - PRICE", "id": "c", "text": "- Market cap: $9.9B"},
+    {"cls": "multiple", "section": "DATA 8", "id": "d", "text": "- Trailing P/E: 13.1x"},
+    {"cls": "consensus", "section": "DATA 8", "id": "e", "text": "- CONSENSUS EPS next FY: 77.7"},
+    {"cls": "price_target", "section": "DATA 8", "id": "f", "text": "- Analyst price target: $555"},
+    {"cls": "reference", "section": "DEFAULTS", "id": "g", "text": "- consensus_implied_value: 321"}]}
 
 
 def sub(fc):
@@ -123,7 +135,8 @@ def test_the_stage_2_tool_schema_is_the_spec_s_submit_forecast():
     props = t["parameters"]["properties"]
     assert props["frame"]["enum"] == ["equity", "firm"] and set(props["scenarios"]["properties"]) == {"Base", "Bull", "Bear"}
     sc = props["scenarios"]["properties"]["Base"]["properties"]
-    assert set(sc) == {"near_term", "normalized", "transition", "transition_year", "long_run_margin_op", "terminal_g", "terminal_ronic", "fade_years", "prob", "long_run_fact_ids"}
+    assert set(sc) == {"near_term", "normalized", "transition", "transition_year", "long_run_margin_op", "terminal_g", "terminal_ronic", "fade_years", "prob", "long_run_fact_ids",
+                       "margin_persistence", "cycle_position", "growth_trajectory"}      # the Base also classifies (coordinator ruling a)
     assert set(sc["near_term"]["properties"]) == {"rev_growth", "op_margin", "fact_ids"}
     assert set(sc["normalized"]["properties"]) == {"year", "rev_growth", "baseline", "delta_pts", "fact_ids", "reason"}
     assert sc["normalized"]["properties"]["baseline"]["enum"] == ["min", "p25", "median", "p75", "max", "last"]
@@ -312,7 +325,7 @@ def test_every_numeric_contract_field_comes_from_code(tmp_path, monkeypatch):
     assert (v["base_iv"], v["bull_iv"], v["bear_iv"]) == (pub["Base"], pub["Bull"], pub["Bear"]) and v["base_probability"] == 0.5 and v["bull_probability"] == 0.25
     assert v["verdict_label"] == "hold" and v["kelly_fraction_pct"] is not None and v["near_term_earnings"] != 99.0 and v["normalized_earnings"] is not None
     assert "conviction_score" not in v and "business_quality_moat" not in v and "reentry_tranches" not in v
-    assert fi["contract_text"] == {"margin_persistence": "structural", "cycle_evidence": "text", "momentum_flip_condition": liar["momentum_flip_condition"]}
+    assert fi["contract_text"] == {"cycle_evidence": "text", "momentum_flip_condition": liar["momentum_flip_condition"]} and v["margin_persistence"] == "structural"
     r = v["r26"]
     assert v["pilot_arm"] == "r26" and v["desk_schema"] == "26" and v["pack_revision"] == 26 and r["contract_unfilled"] == ["conviction_score", "business_quality_moat", "reentry_tranches"]
     assert r["model_typed_numbers_in"] == ["momentum_flip_condition"] and r["actionable"] is True and fi["actionable"] is True and fi["flags"] == []
@@ -459,7 +472,8 @@ def test_the_four_stages_end_to_end(tmp_path, monkeypatch, stub_world):
              *THREE, crux_args("revise"), revision(0.42), memo_step()]
     script = Script(*steps)
     monkeypatch.setattr(prov, "chat", script)
-    facts = {"long_run": dict(LR), "owner_earnings_default_b": BASE_CF, "op_margin_bar": DBAR, "consensus_corrected": cons_op(0.45), "r26_bridge_facts": dict(DFACTS), "pilot_arm": "r26"}
+    facts = {"long_run": dict(LR), "owner_earnings_default_b": BASE_CF, "op_margin_bar": DBAR, "consensus_corrected": cons_op(0.45), "r26_bridge_facts": dict(DFACTS), "pilot_arm": "r26",
+             "population_ranges": {"family": "operating"}, "r26_blind_source": REMOVED}
     report, think, meta = r26.run_sample("m", PACK, tmp_path / "s1", facts=facts, price=PRICE, desk_context=_ctx(price=PRICE, desk_schema=None), seed=700, ticker="DAC",
                                          company="Danaos Corporation", verbose=False)
     d = tmp_path / "s1"
@@ -521,7 +535,7 @@ def test_a_missing_code_owned_input_is_named():
         r26.valuation_inputs({"long_run": dict(LR)}, 10.0, {})
     with pytest.raises(r26.R26InputError, match="long_run.rev_L"):
         r26.valuation_inputs({"owner_earnings_default_b": 1.0, "long_run": {}}, 10.0, {})
-    v = r26.valuation_inputs({"owner_earnings_default_b": 1.0, "long_run": dict(LR), "r26_bridge_facts": {"family": "financial"}}, 10.0, {"run_date": "2026-01-01"})
+    v = r26.valuation_inputs({"owner_earnings_default_b": 1.0, "long_run": dict(LR), "r26_bridge_facts": {"family": "x"}, "population_ranges": {"family": "financial"}}, 10.0, {"run_date": "2026-01-01"})
     assert v["rev0"] == LR["rev_L"] and v["bridge_facts"] == {"family": "financial"} and v["run_date"] == "2026-01-01"
 
 
@@ -529,3 +543,113 @@ def test_a_pack_without_the_operating_margin_bar_fails_the_sample_by_name(tmp_pa
     monkeypatch.setattr(prov, "chat", Script(call("register_facts", facts=[], done=True, research_summary="s")))
     with pytest.raises(r26.R26InputError, match="op_margin_bar"):
         r26.run_sample("m", PACK, tmp_path, facts={"long_run": dict(LR), "owner_earnings_default_b": BASE_CF}, price=PRICE, desk_context={}, seed=1, verbose=False)
+
+
+# ---------------------------------------------------------------- coordinator changes (a) labels, (b) revealed block, (c) family, (d) crux inputs
+
+def test_the_base_classifications_are_stage_2_structure_with_fact_ids(tmp_path, monkeypatch):
+    props = late.SUBMIT_FORECAST_TOOL["function"]["parameters"]["properties"]["scenarios"]["properties"]
+    for k, enum in late.LABEL_ENUMS.items():
+        assert props["Base"]["properties"][k]["properties"]["label"]["enum"] == list(enum) and k in props["Base"]["required"] and k not in props["Bull"]["properties"]
+    bad = fcast()
+    bad["scenarios"]["Base"]["cycle_position"] = {"label": "sideways", "fact_ids": ["F77"]}
+    del bad["scenarios"]["Base"]["growth_trajectory"]
+    p = {(x["field"], x["problem"].split("_one_of")[0]) for x in late.validate_labels(bad, dossier())}
+    assert ("Base.cycle_position.label", "not") in p and ("Base.cycle_position.fact_ids", "fact_id_not_in_dossier") in p and ("Base.growth_trajectory", "missing_or_not_an_object") in p
+    # a forecast without them is a structure failure (one repair), and the TASK says what they mean in plain words
+    nolab = fcast()
+    del nolab["scenarios"]["Base"]["margin_persistence"]
+    _, fc, _, _ = run_stages(tmp_path, monkeypatch, [sub(nolab), sub(fcast()), sub(fcast()), sub(fcast())], stages=(2,))
+    assert fc["samples"][0]["repair_used"] and fc["samples"][0]["status"] == "valued"
+    assert "margin_persistence" in late.STAGE2_TASK and "partly_structural" in late.STAGE2_TASK and not re.search(r"\d", late.STAGE2_TASK.split("8. Classify")[1].split("9. Code")[0])
+
+
+def test_stage_4_fills_the_labels_from_the_final_forecast_and_the_model_cannot_set_them(tmp_path, monkeypatch):
+    rev = revision(0.42)
+    rev.update({"role": "assistant"})
+    rf_ = dict(rev["tool_calls"][0]["function"]["arguments"])
+    rf_["scenarios"]["Base"]["cycle_position"] = {"label": "peak", "fact_ids": ["F2"]}
+    rev = call("submit_forecast", **rf_)
+    _, _, rv, fi = run_stages(tmp_path, monkeypatch, THREE + [crux_args("revise"), rev,
+                                                              memo_step(contract={"cycle_position": "trough", "cycle_position_evidence": "a quote", "margin_persistence": "transient"})])
+    v = fi["verdict"]
+    assert (v["margin_persistence"], v["cycle_position"], v["growth_trajectory"]) == ("structural", "peak", "decelerating")
+    assert fi["contract_text"] == {"cycle_position_evidence": "a quote"} and "cycle_position" not in late.TEXT_FIELDS
+    blk = json.loads(re.search(r"```json:underwriting\s*(\{.*?\})\s*```", fi["report"], re.S).group(1))
+    assert "cycle_position" not in blk or blk["cycle_position"] == "peak"
+    assert any(r["label"] == "Base cycle position" and r["value"] == "peak" for r in fi["table"])
+    assert "(structural, partly_structural" not in late.STAGE4_TASK.split("momentum_view")[0].split("4. End")[1]
+    # a memo that contradicts the label is flagged
+    sw = lambda memo: memo.replace("Base cycle position: peak", "Base cycle position: trough")
+    _, _, _, fi2 = run_stages(tmp_path / "b", monkeypatch, THREE + [crux_args("keep"), memo_step(mutate=sw)])
+    assert fi2["verifier"]["flags"] == []                      # the keep forecast says mid; the memo copied the table
+    sw2 = lambda memo: memo.replace("Base cycle position: mid", "Base cycle position: peak")
+    _, _, _, fi3 = run_stages(tmp_path / "c", monkeypatch, THREE + [crux_args("keep"), memo_step(mutate=sw2)])
+    assert fi3["verifier"]["flags"] == ["memo_forecast_mismatch"]
+
+
+def test_the_revealed_block_is_the_price_derived_removed_lines_only_and_reaches_stages_3_and_4(tmp_path, monkeypatch):
+    blk = late.revealed_price_context({"r26_blind_source": REMOVED})
+    assert "12-1 momentum" in blk and "Market cap" in blk and "Trailing P/E" in blk and "Price: $400.00" in blk and "[DATA 2.5 - PRICE ACTION]" in blk
+    for banned in ("CONSENSUS EPS", "price target", "consensus_implied_value"):
+        assert banned not in blk
+    assert late.revealed_price_context({}) is None
+    script = Script(*(THREE + [crux_args("keep"), memo_step()]))
+    monkeypatch.setattr(prov, "chat", script)
+    val = valuation()
+    kw = dict(run_dir=tmp_path, model="m", dossier=dossier(), valuation=val, op_margin_bar=DBAR, verbose=False)
+    fc = r26.run_stage2(blind_pack="B", seed=1, **kw)
+    rv = r26.run_stage3(blind_pack="B", fetch_calls=FETCH, company="Danaos Corporation", ticker="DAC", facts={}, forecasts=fc, revealed=blk, **kw)
+    r26.run_stage4(facts={}, blind_pack="B", fetch_calls=FETCH, company="Danaos Corporation", ticker="DAC", forecasts=fc, reveal=rv, revealed=blk, **kw)
+    s2, s3, s4 = (script.bodies[0], script.bodies[3], script.bodies[4])
+    assert "REVEALED" not in s2["messages"][0]["content"]
+    assert "REVEALED: price and momentum" in s3["messages"][0]["content"] and "12-1 momentum" in s3["messages"][0]["content"]
+    assert "REVEALED: price and momentum" in s4["messages"][0]["content"] and "CONSENSUS EPS" not in s4["messages"][0]["content"]
+
+
+@pytest.mark.parametrize("pr,bar,expect", [({"family": "financial"}, {"basis": "x"}, ("financial", None)), ({"family": "operating"}, {"basis": "operating"}, ("operating", None)),
+                                           ({"family": "commodity"}, None, ("operating", None)), ({"family": None}, None, (None, "family_unresolved")),
+                                           ({"family": "family_not_built"}, None, (None, "family_unresolved")), (None, None, (None, "family_unresolved")),
+                                           ({"family": "financial"}, {"basis": "operating"}, (None, "family_unresolved")),
+                                           ({"family": "operating"}, {"basis": "x"}, (None, "family_unresolved"))])
+def test_the_family_is_the_pack_facts_classification_never_a_default(pr, bar, expect):
+    fam, why = r26.resolve_family({"population_ranges": pr}, bar)
+    assert fam == expect[0] and ((why or "").startswith(expect[1]) if expect[1] else why is None)
+
+
+def test_financial_family_uses_the_identity_bridge_and_an_unresolved_family_is_a_no_call_with_no_model_call(tmp_path, monkeypatch):
+    facts = {"long_run": dict(LR), "owner_earnings_default_b": BASE_CF, "population_ranges": {"family": "financial"}, "op_margin_bar": dict(DBAR, basis="x")}
+    v = r26.valuation_inputs(facts, PRICE, _ctx(price=PRICE, desk_schema=None))
+    assert v["family"] == "financial" and v["bridge_facts"]["family"] == "financial" and v["family_unresolved"] is None
+    _, fc, _, _ = run_stages(tmp_path, monkeypatch, [sub(fcast())] * 3, stages=(2,), bridge={"family": "financial"})
+    assert fc["samples"][0]["valuation"]["scenarios"]["Base"]["bridge"]["rows"][0]["identity"] is True
+    u = r26.valuation_inputs(dict(facts, population_ranges={"family": None}), PRICE, _ctx(price=PRICE, desk_schema=None))
+    assert u["family"] is None and u["family_unresolved"].startswith("family_unresolved")
+    script = Script()                                                         # no steps: any model call would fail
+    monkeypatch.setattr(prov, "chat", script)
+    kw = dict(run_dir=tmp_path / "u", model="m", dossier=dossier(), valuation=u, op_margin_bar=DBAR, verbose=False)
+    f2 = r26.run_stage2(blind_pack="B", seed=1, **kw)
+    r2 = r26.run_stage3(blind_pack="B", forecasts=f2, **kw)
+    fi = r26.run_stage4(forecasts=f2, reveal=r2, **kw)
+    assert script.bodies == [] and f2["family_unresolved"] and r2["no_call_reasons"] == ["family_unresolved"] and not r2["called"]
+    assert fi["no_call"] and fi["actionable"] is False and fi["verdict"]["verdict_label"] == "hold" and fi["verdict"]["no_call"]["reasons"] == ["family_unresolved"]
+    assert fi["verdict"]["pilot_arm"] == "r26" and fi["verdict"]["desk_schema"] == "26" and "r26_no_call" in fi["flags"]
+
+
+def test_the_crux_inputs_are_those_the_25_2_solver_supports():
+    import financial_model_tool as fmt
+    res = r26._value(fcast(), valuation(), DBAR)
+    pi = res["desk"]["price_implied"]
+    # on this path the solver marks exactly these two as not applicable; coe and terminal_g need the context's rf_eff / nominal_gdp_trend (a real pack has them)
+    na = {k for k, b in pi.items() if isinstance(b, dict) and "not applicable under desk schema" in str(b.get("not_available"))}
+    assert na == {"growth_years_3_5", "year2_level"} and set(late.CRUX_INPUTS) == set(crux_check.J) - na
+    ctx = dict(valuation()["desk_context"], rf_eff=0.04, nominal_gdp_trend=0.04)
+    pi2 = r26.rf.value_forecast(fcast(), DBAR, 100.0, DFACTS, base_cf=BASE_CF, desk_params=r26.default_desk_params(), desk_context=ctx)["desk"]["price_implied"]
+    assert not pi2["coe"].get("not_available") and not pi2["terminal_g"].get("not_available")
+    assert [e for e in late.STATE_CRUX_TOOL["function"]["parameters"]["properties"]["crux"]["items"]["properties"]["input"]["enum"]] == list(late.CRUX_INPUTS)
+
+
+def test_a_crux_on_an_input_the_path_does_not_offer_is_a_form_problem(tmp_path, monkeypatch):
+    bad = crux_args("keep", input="year2_level")
+    script, _, rv, _ = run_stages(tmp_path, monkeypatch, THREE + [bad, bad, memo_step()])
+    assert rv["crux"]["state"] == "form_failed" and rv["no_call"] and "not offered on this desk path" in " ".join(rv["crux"]["form_problems"])

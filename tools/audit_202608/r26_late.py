@@ -56,6 +56,43 @@ def _ids(desc):
     return {"type": "array", "items": {"type": "string"}, "description": desc}
 
 
+LABEL_ENUMS = {"margin_persistence": ("structural", "partly_structural", "transient"), "cycle_position": ("trough", "mid", "peak", "not_cyclical"),
+               "growth_trajectory": ("accelerating", "steady", "decelerating", "shrinking")}
+LABEL_WORDS = {"margin_persistence": "margin persistence", "cycle_position": "cycle position", "growth_trajectory": "growth trajectory"}
+LABEL_DESC = {"margin_persistence": "structural: the margin level rests on lasting advantages; partly_structural: part of it does; transient: it is a passing condition.",
+              "cycle_position": "where the business is in its cycle now: trough, mid, peak, or not_cyclical.",
+              "growth_trajectory": "accelerating, steady, decelerating or shrinking: the direction of revenue growth."}
+CRUX_INPUTS = ("coe", "fade_years", "terminal_g", "terminal_ronic", "long_run_margin")      # what the price-implied solver supports on the 25.2 path (growth_years_3_5 and year2_level are "not applicable")
+
+
+def validate_labels(forecast, dossier=None):
+    """Structure problems of the Base's three classifications (stage 2 gives them; code fills the contract from them): each {"label": enum, "fact_ids": [existing ids]}."""
+    out = []
+    base = ((forecast or {}).get("scenarios") or {}).get("Base")
+    if not isinstance(base, dict):
+        return out                                     # rf.validate_forecast names a missing Base
+    known = rf.dossier_fact_ids(dossier) if dossier is not None else None
+    for k, enum in LABEL_ENUMS.items():
+        v = base.get(k)
+        if not isinstance(v, dict):
+            out.append({"field": f"Base.{k}", "problem": "missing_or_not_an_object"})
+            continue
+        if v.get("label") not in enum:
+            out.append({"field": f"Base.{k}.label", "problem": "not_one_of_" + "|".join(enum)})
+        ids = v.get("fact_ids")
+        if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
+            out.append({"field": f"Base.{k}.fact_ids", "problem": "not_a_list_of_fact_ids"})
+        elif known is not None and [x for x in ids if x not in known]:
+            out.append({"field": f"Base.{k}.fact_ids", "problem": "fact_id_not_in_dossier", "detail": ", ".join(x for x in ids if x not in known)})
+    return out
+
+
+def _label_schema():
+    return {k: {"type": "object", "description": LABEL_DESC[k], "properties": {
+        "label": {"type": "string", "enum": list(LABEL_ENUMS[k])}, "fact_ids": _ids("The ids of the dossier facts this classification rests on.")},
+        "required": ["label", "fact_ids"]} for k in LABEL_ENUMS}
+
+
 def scenario_schema():
     return {
         "type": "object",
@@ -88,10 +125,13 @@ def scenario_schema():
 
 def forecast_properties():
     sc = scenario_schema()
+    base = copy.deepcopy(sc)
+    base["properties"].update(_label_schema())
+    base["required"] = base["required"] + list(LABEL_ENUMS)
     return {
         "discount_rate": {"type": "number", "description": "The annual discount rate, a decimal."},
         "frame": {"type": "string", "enum": list(rf.FRAMES), "description": "equity values the flows after interest at the cost of equity; firm values them before interest at the cost of capital."},
-        "scenarios": {"type": "object", "properties": {"Base": copy.deepcopy(sc), "Bull": copy.deepcopy(sc), "Bear": copy.deepcopy(sc)}, "required": list(SCEN)},
+        "scenarios": {"type": "object", "properties": {"Base": base, "Bull": copy.deepcopy(sc), "Bear": copy.deepcopy(sc)}, "required": list(SCEN)},
     }
 
 
@@ -131,7 +171,7 @@ STATE_CRUX_TOOL = {
                         "Code resolves every quote in it against its source."),
         "parameters": {"type": "object", "properties": {
             "crux": {"type": "array", "minItems": 1, "maxItems": 3, "description": "One to three entries.", "items": {"type": "object", "properties": {
-                "input": {"type": "string", "enum": ["coe", "growth_years_3_5", "fade_years", "terminal_g", "terminal_ronic", "year2_level", "long_run_margin"]},
+                "input": {"type": "string", "enum": list(CRUX_INPUTS)},
                 "reason": {"type": "string", "description": "Why this company's value of the input differs from, or matches, what the price implies, and by how much."},
                 "citations": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "object", "properties": {
                     "source": {"type": "string", "description": "The source of a dossier fact, exactly as the dossier lists it (pack:primary-p1, pack:data-5, page:<url>)."},
@@ -158,7 +198,8 @@ You are the analyst for the company in the data pack above. In this stage you fo
 5. A normalization that comes later than year 5 (a contract that runs for many years, a ramp, a cycle) is not given as N. Give the state of year 5, and express the later normalization through long_run_margin_op, the operating margin the business earns when the fade after year 5 has finished, and fade_years, the whole years that fade takes (growth also moves from year 5 to terminal_g over it).
 6. Also give for each scenario terminal_g, terminal_ronic (the return on new investment that pays for growth after the fade), prob (the three probabilities add to one), and for the forecast the discount_rate and the frame (equity: flows after interest at the cost of equity; firm: flows before interest at the cost of capital). The pack's flows are after interest.
 7. Evidence. In near_term.fact_ids and normalized.fact_ids cite the dossier facts each rests on, and in long_run_fact_ids the facts behind long_run_margin_op. A fact speaks only for the span its duration states: code values what happens when that evidence expires and reports it, so rest the normalized state and the long run on evidence of matching duration. Cite the facts listed as usable; a fact listed as unusable cannot be cited as evidence. Give in normalized.reason, in at most 60 words, why this is the normalized state.
-8. Code checks the structure only: the fields, finite numbers, the enums and that the fact ids exist. It never bounds a number, so the judgment is yours. If the structure is wrong you get one correction."""
+8. Classify the Base, each with the dossier facts it rests on (fact_ids): margin_persistence says whether the margin level rests on lasting advantages (structural), only partly does (partly_structural) or is a passing condition (transient); cycle_position says where the business is in its cycle now (trough, mid, peak or not_cyclical); growth_trajectory says whether revenue growth is accelerating, steady, decelerating or shrinking. Each is judged from its own evidence and none is forced by another.
+9. Code checks the structure only: the fields, finite numbers, the enums and that the fact ids exist. It never bounds a number, so the judgment is yours. If the structure is wrong you get one correction."""
 
 STAGE3_TASK = """STAGE 3 OF 4: THE REVEAL AND THE AUDIT.
 
@@ -166,19 +207,19 @@ In stage 2 a forecast was made blind, in three samples. You now see the forecast
 
 Treat the reveal as an audit of the market's view, not as an answer. The price is the market's opinion; the consensus is analysts' opinion; neither is evidence. Ask what the market must believe for the price to be right, and whether the dossier's facts support that belief, your forecast, or neither. Move a number only for a reason that a fact in the dossier supplies.
 
-(a) The crux. Call state_crux. Name one to three of the desk's judgment inputs (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level, long_run_margin) that decide whether the price is right. For each give your reason (why this company's value of the input is what you say, against what the price implies, and by how much) and one to five citations {{source, date, quote}} of this company's own evidence, taken from the dossier: the source exactly as a dossier fact lists it, the date of the source document (when you cannot tell, today's date), and a quote of 30 to 600 characters copied exactly from that source. Code resolves every quote. A crux is required whatever your view: if the evidence supports the price, name the inputs on which it does. One entry that fails makes the whole crux invalid, and without a valid crux there is no call.
+(a) The crux. Call state_crux. Name one to three of the desk's judgment inputs (coe, fade_years, terminal_g, terminal_ronic, long_run_margin) that decide whether the price is right; the growth of years 3 to 5 and the year-2 level are declared in the forecast and are not offered. For each give your reason (why this company's value of the input is what you say, against what the price implies, and by how much) and one to five citations {{source, date, quote}} of this company's own evidence, taken from the dossier: the source exactly as a dossier fact lists it, the date of the source document (when you cannot tell, today's date), and a quote of 30 to 600 characters copied exactly from that source. Code resolves every quote. A crux is required whatever your view: if the evidence supports the price, name the inputs on which it does. One entry that fails makes the whole crux invalid, and without a valid crux there is no call.
 (b) Keep or revise. In the same state_crux call give decision: keep, or revise. To revise, call submit_forecast once with the full revised forecast, revision_fact_ids (at least one dossier fact) and revision_reason (why that fact was underweighted in the forecast you were shown). Code accepts one revision only; a second call is refused and the stage closes. A revision with no fact that supports it is not accepted, and a number that moved toward the consensus or the price without a fact is recorded by code as a pull toward it.
 
 You cannot see the reasoning behind the stage-2 forecast, only its numbers; judge it by the dossier."""
 
 STAGE4_TASK = """STAGE 4 OF 4: THE MEMORANDUM.
 
-The valuation is finished and frozen. Below are the final desk table (every number in it was computed by code), the conversion table, the crux with code's verification of its quotes, the stage-2 spread, the diagnostics, and the research dossier. Write the memorandum that explains the locked numbers. You cannot change a number, and you must never restate a number that is not in the table.
+The valuation is finished and frozen. Below are the revealed price and momentum facts, the final desk table (every number in it was computed by code), the conversion table, the crux with code's verification of its quotes, the stage-2 spread, the diagnostics, and the research dossier. Write the memorandum that explains the locked numbers. You cannot change a number, and you must never restate a number that is not in the table.
 
 1. Write SECTION 0 first: its first line is `Verdict: undervalued`, `Verdict: overvalued`, `Verdict: hold` or `Verdict: no call`, the word the table gives under "Verdict", with one sentence on why. Then the sections you need: the business and what drives its economics; the forecast and why (the normalized state, the transition and the baseline, with the dossier facts behind them by id); the crux, the quotes that support it and what code found; what the diagnostics show (the alternative path if a fact's evidence expires, the consensus divergence, the spread); the risks and what would change the view.
-2. Quote a number only under its label from the table, written exactly as the label is written (for example `Base value per share: $...`), and never round it more coarsely than the table does by more than the digits you write. Do not compute new numbers: no averages, differences or ratios of your own. In SECTION 2 state the forecast's labels exactly as the table writes them (for example `Base transition: ...`, `Base baseline: ...`). Code checks every labelled number, the verdict word and these labels against the table and flags a difference.
+2. Quote a number only under its label from the table, written exactly as the label is written (for example `Base value per share: $...`), and never round it more coarsely than the table does by more than the digits you write. Do not compute new numbers: no averages, differences or ratios of your own. In SECTION 2 state the forecast's labels exactly as the table writes them (for example `Base transition: ...`, `Base baseline: ...`, `Base margin persistence: ...`). Code checks every labelled number, the verdict word and these labels against the table and flags a difference.
 3. If the table says no call, say so in SECTION 0 and state the reasons the table gives; do not argue a verdict.
-4. End with the contract: a ```json:underwriting block holding only the text fields listed here, each as the system text describes: catalysts (a list of {date, event, direction, estimates_moved, scenario}), cycle_evidence, normalization_reason, margin_persistence (structural, partly_structural or transient), margin_persistence_evidence, cycle_position (trough, mid, peak or not_cyclical), cycle_position_evidence, growth_trajectory (accelerating, steady, decelerating or shrinking), growth_trajectory_evidence, momentum_view (confirming, neutral or contradicting), entry_timing (buy_now, wait_for_momentum or avoid), position_basis (value, momentum or none), momentum_evidence, momentum_flip_condition and momentum_break_rule ({metric, comparator, threshold, window_days}), invalidation_rules (a list of {metric, comparator, threshold, window, source}) and thesis_invalidation_trigger. Code fills every number of the contract (values, probabilities, sizes, margins) from the frozen table; leave them out."""
+4. End with the contract: a ```json:underwriting block holding only the text fields listed here, each as the system text describes: catalysts (a list of {date, event, direction, estimates_moved, scenario}), cycle_evidence, normalization_reason, margin_persistence_evidence, cycle_position_evidence, growth_trajectory_evidence (one line each: where the evidence for the Base classification in the table is; the classifications themselves are the forecast's and code fills them), momentum_view (confirming, neutral or contradicting; ground it in the REVEALED block), entry_timing (buy_now, wait_for_momentum or avoid), position_basis (value, momentum or none), momentum_evidence, momentum_flip_condition and momentum_break_rule ({metric, comparator, threshold, window_days}), invalidation_rules (a list of {metric, comparator, threshold, window, source}) and thesis_invalidation_trigger. Code fills every number of the contract (values, probabilities, sizes, margins) from the frozen table; leave them out."""
 
 
 # ---------------------------------------------------------------- renderers
@@ -230,6 +271,9 @@ def render_bar(bar):
 def render_forecast_numbers(fc):
     """The forecast's numbers only: the reason text of the normalized state (stage 2's reasoning) is never shown."""
     out = [f"Discount rate {_p(fc.get('discount_rate'), 2)}, frame {fc.get('frame')}"]
+    b = fc["scenarios"]["Base"]
+    if all(isinstance(b.get(k), dict) for k in LABEL_ENUMS):
+        out.append("Base classifications: " + "; ".join(f"{LABEL_WORDS[k]} {b[k]['label']} (facts {', '.join(b[k].get('fact_ids') or []) or 'none'})" for k in LABEL_ENUMS))
     for name in SCEN:
         s = fc["scenarios"][name]
         nt, nm = s["near_term"], s["normalized"]
@@ -280,6 +324,26 @@ def render_sample_values(values, median_index, spread):
 
 def render_price(price):
     return f"MARKET PRICE: ${price:.2f} per share."
+
+
+PRICE_DERIVED_CLASSES = ("price", "market_cap", "multiple", "price_action")        # r26_blind's removed classes that come from the price; never consensus, price_target or reference
+
+
+def revealed_price_context(facts):
+    """The lines the blind pack removed as price-derived (r26_blind's removed-line list, facts["r26_blind_source"]["removed_lines"]), grouped by the section they came from,
+    as the "REVEALED: price and momentum" block of stages 3 and 4. The consensus classes are not here: they reach stage 3 only through consensus_corrected. None when the
+    facts hold no removed-line list."""
+    src = (facts or {}).get("r26_blind_source")
+    if not isinstance(src, dict) or not isinstance(src.get("removed_lines"), list):
+        return None
+    out, seen = ["REVEALED: price and momentum (the price-derived lines of the data pack, withheld from stages 1 and 2):"], None
+    for r in src["removed_lines"]:
+        if isinstance(r, dict) and r.get("cls") in PRICE_DERIVED_CLASSES and str(r.get("text") or "").strip():
+            if r.get("section") != seen:
+                seen = r.get("section")
+                out.append(f"[{seen}]")
+            out.append(str(r["text"]))
+    return "\n".join(out) if len(out) > 1 else "REVEALED: price and momentum: the pack held no price-derived line."
 
 
 def render_price_implied(pi_lines):
@@ -411,6 +475,10 @@ def table_rows(*, price, values, forecast, vf, verdict, pre_base=None, spread=No
         add(f"{n} baseline", s["normalized"]["baseline"], "enum", n)
         add(f"{n} baseline delta in percentage points", s["normalized"]["delta_pts"], "plain", n)
         add(f"{n} transition", s["transition"], "enum", n)
+        if n == "Base":
+            for k in LABEL_ENUMS:
+                if isinstance(s.get(k), dict):
+                    add(f"Base {LABEL_WORDS[k]}", s[k]["label"], "enum", n)
         if s.get("transition_year") is not None:
             add(f"{n} transition year", s["transition_year"], "int", n)
     return rows
@@ -525,7 +593,7 @@ def verify_memo(memo, rows):
         if r["value"] is None:
             continue
         if r["kind"] == "enum":
-            allowed = {"baseline": rf.BASELINES, "transition": rf.TRANSITIONS}[r["label"].split()[-1]]
+            allowed = {"baseline": rf.BASELINES, "transition": rf.TRANSITIONS, **{LABEL_WORDS[k].split()[-1]: v for k, v in LABEL_ENUMS.items()}}[r["label"].split()[-1]]
             m = re.compile(_CONNECT + r"(" + "|".join(sorted(allowed, key=len, reverse=True)) + r")(?![\w])", re.I).match(text, e)
             if m and m.group(1).lower() != str(r["value"]).lower():
                 details.append({"flag": "memo_forecast_mismatch", "label": r["label"], "memo": m.group(1), "table": r["value"]})
@@ -549,8 +617,7 @@ def verify_memo(memo, rows):
 
 # ---------------------------------------------------------------- the stage-4 contract text
 
-TEXT_FIELDS = ("catalysts", "cycle_evidence", "normalization_reason", "margin_persistence", "margin_persistence_evidence", "cycle_position", "cycle_position_evidence",
-               "growth_trajectory", "growth_trajectory_evidence", "momentum_view", "entry_timing", "position_basis", "momentum_evidence", "momentum_flip_condition",
+TEXT_FIELDS = ("catalysts", "cycle_evidence", "normalization_reason", "margin_persistence_evidence", "cycle_position_evidence", "growth_trajectory_evidence", "momentum_view", "entry_timing", "position_basis", "momentum_evidence", "momentum_flip_condition",
                "momentum_break_rule", "invalidation_rules", "thesis_invalidation_trigger")
 # the model-written fields that carry a number of its own (a threshold, a window): not valuation results, never in the table, recorded apart in final.json
 MODEL_TYPED_NUMBERS = ("momentum_flip_condition", "momentum_break_rule", "invalidation_rules", "catalysts")
