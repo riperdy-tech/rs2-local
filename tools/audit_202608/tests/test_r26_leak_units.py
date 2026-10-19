@@ -125,3 +125,20 @@ def test_a_narrative_number_equal_to_the_filed_eps_is_a_listed_exception_and_a_d
     b = _audit("# t\n- earnings of $2.61 per diluted share", [], {"consensus_corrected": {"vendor_eps": 2.61, "filed_eps": 2.3244444444444445}})
     assert b["pass"] is False and [x["token"] for x in b["leaks"]] == ["$2.61"]
     assert rb.text_leaks("EPS $2.32", "# t\nx", dict(facts, r26_blind_source={"removed_lines": [], "spans": []})) == []
+
+
+@pytest.mark.parametrize("sentence", [
+    "PTC Therapeutics was last at USD 59.24 on Nasdaq", "The stock closed at $82.59 on Friday.", "Shares traded at US$12.30 after the call.", "BUD is trading at $80.1.",
+    "A price of $45.10 was quoted.", "The name changed hands at $59.24 on the NYSE American.",
+])
+def test_a_sentence_stating_the_share_price_is_dropped(sentence):
+    kept, drops = rb.filter_narrative(sentence, "CATALYST BRIEF")
+    assert drops and kept.strip() == ""
+
+
+def test_usd_before_a_number_is_the_dollar_unit_class_and_a_price_leak_is_caught():
+    assert rb.unit_class("USD 59.24") == "$" and rb.unit_class("US$59.24") == "$" and rb.unit_class("USD 2.5M") == "M"
+    a = _audit("# t\nPTC Therapeutics sits at USD 59.24 today", ["| price | $59.24 |"])
+    assert a["pass"] is False and [x["token"] for x in a["leaks"]] == ["USD 59.24"]
+    b = _audit("# t\nA charge of USD 59.24 million", ["| price | $59.24 |"])
+    assert b["pass"] is True

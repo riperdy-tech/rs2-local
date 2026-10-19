@@ -140,7 +140,9 @@ DROP_RULES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
         r"\bestimates?\b|\bEPS\s+revisions?\b|\brevisions?\s+(?:up|down|upward|downward|higher|lower)\b|\brevised\s+(?:up|down|upward|downward)\b|"
         r"\b\d+\s+up\s*/\s*\d+\s+down\b|\b\d+\s+up,?\s+\d+\s+down\b|\bon the day\b|\b(?:stock|shares?)\s+[-+\u2212]\s*\d|"
         r"\b(?:stock|shares?)\s+(?:moved|rose|fell|gained|lost|dropped|jumped|climbed|slid|slipped|sank|surged|plunged|tumbled|soared|rallied)\b|"
-        r"\b(?:fell|rose|dropped|gained|lost|jumped|slid|slipped|sank|surged|plunged|tumbled|soared|rallied|climbed)\s+[-+\u2212]\s*\d", _I)),
+        r"\b(?:fell|rose|dropped|gained|lost|jumped|slid|slipped|sank|surged|plunged|tumbled|soared|rallied|climbed)\s+[-+\u2212]\s*\d|"
+        r"\b(?:last|closed|traded|trading|shares|stock|priced|opened|quoted)\s+(?:at|near|around)\s+(?:~\s*)?(?:USD|US\$|\$|EUR|GBP|CAD)\s?\d|\bprice\s+of\s+(?:~\s*)?(?:USD|US\$|\$)\s?\d|"
+        r"(?:USD|US\$|\$)\s?\d[\d,.]*\s+(?:per share\s+)?on\s+(?:the\s+)?(?:Nasdaq|NYSE(?:\s+American)?|NYSE\s*Arca|AMEX|TSX|LSE|exchange)\b", _I)),
     ("market_cap", re.compile(r"\bmarket cap(?:italization|italisation)?\b", _I)),
     ("price_multiple", re.compile(
         r"\bP/E\b|\bprice[- /]to[- /](?:earnings|book|sales|cash[- ]?flow)\b|\bEV/(?:EBITDA|sales|revenue|ebit)\b|\benterprise value (?:to|of)\b.{0,30}\b(?:ebitda|sales|revenue)\b|"
@@ -297,7 +299,7 @@ def blind_split(L: PackLines) -> Dict[str, Any]:
 
 # ---- the leak test ------------------------------------------------------------------------------------------------------------------------------
 
-_NUM = re.compile(r"(?<![\w.])(?P<tok>(?:[-+]?\$)?[-+]?\d[\d,]*(?:\.\d+)?(?P<unit>%|\s?(?:million|billion|thousand|mn|bn)\b|[BMK](?![A-Za-z])|x(?![A-Za-z]))?)")
+_NUM = re.compile(r"(?<![\w.])(?P<tok>(?:[-+]?(?:\$|US\$|USD\s?))?[-+]?\d[\d,]*(?:\.\d+)?(?P<unit>%|\s?(?:million|billion|thousand|mn|bn)\b|[BMK](?![A-Za-z])|x(?![A-Za-z]))?)")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
@@ -330,21 +332,21 @@ def _tokens(line: str) -> Iterable[Tuple[str, str, bool]]:
     scrubbed = _DATE.sub(lambda m: " " * len(m.group(0)), line)
     for m in _NUM.finditer(scrubbed):
         tok = m.group("tok")
-        strong = ("." in tok) or ("$" in tok) or bool(m.group("unit"))
+        strong = ("." in tok) or ("$" in tok) or "USD" in tok.upper() or bool(m.group("unit"))
         yield tok, _norm(tok), strong
 
 
 def unit_class(tok: str) -> str:
     """The unit class of a printed number: "%", "x" (a multiple), "B" / "M" / "K" (an amount with that suffix or word), "$" (a dollar figure with no suffix: per share),
     else "bare"."""
-    tail = re.sub(r"^[-+]?\$?[-+]?[\d,]*(?:\.\d+)?", "", tok).strip().lower()
+    tail = re.sub(r"^[-+]?(?:\$|US\$|USD\s?)?[-+]?[\d,]*(?:\.\d+)?", "", tok).strip().lower()
     if tail in ("%", "x"):
         return tail
     if tail[:1] in ("b", "m", "k"):
         return tail[:1].upper()
     if tail[:1] == "t":
         return "K"
-    return "$" if "$" in tok else "bare"
+    return "$" if ("$" in tok or tok.upper().lstrip("+-").startswith("USD")) else "bare"
 
 
 _SECTION_REF = re.compile(r"\bDATA \d+(?:\.\d+)?\b")

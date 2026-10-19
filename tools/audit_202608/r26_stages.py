@@ -1065,12 +1065,13 @@ def default_desk_params():
 def resolve_family(facts, bar=None):
     """(bridge family, None) or (None, why). The pack facts' own classification is facts["population_ranges"]["family"] (population_ranges.family_for on the SIC code and
     the base year's balance sheet, set by capability_test._population_ranges_for): "financial" -> the identity bridge (the margins are on the X basis); "operating" and
-    "commodity" -> the operating bridge. Anything else (None, family_not_built, absent) is unresolved, and so is a bar on the other basis than the family
+    "commodity" -> the operating bridge; "family_not_built" (the code-only engine's status: the AI desk values such a name with the ordinary operating formula) -> the operating bridge too,
+    stamped `family_not_built_valued_as_operating` by valuation_inputs. Anything else (None, absent) is unresolved, and so is a bar on the other basis than the family
     (op_margin_bar["basis"] "x" is the financial family's): nothing is defaulted."""
     fam = ((facts or {}).get("population_ranges") or {}).get("family")
     if fam == "financial":
         out = "financial"
-    elif fam in ("operating", "commodity"):
+    elif fam in ("operating", "commodity", "family_not_built"):
         out = "operating"
     else:
         return None, f"family_unresolved: population_ranges.family is {fam!r}"
@@ -1102,6 +1103,8 @@ def valuation_inputs(facts, price, desk_context, ticker=None, bridge_facts=None)
             bf = {"family": fam, "stamps": [f"bridge_facts_not_loaded: {type(e).__name__}: {e}"]}
     bf = dict(bf) if bf else {"family": fam, "stamps": ["bridge_facts_not_held"]}
     bf["family"] = fam
+    if fam is not None and ((facts or {}).get("population_ranges") or {}).get("family") == "family_not_built":
+        bf["stamps"] = list(bf.get("stamps") or []) + ["family_not_built_valued_as_operating"]
     # X_0, the base year's X-basis earnings, is the pack's own: x_L x rev_L ($B). A figure the bridge facts already carry is kept.
     x_L = lr.get("x_L")
     if "x_0" not in bf and rf._num(x_L):

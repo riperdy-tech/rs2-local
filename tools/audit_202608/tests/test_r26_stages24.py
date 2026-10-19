@@ -650,12 +650,25 @@ def test_the_revealed_block_is_the_price_derived_removed_lines_only_and_reaches_
 
 @pytest.mark.parametrize("pr,bar,expect", [({"family": "financial"}, {"basis": "x"}, ("financial", None)), ({"family": "operating"}, {"basis": "operating"}, ("operating", None)),
                                            ({"family": "commodity"}, None, ("operating", None)), ({"family": None}, None, (None, "family_unresolved")),
-                                           ({"family": "family_not_built"}, None, (None, "family_unresolved")), (None, None, (None, "family_unresolved")),
+                                           ({"family": "family_not_built"}, None, ("operating", None)), (None, None, (None, "family_unresolved")),
                                            ({"family": "financial"}, {"basis": "operating"}, (None, "family_unresolved")),
                                            ({"family": "operating"}, {"basis": "x"}, (None, "family_unresolved"))])
 def test_the_family_is_the_pack_facts_classification_never_a_default(pr, bar, expect):
     fam, why = r26.resolve_family({"population_ranges": pr}, bar)
     assert fam == expect[0] and ((why or "").startswith(expect[1]) if expect[1] else why is None)
+
+
+def test_family_not_built_is_valued_as_operating_with_a_stamp_and_a_missing_family_stays_unresolved():
+    lr = dict(LR, rev_L=10.0, x_L=0.06)
+    row = {"pretax_income": 4e9, "tax_provision": 1e9, "operating_income": 1.5e9, "revenue": 10e9}
+    facts = {"long_run": lr, "owner_earnings_default_b": BASE_CF, "population_ranges": {"family": "family_not_built"}, "op_margin_bar": dict(DBAR, basis="operating"),
+             "r26_bridge_facts": r26.bridge_facts_from_row(row)}
+    v = r26.valuation_inputs(facts, PRICE, _ctx(price=PRICE, desk_schema=None))
+    assert v["family"] == "operating" and v["family_unresolved"] is None and "family_not_built_valued_as_operating" in v["bridge_facts"]["stamps"]
+    ok = r26.valuation_inputs(dict(facts, population_ranges={"family": "operating"}), PRICE, _ctx(price=PRICE, desk_schema=None))
+    assert "family_not_built_valued_as_operating" not in (ok["bridge_facts"].get("stamps") or [])
+    gone = r26.valuation_inputs(dict(facts, population_ranges={"family": None}), PRICE, _ctx(price=PRICE, desk_schema=None))
+    assert gone["family"] is None and gone["family_unresolved"].startswith("family_unresolved")
 
 
 def test_financial_family_uses_the_identity_bridge_and_an_unresolved_family_is_a_no_call_with_no_model_call(tmp_path, monkeypatch):
