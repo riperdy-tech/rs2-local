@@ -430,3 +430,95 @@ The coordinator had left both out: the currency gap was recorded but never plann
     - no unexplained basis flag.
   - On failure: option B (the margin held by code, stamped), with no further form iterations.
 - **The pre-run cross-check applies** (P4B's waiver was for that test only). It is to be written after the build, unless the operator waives it.
+
+### Rulings on cross-check 21 (2026-10-18; ChatGPT verdict CHANGE, Gemini CHANGE then GO)
+Each claim tested by the coordinator before ruling.
+
+**Rejected**
+- **Gemini: τ·A double counts.** Tested on a one-year cash identity (EBIT 100, A 20, D&A_org 30, capex 40, τ 0.25): cash 70.0 = D2 flow 70.0. X restores only (1 − τ)A, cash adds back the full A, so +τ·A is required (already in the plan's amendment; the Flow_0 identity test holds to 1e-9).
+- **Gemini: clamp δ ≤ 0.6 and floor ROE.**
+  - A floor repeats cross-check 19's RONIC-floor defect (value-destroying growth priced as neutral).
+  - A non-positive equity return is already refused by name.
+  - Kept instead: `delta_high` stamped above 0.5, and the book-weight versus market-weight sensitivity reported.
+- **Gemini: operating-margin proximity check.** It fired falsely on MSGE: Qwen's 12% was a correct after-tax estimate next to the 12.8% operating margin.
+
+**Accepted for the short-form test** (sent to the SF builder; all annotate-only, computed so they cannot loop)
+- **The basis flag** is renamed `consensus_margin_divergence` (ChatGPT). It fires only outside [0.67, 1.5] **and** beyond 3 margin points (Gemini, against small-margin distortion). With no consensus: `consensus_margin_check_unavailable`, never a pass.
+- **One-offs (both).**
+  - The raw X-basis margin history is primary, with the per-year after-tax impact and a frequency count.
+  - At 3 or more of 5 years: `recurring_restructuring_or_impairment`, and no ex-one-offs series is printed.
+- **One normalization check kept, non-blocking (both):** `normalized_vs_path_gap` (Base m5 against the contract's normalized earnings over R_0, more than 3 points), computed after the contract. Also `flat_margin_path` (Gemini).
+- **ollama_raw:** a front-truncation guard (prompt plus output limit above num_ctx raises a named failure), if it is absent (Gemini).
+
+**Test rules amended before any run**
+- A pass authorizes further testing, not adoption (ChatGPT).
+- Added failure signals:
+  - `flat_margin_path` on DAC;
+  - an unexplained `normalized_vs_path_gap`;
+  - a blinded coherence read (a fresh agent, inputs masked) that finds a contradiction between the stated normalized economics or the labels and the path.
+- Before adoption: repeated runs plus at least one unseen name (the operator decides the GPU budget).
+- **Option B is not automatic on failure:** it needs its own coherence assessment (ChatGPT).
+
+**Accepted, required before D2 is enabled (part (c))**
+- **Fade growth convention (ChatGPT, major).** The fade charges reinvestment on revenue growth while the margin moves.
+  - Tested: with the margin moving 8% to 12% over the fade, the revenue convention values 20.5% above the earnings-growth convention; 12% to 8% gives −17.8%; a flat margin gives 0.
+  - Neither convention is right in general (margin change with or without capital).
+  - Resolution: synthetic firms whose margin changes are economically specified (from existing capital, and from new investment), truth-tested on flows and value, then a ruling.
+- **The tax shield after year N (ChatGPT).** The terminal carries no τ·A, so a schedule outstanding beyond N is dropped. Add the PV of the remaining finite shield.
+- **The 21% tax default (ChatGPT).** An unmeasured τ is unavailable (or bounded under the materiality rule), never a stamped default.
+- **Unverified fallback rungs (Gemini).** With no vendor figure they become unavailable, not used-and-stamped.
+- **Materiality rule (both).** An interval, not the lower end:
+  - the name is usable only if every endpoint gives the same verdict category;
+  - the point is the midpoint, stamped `materiality_bounded`;
+  - the threshold is still the operator's (calibrate from input uncertainty).
+- **Others:**
+  - financial-route return semantics (ROE_T named per route);
+  - an end-to-end test that `family_route_unresolved` always yields `unvaluable_missing_input`;
+  - a coverage-bias report by sector, size, currency and filing type;
+  - non-USD convenience-translation names stay quarantined (checked: none of the 6 is among the 99);
+  - depleters on the default path stamped with the known bias;
+  - O2c value shown beside the default-wedge value;
+  - the equity-conversion constant-leverage assumption exposed, with sensitivity;
+  - `ollama_raw` fuzz and stop-sequence tests, plus a template-equivalence test against `/api/chat` on flat schemas.
+- **Kept open:** the MCY copying signature (1.02× the reference); is the analyst goal-seeking a printed number?
+- **Short form audited and launched (2026-10-18 20:18).**
+  - rs2 `review-2026-10/short-form` @ `4a6e292`. Full suite: 3443 passed, the same 42 failures. 37 short-form tests pass; other arms are byte-identical.
+  - The coordinator checked that the TASK diff touches only item 3's path wording, the two-lists bullet and working capital, and that 25.2 still validates the lists while running no C or K check.
+  - Ambiguities 1–9 accepted. `SCREENER_SEC_FACTS_DIR` was added to the workspace `AGENTS.md`.
+  - Task `RS2-P4-SF`, names MSGE, TASK and DAC, tree `4a6e292`.
+- **Short-form test, defect 1 (2026-10-18).** All three runs ended `lost_memo` / `server_error`, cause `context_overflow`. The new front-truncation guard counted prompt plus the output LIMIT. The harness sizes the limit from an estimated prompt (32,215 estimated against more actual), so every turn was refused after a full generation.
+  - It is a coordinator specification error (cross-check 21 item), not a model outcome.
+  - Fix `6bc2ad0`: the guard counts the tokens used (prompt_eval_count + eval_count), with a test. Pilot tests: the one known unrelated failure.
+  - The failed runs are kept as `runs_p4sf_defect1/`. A same-seed re-run was launched at the fixed tree, as plan v4 allows for defects.
+- **Short-form test, re-run result (2026-10-19 03:05), scored against the registered rules.**
+
+| Name | Minutes (× rev 24) | Verdict, Base (rev 24) | Refused | Loop markers | Crux | Unresolved citations | Flags |
+|---|---|---|---|---|---|---|---|
+| MSGE | 70.7 (0.97) | overvalued, $44.45 (overvalued, $45.08) | 3/5 | 0 | valid | 1/7 | `normalized_vs_path_gap` 3.7 pts |
+| TASK | 93.0 (1.69) | undervalued, $17.10 (hold, $13.14; its crux was invalid) | 5/10 | 0 | valid | 1/4 | `consensus_margin_divergence`: Bear y2 6.5% against 10.3% |
+| DAC | 76.2 (0.88) | undervalued, $370.64 (undervalued, $265.02) | 1/3 | 0 | valid | 0/2 | `normalized_vs_path_gap` 5.2 pts |
+
+  - **No C/K-type loop and no loop marker anywhere.** The refusals are revision-24 desk reasons (`bull_below_price`, `bear_above_price`, `coe_adjustment`, `scenario_deviation`) plus format slips (`explicit_growth` or `base_cf` instead of the lists; a missing `prob`). Revision 24 also refused 1/4, 2/4 and 1/4.
+  - **Read by the letter, the registered rules fail:**
+    - "no desk refusals" fails on all three;
+    - the time rule fails on TASK (1.69 against about 1.2);
+    - "verified citations" fails on MSGE and TASK (one unresolved crux candidate each, though every directional verdict rests on a verified crux);
+    - `normalized_vs_path_gap` is above 3 points on MSGE and DAC, with whether it is explained still to be judged.
+  - **Not flagged by any rule:** MSGE and DAC copy the consensus margin of years 1 and 2 almost exactly (MSGE 11.6/11.7, DAC 46.7/40.8), the anchoring Gemini warned of. The margin paths are not flat.
+  - The blinded coherence read is running: `runs_p4sf/BLIND_READ.md`.
+- **Blinded coherence read** (`runs_p4sf/BLIND_READ.md`, a fresh Opus agent): MSGE **incoherent**, TASK **questionable**, DAC **incoherent**.
+  - **Not fully blind:** the reader saw this plan's result table first; it judged on the economics it cites.
+  - **MSGE:**
+    - it mapped "9% X basis = 13% operating", where the pack's own translation gives about 5%;
+    - it copied consensus margins for years 1 and 2 that are on a vendor-adjusted basis (+30% over the filed base);
+    - the fade's stated cause fails on timing.
+  - **TASK:** the normalized earnings are circular (taken from the desk's year-5 output), and the labels sit loosely with the path.
+  - **DAC:**
+    - "peak" rests on a misread: a drybulk rate was taken as the container rate;
+    - it copied a single-analyst consensus, and the copied year-2 margin cut contradicts its own "years 1–2 contractually fixed";
+    - a 4.7-year backlog is used to floor a perpetual margin.
+- **Pack defects behind part of this, confirmed by the coordinator** (the pack's own BASE-YEAR CHECK lines show consensus EPS +30% for MSGE and +48% for TASK above the filed EPS):
+  - **B2:** `x_margin_consensus_y1y2` uses vendor-adjusted EPS, so it is not the X basis. It served both as the basis flag's reference and as the number the runs copied. This is the Street-basis risk Gemini named in cross-check 21; the coordinator's specification did not correct for it.
+  - **B1:** the year that `normalized_earnings` refers to is undefined, so `normalized_vs_path_gap` measured revenue growth.
+  - **B3:** SECTION 11 can deny that earlier complete desk runs existed.
+- **Ruling: the short form as tested is rejected on coherence.** It removed the loops, but printing a consensus margin line invited anchoring (2 of 3 copied it), and the analyst errors are real. The registered rule says no further form iterations. Option B is next, and it needs its own coherence assessment (cross-check 21).
