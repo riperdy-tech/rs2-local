@@ -478,9 +478,25 @@ def _form_hit(forms: Dict[Tuple[str, str], List[str]], tok: str, norm: str, stri
     return None
 
 
-def _filed_support(lines: Sequence[str], classes: Sequence[Tuple[str, str]]) -> Dict[str, str]:
-    """{form: first section} for the numbers of the filed and derived lines, each at 1-3 significant digits."""
+def _filed_eps_values(obj: Any) -> Iterable[float]:
+    """Every number held under a `filed_eps` key anywhere in the facts: the base-year diluted EPS is filed data, whoever's block carries it."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "filed_eps" and isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v):
+                yield float(v)
+            else:
+                yield from _filed_eps_values(v)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            yield from _filed_eps_values(v)
+
+
+def _filed_support(lines: Sequence[str], classes: Sequence[Tuple[str, str]], facts: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """{form: first section} for the numbers of the filed and derived lines, each at 1-3 significant digits, and for the filed EPS facts (section "filed_eps fact") to 6."""
     support: Dict[str, str] = {}
+    for v in _filed_eps_values(facts or {}):
+        for f in sig_forms(v, 6):
+            support.setdefault(f, "filed_eps fact")
     for line, (cls, sec) in zip(lines, classes):
         if cls in EXCEPTION_CLASSES and not line.startswith("## "):
             for tok, norm, strong in _tokens(line):
@@ -508,7 +524,7 @@ def r26_leak_audit(blind_pack_text: str, facts: Dict[str, Any]) -> Dict[str, Any
     lines = str(blind_pack_text).split(chr(10))
     classes = [_span_of(spans, i) for i in range(len(lines))]
     # the numbers of the filed and derived lines, each at 1-3 significant digits, with the first section that holds them
-    support = _filed_support(lines, classes)
+    support = _filed_support(lines, classes, facts)
     leaks: List[Dict[str, Any]] = []
     exceptions: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     weak = 0
@@ -591,7 +607,7 @@ def text_leaks(text: str, blind_pack_text: str, facts: Dict[str, Any]) -> List[D
     spans = (facts.get("r26_blind_source") or {}).get("spans") or []
     forms = _leak_forms(removed_numbers(facts))
     plines = str(blind_pack_text).split(chr(10))
-    support = _filed_support(plines, [_span_of(spans, i) for i in range(len(plines))])
+    support = _filed_support(plines, [_span_of(spans, i) for i in range(len(plines))], facts)
     out = []
     for i, line in enumerate(str(text).split("\n")):
         for tok, norm, strong in _tokens(line):
@@ -616,7 +632,7 @@ def stage2_dossier_view(dossier: Dict[str, Any], blind_pack_text: Optional[str] 
         spans = (facts.get("r26_blind_source") or {}).get("spans") or []
         forms = _leak_forms(removed_numbers(facts))
         plines = str(blind_pack_text).split(chr(10))
-        support = _filed_support(plines, [_span_of(spans, i) for i in range(len(plines))])
+        support = _filed_support(plines, [_span_of(spans, i) for i in range(len(plines))], facts)
     else:
         audit["stamps"].append("number_audit_not_run")
 

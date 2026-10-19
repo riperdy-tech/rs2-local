@@ -116,3 +116,12 @@ def test_the_stage2_text_check_is_unit_aware_too():
     facts = {"r26_blind_source": {"removed_lines": [{"cls": "consensus", "section": "D8", "text": "| EPS | $2.50 |"}], "spans": [{"start": 0, "end": 1, "cls": "narrative", "section": "N"}]}}
     assert rb.text_leaks("a contract of +$2.5M", "# t\nx", facts) == []
     assert [x["token"] for x in rb.text_leaks("EPS of $2.50", "# t\nx", facts)] == ["$2.50"]
+
+
+def test_a_narrative_number_equal_to_the_filed_eps_is_a_listed_exception_and_a_different_vendor_eps_is_a_leak():
+    facts = {"consensus_corrected": {"vendor_eps": 2.32, "filed_eps": 2.3244444444444445}}
+    a = _audit("# t\n- earnings of $2.32 per diluted share (reported in 2025)", [], facts)
+    assert a["pass"] is True and a["leaks"] == [] and a["exceptions"][0]["filed_source"] == "filed_eps fact"
+    b = _audit("# t\n- earnings of $2.61 per diluted share", [], {"consensus_corrected": {"vendor_eps": 2.61, "filed_eps": 2.3244444444444445}})
+    assert b["pass"] is False and [x["token"] for x in b["leaks"]] == ["$2.61"]
+    assert rb.text_leaks("EPS $2.32", "# t\nx", dict(facts, r26_blind_source={"removed_lines": [], "spans": []})) == []
