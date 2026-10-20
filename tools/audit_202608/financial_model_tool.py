@@ -1122,6 +1122,8 @@ def _joint_ray(raw, blocks, names, price, base_raw, wacc0, tg0, fade0, ronic0, l
     res = solve_nearest(f, _linspace(0.0, 1.0, SOLVER_GRID_POINTS), 0.0)
     v1 = f(1.0)
     rec.update(computable=True, side=res["side"], value_at_1=None if v1 is None else v1 + price)
+    seen = [v + price for v in res["values"] if v is not None]          # the grid of t (121 points) is scanned for a sign change; no monotonicity is assumed
+    rec.update(min_value_seen=min(seen) if seen else None, max_value_seen=max(seen) if seen else None, grid_points=len(res["values"]))
     if res["found"]:
         kw = at(res["s"])
         vals = {"coe": kw.get("wacc"), "fade_years": kw.get("fade"), "terminal_g": kw.get("tg"), "long_run_margin": kw.get("lrm"), "terminal_ronic": _json_num(kw.get("ronic"))}

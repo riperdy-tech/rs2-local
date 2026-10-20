@@ -214,3 +214,18 @@ def test_a_wide_spread_makes_the_name_non_actionable_with_its_reason_and_keeps_e
     assert "samples_spread_above_20pct" in fi["non_actionable_reasons"] and fi["actionable"] is False and fi["verdict"]["r26"]["actionable"] is False
     _, fc2, _, fi2 = run_stages(tmp_path / "n", monkeypatch, THREE + [crux_args("keep"), memo_step()])
     assert fc2["spread"] <= 0.20 and not any(r.startswith("samples_") for r in fi2["non_actionable_reasons"])
+
+
+# ---------------------------------------------------------------- the joint search assumes no monotonicity
+
+def test_joint_search_scans_a_grid_and_records_the_range_seen_for_a_true_beyond_reach():
+    j = pi_of(P_JOINT, ["long_run_margin", "terminal_ronic", "fade_years"])["joint"]
+    assert not j["reachable"] and j["grid_points"] == 121 and j["min_value_seen"] == pytest.approx(409.6050219453864) and j["max_value_seen"] == pytest.approx(j["value_at_1"]) and j["max_value_seen"] < P_JOINT
+
+
+def test_joint_search_finds_a_crossing_in_the_middle_of_a_non_monotone_ray():
+    blocks = {"long_run_margin": {"bound": {"low": 0.0, "high": 1.0, "value_low": 50.0, "value_high": 400.0}}}
+    raw = lambda lrm=None, **kw: 100.0 + 400.0 * lrm * (1.0 - lrm) * 4.0 / 4.0 * 1.0 - 100.0 * lrm if lrm is not None else 100.0   # rises then falls back below the price
+    j = fmt._joint_ray(raw, blocks, ["long_run_margin"], 150.0, 100.0, 0.1, 0.03, 4, 0.15, 0.0)
+    assert j["reachable"] and 0.0 < j["t"] < 0.5 and j["value_at_1"] < 150.0 and j["value_at_t"] == pytest.approx(150.0, abs=0.01)
+    assert j["max_value_seen"] > 150.0
