@@ -618,3 +618,154 @@ Both reviews independently recommend the same change of architecture rather than
   - **BUD:** with no filed diluted shares, the consensus correction may use the pack's code-owned share count, stamped `filed_eps_from_pack_shares`.
   - The vintage test and the ≥3-analyst rule are unchanged: DAC has 1 analyst, and MCY has a real 24% basis gap.
   - **The canary:** the registered names (MSGE, TASK, DAC, BUD) stay. Where consensus is not comparable, the canary reveals a **constructed test consensus** (the stage-2 median Base margins ± 3 points), so the pull is measurable on all four. This is test-only, never present in a production run, and labelled in the run record.
+
+### Rulings on cross-check 23 (2026-10-19; ChatGPT CHANGE, Gemini CHANGE)
+**Confirmed in code before ruling:**
+- the frame is a free equity/firm choice;
+- `dossier_fact_ids` includes unusable facts, which are only stamped;
+- `prob` is checked as finite only;
+- `pull_record` covers years 1–2 only;
+- `contract_unfilled` is not among the non-actionable reasons;
+- the tax rate is clipped to [0, 0.35] yet labelled measured.
+
+**Rejected:**
+- **Gemini, "K_0 bundles D&A".** X_0 = x_L·rev_L is on the earnings basis, not cash flow, so K_0 holds interest, other non-operating items and amortization only.
+- **Gemini's α-blend of K_0 with revenue.** An arbitrary constant. Interest does not scale with revenue. K_0 stays flat in dollars, now labelled approximate on the verdict (ChatGPT).
+- **Gemini, "near-fair-value names will split direction".** `direction_split` requires one undervalued and one overvalued sample under the 10% band, so three samples within ±10% are all hold, not a split.
+
+**Accepted (R26-F, rs2):**
+1. The frame is equity only for r26.
+2. Unusable facts are never shown to stages 2 and 3 (a count and reason codes only).
+   - Every cited fact ID must be usable.
+   - near_term and normalized need non-empty usable fact IDs.
+   - The long run needs fact IDs, or an explicit `no_duration_matched_evidence` with a reason.
+   - One repair, as for any structure problem.
+3. **The leak audit extends** to the stage-1 research summary and every model-facing dossier fact for stage 2: sentence-level drops, listed. Facts quoting analyst, consensus or price content are excluded from stage 2's view.
+4. Stage 2 sees the blind pack's **filed-data sections only**; narrative reaches it only through usable facts and the audited summary.
+5. **Stronger fact association** (before the stage-1 batch, since the dossiers freeze):
+   - prose: the value must be in the quote, and the registered metric must be the nearest metric term to the value within its sentence, using one documented generic metric vocabulary;
+   - tables: the header row and the row label are added to the association window;
+   - otherwise the fact is `association_uncertain`, which means not usable.
+6. **Domain checks:**
+   - probabilities in [0, 1] and summing to 1 ± 0.01;
+   - revenue never negative;
+   - discount rate > terminal_g;
+   - terminal_ronic > 0;
+   - one repair.
+7. Stage-2 acceptance is idempotent.
+8. The tax rate records raw and applied values, stamped `tax_rate_clipped`.
+9. **The stage-3 crux cites fact IDs.** Code pulls the source, date and verbatim quote into the existing crux check (no retyped quotes).
+10. **TASK wording:**
+    - a worked delta example;
+    - adjusted or non-GAAP facts inform direction only, never the level;
+    - "year-N mid-cycle margin" against "post-year-5 terminal margin";
+    - stage 3 keeps by default and revises only for a fact error;
+    - stage 3 sees the median sample's cited fact IDs and labels, but no prose.
+11. `delta_pts_scale_suspect` (annotate) when 0 < |d| < 0.05 or |d| > 50.
+12. **The pull record** covers every input (margins, long run, discount, terminal_g, terminal_ronic) and the Base value, pre and post.
+13. **The memo verifier** adds a prose-number check: numbers with %, $, x or bps not matching the table or a cited fact, years and dates excluded. Reported as `memo_prose_number_mismatch`; labelled mismatches still gate.
+14. Unfilled contract numbers make a result non-actionable (`contract_fields_unfilled`) and must be resolved before any book-wide run.
+15. The beyond-year-5 expiry alternative is renamed `early_fade_stress`.
+
+**Accepted (R26-G, the pilot):**
+- **The canary paired pull** `(m(+3) − m(−3)) / 6` per input and for the Base value, with constructed and real consensus reported apart.
+- **Evaluation:**
+  - denominators over callable names, with data no-calls (PACS) under a separate coverage metric;
+  - thresholds as fractions (10 of 12 becomes ≥ 83% of callable);
+  - reader disagreement adjudicated, and "incoherent" counted after adjudication.
+- **Smoke** extended to one full end-to-end name (MSGE, all four stages) before the stage-1 batch.
+
+**GPU order:**
+1. Stage P research for the 5 new names may start now (both reviews; it does not depend on these fixes).
+2. The full smoke after F and G.
+3. Stage 1 for 12.
+4. Stages 2–4, then the canary.
+- **R26-F built** (`9da836f`): items 1–15 of the cross-check 23 rulings. 305 r26 tests pass; full suite has the same 42 failures. Pushed after a scan.
+  - Rulings: aggregator lines are cut from the stage-2 pack; stage 4 shares the count-only view; the strict association is accepted, with the usable fraction to be measured in the end-to-end smoke.
+- **R26-G built** in the pilot folder: the end-to-end smoke, the paired canary, callable-name denominators, adjudication.
+  - The pilot tree was re-pointed to `9da836f`. Pilot tests: 208 passed; 2 known failures in older modes (their evidence grew after their runs).
+- **Stage P launched 2026-10-19 19:27** (`RS2-P4-R26-PREP`), with 3.0 GB free after the operator closed the IDE: the draw and P1–P4 for the 5 new names, and P5 blind packs for all 12.
+  - The blind packs are rebuilt at the final tree before stage 1 if the tree changes.
+- **Stage P finished 2026-10-19 21:18** (about 2 h). P1–P4 are done for OGE, HNRG, PTCT, LPG and ITGR.
+  - **P5 blind packs:** 7 pass and 5 fail the leak audit (fail-closed, as designed).
+  - **Real leaks the sentence filter missed:**
+    - BUD: estimate revisions ($4.99 to $4.91) and the stock's move on the day in its catalyst brief;
+    - OGE: "Buy ratings ... PT $52".
+  - **False positives from unit-blind matching:**
+    - PACS: +$2.5M rent against EPS $2.50;
+    - GOLD: $11.6 million against 11.6x;
+    - HNRG: beta 0.444 against $0.444B, and 23% against 23.08x.
+  - **Fix in progress:** the generic filter learns rating, price-target, estimate-revision and price-move language, and the audit becomes unit- and scale-aware. Then P5 is rebuilt for the 5.
+- **Leak-audit fix** (`ddf133e`, `ff55ed3`):
+  - a generic `analyst_view` sentence rule;
+  - unit- and scale-aware matching, with 6-significant-digit removed numbers;
+  - filed EPS counts as filed support (OGE $2.32 equals the filed 2.3244).
+- **The P5 rebuild of all 12 at `ff55ed3`** (earlier P5 outputs kept with the suffix `_tree9da836f`): 11 pass. PTCT is stopped by the audit on a real price leak ("last at USD 59.24 on Nasdaq") that the filter missed.
+  - Ruling: the filter learns share-price phrasing, and USD is treated as $.
+- **Ruling:** `family_not_built` (OGE, HNRG) is valued as operating, stamped. The plan records that "family not built" is the code-only engine's status, and the AI desk values these names with the operating formula. Only a missing family is `family_unresolved`.
+- **Final P5 at `3d574bf`** (the price-statement filter, USD as $; `family_not_built` valued as operating): all 12 blind packs pass the leak audit (earlier outputs kept with the suffix `_treeff55ed3`).
+  - Coordinator fix `58d7bdd`: a missing bridge input (LPG files no tax provision) is a recorded data no_call (`bridge_unavailable`), never a defaulted rate.
+  - The pilot was re-pinned; readiness: "all names ready".
+- **Smoke, then end-to-end smoke (MSGE, all four stages), launched 2026-10-19 22:00** as `RS2-P4-R26-SMOKE`.
+- **Smoke PASS** (22:16, 16 min). **End-to-end smoke PASS on MSGE** (23:56; stage 1 65 min, stage 2 19, stage 3 4, stage 4 12).
+  - **Stage 1:** 157 facts, 75 usable (48%).
+  - **Stage 2:** three Base values $36.40, $38.69, $37.57 (spread 6.1%; price about $79). The Base path is coherent: op margin 14% then 13.5%, normalized in year 3 at median + 0.7 pt, long run 13%, labels partly_structural / mid.
+  - **The stage-2 view filter worked:** the summary sentence with the price and market cap was dropped, and three consensus or market-cap facts were withheld.
+  - **Defects found** (stages 3–4 only; the fix is building):
+    - **(a)** One unreachable crux entry (terminal_g) voided an otherwise strong crux (long-run margin 6.7% against an implied 23.4%; coe 9.27% against an implied 5.77%), giving `no_call`. Ruling: one correction turn for an invalid crux (drop or replace the failing entry), then no_call.
+    - **(b)** The prose-number check flagged numbers that legitimately come from the stage-4 inputs. Ruling: whitelist every number present in any stage-4 input. The labelled check stays, and it correctly caught "$37.23" (the early-fade stress) labelled as the Base value ($37.57).
+    - **(c)** The dossier number audit stamped `number_audit_not_run`; the cause is being found.
+  - Noted: MSGE's tax rate is measured at 38.1% and clipped to 35% (stamped); the clip range is to review.
+- **Stage 1 for the 12 names launched 2026-10-19 23:57** (`RS2-P4-R26-STAGE1`, tree `58d7bdd`). Stages 2–4 run later on the fixed tree, after the cheap smoke.
+- **Smoke-defect fixes** (`f761545`):
+  - **(a)** one correction turn for an invalid crux, with both cruxes kept;
+  - **(b)** the prose-number whitelist covers every stage-4 input;
+  - **(c)** `number_audit_not_run` was the pilot driver omitting `facts=` in its `run_stage2` calls. The driver is fixed; with facts the audit finds 85 removed numbers for MSGE.
+  - The byte-identity test the builder reported failing passes on the coordinator's run.
+  - Before stages24: re-pin to the fixed tree, run the full suite once the GPU is free, and run the cheap smoke again.
+- **Stage-1 progress (11:48):** 9 of 12 frozen. Stage 1 is slower than estimated (OGE 94 min, HNRG 127 min; 167 and 214 facts). Expected finish 14:30–15:30.
+  - **Correction:** stages 2–4 take about 35 min per name (end-to-end smoke: 19 + 4 + 12), not the 10 the plan assumed, so one 12-name iteration is about 6–7 h.
+- **Operator hold (2026-10-20):** after stage 1 completes, start nothing. The operator reboots first.
+  - **On resume:**
+    1. confirm 12 frozen dossiers;
+    2. re-pin the pilot to `f761545` (`design.P4_R26_TREE_COMMIT`, checkout `tree_p4r26`, re-fill the run file plus prep pins);
+    3. run the full rs2 suite;
+    4. run the cheap smoke;
+    5. launch `stages24` (iteration 1), then the canary;
+    6. run the mask, the two readers and the scorecard.
+- **Stage-1 crash (2026-10-20 12:46).** Windows flagged low virtual memory. The pilot python runner had grown to about 23 GB (event 2004), and Windows closed programs, including the Claude app.
+  - The runner died with a MemoryError while recording a stop on LPG and unloaded the model. There was no reboot.
+  - **State:** 9 names frozen normally. PTCT is frozen INCOMPLETE (no_tool_call) with 0 facts; LPG was INCOMPLETE (no_tool_call) with 137 facts, 29 usable; ITGR was not run.
+  - **Operator rulings:** fix the leak (root cause plus an RSS guard `memory_cap_exceeded`), verify it, then re-run PTCT, LPG and ITGR stage 1.
+  - The PTCT and LPG re-runs are recorded as defect-context re-runs: the crash, and a 0-fact dossier.
+- **Leak investigation:** replays of the stage-1 sessions peak at ≤45 MB (LPG, HNRG, PTCT), with no growth across names. The 23 GB python is most likely the other workstream's Shadow-V4 grader (`grade_depth_verdicts.py`, which ran 12:27–13:02 and spans 12:46); Windows' pid cannot be mapped to prove it.
+  - Precautions added: a runner RSS/commit guard (`memory_cap_exceeded`, 4 GB), and gc plus a commit log per name (29 MB observed). rs2 memory-bound test `656da7d`.
+  - Shadow-V4 runs daily from 07:30; GPU runs should avoid overlapping its grader.
+- **Operator ruling:** use Ollama 0.40.6 (auto-updated after the crash) for the rest. Release notes show no change to raw generate, sampling, KV, num_ctx or MTP, but list two unspecified llama.cpp updates. Recorded in the run file: 9 names on 0.40.3; PTCT, LPG and ITGR on 0.40.6.
+- **Stage-1 re-run of PTCT, LPG and ITGR launched 14:32.** The earlier PTCT and LPG outputs are kept with the suffixes `_incomplete_run1` and `_oom_run1`. The runner script was re-pinned for the reviewed guard.
+- **Stage 1 complete 2026-10-20 17:56** (re-run, Ollama 0.40.6; runner commit stayed at 29–38 MB per name).
+  - PTCT: 125 facts, 63 usable (90.7 min).
+  - LPG: 73 facts, 25 usable (40.1 min).
+  - ITGR: 102 facts, 41 usable (72.4 min).
+  - All 12 dossiers frozen. The operator hold before stages 2–4 applies (reboot first).
+- **Shadow V4 (engine-v2 nightly, wt-d5-shadow):** the operator retired it; task `RS2-Shadow-V4` unregistered (definition saved as `wt-d5-shadow/RS2-Shadow-V4.task.xml`). The v2.1 paper books rn_v4* no longer update. The worktree and its output are kept, and the books left as they are, pending the operator.
+- **Before iteration 1 (2026-10-20 19:00):** the full rs2 suite at `656da7d` gives 44 failures, the 42 plus the two pinned byte-identity tests.
+  - The coordinator rebuilt the GEV fixture pack on the **untouched pre-revision code `6bc2ad0`**: same new hash `891ef3…` as the current code. So the other arms remain byte-identical between old and new code; the pinned hashes went stale through the fixture's data or time dependence, not through our code. The pins are to update.
+  - The pilot was re-pinned to `656da7d` as iteration 1. `fill_run` now allows re-pinning the current iteration before any stages-2–4 run of it.
+  - Launched `RS2-P4-R26-ITER`: smoke, then `stages24` iteration 1 (about 6–7 h).
+- **Iteration 1 ran (2026-10-20 19:00 → 10-21 00:18). It is contaminated by code defects and does not count as a design iteration** (plan v4: defects get a same-seed re-run). Raw per-name outcome:
+  - MSGE: overvalued, Base about $39.4 against price $79.6, spread 11%.
+  - BUD: undervalued, spread 18%.
+  - GOLD: undervalued, spread **85%** (Base samples $65.5, $73.2, $127.8).
+  - ITGR: valued, spread 33%.
+  - TASK, DAC: `no_call crux_invalid:not_reachable` even after the correction turn (values about 2.4× and 3× price).
+  - MCY: `no_call`, a malformed corrected crux.
+  - PACS, LPG: the expected data no-calls.
+  - OGE, HNRG, PTCT: **all 9 samples `desk_error` with no error text** (a code defect, recorded as no_call instead of stopping).
+- **Defects:**
+  - **(1)** desk_error on the three new names (cause under investigation);
+  - **(2)** fail-fast did not treat an all-sample desk_error as a defect;
+  - **(3)** the memo verifier read no verdict from any memo ("Verdict: overvalued" is MSGE's first line), so `memo_verdict_mismatch` everywhere is a parser bug;
+  - **(4)** the crux form message lists stale inputs;
+  - **(5)** reveal.json does not record per-entry crux verification.
+- **Design question under measurement (6):** whether, for large mispricings, *no* offered crux input is reachable by the price-implied solver. If so, the crux rule makes a no_call inevitable. This is the open "price beyond every input's reach" policy.
