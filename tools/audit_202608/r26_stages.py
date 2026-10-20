@@ -1094,6 +1094,12 @@ def valuation_inputs(facts, price, desk_context, ticker=None, bridge_facts=None)
         raise R26InputError(f"facts['long_run.rev_L'] is not a number ({rev0!r}); owner: pack facts")
     # no code-owned base cash flow exists (PACS: no D&A in the filed 10-K facts): r26 does not invent one. A model-independent data no_call, recorded, not a code defect.
     base_cf_why = None if rf._num(base_cf) else f"base_cf_unavailable: owner_earnings_default_b is {base_cf!r} (the pack holds no owner earnings)"
+    if base_cf_why is None and not base_cf > 0:
+        # the desk refuses a base_cf at or below 0 ("base_cf must be positive for standard DCF") and the 25.2 bridge scales every earnings margin by kappa = base_cf / (rev_L x x_L), which a
+        # non-positive owner earnings makes meaningless: every sample would end desk_error after a full model turn (OGE, HNRG, PTCT: filed owner earnings of -0.054, -0.039 and -0.086 $B).
+        # A data no_call like the missing figure, recorded with the figure, decided before any model call (0.0 is a value, and it is not positive either).
+        base_cf_why = (f"base_cf_unavailable: owner_earnings_default_b is {base_cf!r} $B, not positive: the desk refuses a non-positive base_cf and the 25.2 bridge scales the margins by "
+                       f"base_cf / (rev_L x x_L), so no forecast of this name can be valued on this path")
     fam, fam_why = resolve_family(facts, (facts or {}).get("op_margin_bar"))
     bf = bridge_facts if bridge_facts is not None else (facts or {}).get("r26_bridge_facts")
     if bf is None and ticker and fam is not None:
@@ -1152,6 +1158,8 @@ def trim_valuation(vf):
     out = {"status": vf.get("status"), "values": vf.get("values"), "base_value": vf.get("base_value"), "stamps": vf.get("stamps"), "scenarios": {}}
     if vf.get("message"):
         out["message"] = vf["message"]
+    elif vf.get("status") in ("desk_error", "valuation_error"):
+        out["message"] = rf.desk_error_text(vf.get("desk")) if vf.get("status") == "desk_error" else "valuation_error with no message"      # the error text is never absent from the record
     for n, sp in (vf.get("scenarios") or {}).items():
         out["scenarios"][n] = {"status": sp.get("status"), "path": sp.get("path"), "bridge": sp.get("bridge"), "long_run": sp.get("long_run")}
     desk = vf.get("desk")
@@ -1535,9 +1543,7 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
                 st["decision"] = args["decision"]
             st["resolved"], cprobs = resolve_crux_citations(crux, dossier, valuation["run_date"], blind_pack)
             bad = tuple(x.split(".fact_id")[0] for x in cprobs)
-            probs = cprobs + [x for x in crux_check.form_problems(st["resolved"], valuation["run_date"]) if not any(x.startswith(t) for t in bad)]
-            probs += [f"crux[{i}].input ({e.get('input')!r} is not offered on this desk path; one of {', '.join(r26_late.CRUX_INPUTS)})" for i, e in enumerate(crux if isinstance(crux, list) else [], 1)
-                      if isinstance(e, dict) and e.get("input") in crux_check.J and e.get("input") not in r26_late.CRUX_INPUTS]
+            probs = cprobs + [x for x in crux_check.form_problems(st["resolved"], valuation["run_date"], r26_late.CRUX_INPUTS) if not any(x.startswith(t) for t in bad)]
             if probs and st["crux_attempts"] < CRUX_FORM_ATTEMPTS:
                 st["form_problems"] = probs
                 return {"accepted": False, "message": "The crux is malformed. Correct it once: " + "; ".join(probs)}, False
@@ -1595,7 +1601,8 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
     chk = crux_check.check(crux_t, (final_vf.get("desk") or {}).get("price_implied"), blind_pack, list(fetch_calls), company, ticker, facts or {})
     if st["crux_state"] == "form_failed":
         chk = dict(chk, valid=False, reason="crux_form: " + "; ".join(st["form_problems"]))
-    reveal["crux"] = {"stated": st["crux"], "resolved": st["resolved"], "translated": crux_t, "form_problems": st["form_problems"], "state": st["crux_state"] or "not_stated", "check": chk, "valid": bool(chk.get("valid"))}
+    reveal["crux"] = {"stated": st["crux"], "resolved": st["resolved"], "translated": crux_t, "form_problems": st["form_problems"], "state": st["crux_state"] or "not_stated", "check": chk, "valid": bool(chk.get("valid")),
+                      "entries": crux_entry_details(chk, (final_vf.get("desk") or {}).get("price_implied"), price)}
     if not chk.get("valid") and st["crux_state"] == "accepted" and res["ended"] in ("closed", "turn_budget"):
         # ruling 2026-10-19: ONE correction turn for an invalid crux (the one-repair rule), then no_call. Code names the failing entries and why.
         first = dict(reveal["crux"])
@@ -1606,7 +1613,7 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
                 return {"error": "only one corrected state_crux call is accepted now"}, fix["crux"] is not None
             fix["crux"] = args.get("crux")
             fix["resolved"], cp = resolve_crux_citations(fix["crux"], dossier, valuation["run_date"], blind_pack)
-            fix["problems"] = cp + [x for x in crux_check.form_problems(fix["resolved"], valuation["run_date"]) if not any(x.startswith(t.split(".fact_id")[0]) for t in cp)]
+            fix["problems"] = cp + [x for x in crux_check.form_problems(fix["resolved"], valuation["run_date"], r26_late.CRUX_INPUTS) if not any(x.startswith(t.split(".fact_id")[0]) for t in cp)]
             return {"accepted": True}, True
 
         msgs.append({"role": "user", "content": crux_correction_message(chk)})
@@ -1620,7 +1627,8 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
             if fix["problems"]:
                 chk2 = dict(chk2, valid=False, reason="crux_form: " + "; ".join(fix["problems"]))
             reveal["crux"] = {"stated": fix["crux"], "resolved": fix["resolved"], "translated": crux_t2, "form_problems": fix["problems"], "state": "corrected", "check": chk2,
-                              "valid": bool(chk2.get("valid")), "first": first, "correction_used": True}
+                              "valid": bool(chk2.get("valid")), "first": first, "correction_used": True,
+                              "entries": crux_entry_details(chk2, (final_vf.get("desk") or {}).get("price_implied"), price)}
             chk = chk2
         else:
             reveal["crux"]["first"] = first
@@ -1631,6 +1639,31 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
         reveal["no_call_reasons"].append(f"crux_invalid:{chk.get('reason')}")
     _write_json(run_dir / ARTIFACTS["stage3"], reveal)
     return reveal
+
+
+def crux_entry_details(chk, price_implied, price):
+    """One record per crux entry for reveal.json (ruling 2026-10-20): the input, the analyst's own value, whether the price-implied solver reached it (`reachable`), whether the entry is
+    valid, the price-implied value (`implied`) or why none is computable (`not_computable`: the desk's not_available text, or the side of the solver's range the price lies on with the
+    range's two ends and the bound), the solver's bound, and the failure reason. Read from the desk's price_implied block of the run the crux was checked against."""
+    pi = price_implied if isinstance(price_implied, dict) and not price_implied.get("error") else {}
+    out = []
+    for e in (chk or {}).get("entries") or []:
+        name = e.get("input")
+        blk = pi.get(name) if isinstance(name, str) and isinstance(pi.get(name), dict) else {}
+        bound = blk.get("bound") if isinstance(blk.get("bound"), dict) else {}
+        why = None
+        if not blk:
+            why = "no price_implied block for this input" if name else "the entry names no input"
+        elif not blk.get("reachable"):
+            if blk.get("not_available"):
+                why = f"not available: {blk['not_available']}"
+            else:
+                lo, hi, vlo, vhi = bound.get("low"), bound.get("high"), bound.get("value_low"), bound.get("value_high")
+                why = (f"not reachable: the price {price!r} lies {blk.get('side') or 'outside'} the Base values {vlo!r} (input {lo!r}) to {vhi!r} (input {hi!r}) the solver reaches over its bound"
+                       + (f"; stamps {blk.get('stamps')}" if blk.get("stamps") else ""))
+        out.append({"input": name, "own": e.get("own"), "reachable": bool(e.get("reachable")), "valid": bool(e.get("valid")), "implied": e.get("implied"), "not_computable": why,
+                    "bound": bound or None, "side": blk.get("side"), "reason": e.get("reason")})
+    return out
 
 
 def crux_correction_message(chk):

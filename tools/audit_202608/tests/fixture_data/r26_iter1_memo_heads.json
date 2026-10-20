@@ -1,0 +1,20 @@
+{
+ "MSGE": {
+  "head": "Verdict: overvalued\nThe frozen desk values place `Price: $79.60` above `Base value per share: $39.37`, and the locked scenario table gives `Margin of safety: -50.5%`.\n"
+ },
+ "BUD": {
+  "head": "Verdict: undervalued — the Base value per share: $93.93 exceeds Price: $82.59 for a Margin of safety: 13.7%, and the company's own dated record (medium-term EBITDA growth guidance, accelerating premiumization, and H1'26 operating leverage) supports a growth-and-margin path the price does not fully pay for.\n\n## SECTION 0. Overview\n\n| Field | Value |\n|---|---|\n| Ticker | BUD (NYSE) |\n| Company | Anheuser-Busch InBev (AB InBev) |\n| Price: $82.59 | [live quote, as of 2026-10-16] |\n| Base value per share: $93.93 | desk DCF (Base) |\n| Bull value per share: $115.98 | desk DCF (Bull) |\n| Bear value per share: $66.00 | desk DCF (Bear) |\n| Margin of safety: 13.7% | Base vs Price |\n| Base probability: 50.0% · Bull probability: 30.0% · Bear probability: 20.0% | scenario weights |\n\nThe later 2026-10-19 close of $82.86 [M1ar] is context only; the desk's T0 is Price: $82.59.\n"
+ },
+ "GOLD": {
+  "head": "Verdict: undervalued\n\n## SECTION 0. Overview\n\nThe frozen desk values the durable direct-to-consumer, storage and secured-lending annuity above the current price, even though the latest top line is peak-cycle and pass-through-heavy.\n\n- Price: $39.35\n- Base value per share: $73.24\n- Bull value per share: $270.86\n- Bear value per share: $6.50\n- Base probability: 45.0%\n- Bull probability: 25.0%\n- Bear probability: 30.0%\n- Margin of safety: 86.1%\n"
+ },
+ "ITGR": {
+  "head": "Verdict: overvalued — at Price: $126.70 the shares are pinned to the contractual $127 KKR cash deal price [D1] rather than to standalone merit, where Base value per share: $93.86 against that price leaves Margin of safety: -25.9%.\n\nThis is a risk-arbitrage / take-private security, not a fundamental value name. The frozen verdict is the *standalone* call: the business on its own does not support the tape. The only reason the price sits at ~99.8% of the check is the pending definitive merger. Everything below explains the locked numbers and why the trade, if taken at all, is a small, trend-disciplined momentum/event position — never a value position.\n"
+ },
+ "TASK": {
+  "head": "Verdict: no call — the desk returned `no_call` because the crux is invalid (reason: not_reachable): the reverse DCF cannot solve Price: $8.22 at any admissible value of long_run_margin, terminal_g or terminal_ronic, so no verdict is issued even though the forward model prints Base value per share: $20.54 and Margin of safety: 149.9%.\n\nFrozen desk table values (quoted exactly as labelled):\n\n- Verdict: no_call\n- Price: $8.22\n- Base value per share: $20.54\n- Bull value per share: $26.08\n- Bear value per share: $11.75\n- Base probability: 45.0%\n- Bull probability: 25.0%\n- Bear probability: 30.0%\n- Margin of safety: 149.9%\n- Stage-2 spread: 13.6%\n- Discount rate: 10.3%\n\n---\n"
+ },
+ "MCY": {
+  "head": "Verdict: no call — the desk's `[No call]` reason is a crux form failure: the structured crux claim (`crux[1]`) was missing its required `input` field (which must be one of coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level, long_run_margin) and its `reason` field, so the validator could not lock a verdict word; that is a schema outcome, not an economic call.\n\n---\n"
+ }
+}

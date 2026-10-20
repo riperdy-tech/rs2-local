@@ -33,6 +33,7 @@ The operating-margin bar: {"min", "p25", "median", "p75", "max", "last"} as deci
 from __future__ import annotations
 
 import copy
+import json
 import math
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -452,6 +453,19 @@ def _scenario_spec(name: str, sc: Dict[str, Any], forecast: Dict[str, Any], op_m
     return {"status": BRIDGE_OK, "scenario": name, "path": path, "bridge": bridge, "long_run": lr, "desk_entry": entry}
 
 
+def desk_error_text(res: Any) -> str:
+    """The desk's refusal as one sentence, never empty: its `error`, else its `missing` (a list or a string), else the whole result as JSON."""
+    if isinstance(res, dict):
+        for key in ("error", "missing"):
+            v = res.get(key)
+            if isinstance(v, (list, tuple)):
+                v = "; ".join(str(x) for x in v)
+            if isinstance(v, str) and v.strip():
+                return v
+        return "desk refused with no error text: " + json.dumps(res, default=str)[:600]
+    return f"desk returned {type(res).__name__}: {str(res)[:300]}"
+
+
 def value_forecast(forecast: Dict[str, Any], op_margin_bar: Dict[str, Any], rev0: float, facts: Dict[str, Any], *, base_cf: float,
                    desk_params: Dict[str, Any], desk_context: Dict[str, Any], replace: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Values the three scenarios with the existing desk (execute_financial_model, desk schema 25.2): each scenario's revenue growth and X-margin path
@@ -485,8 +499,7 @@ def value_forecast(forecast: Dict[str, Any], op_margin_bar: Dict[str, Any], rev0
     import financial_model_tool as fmt                           # imported here: the module is pure until it values
     res = fmt.execute_financial_model(params, ctx)
     if res.get("error") or res.get("validation_error"):
-        return {"status": "desk_error", "values": None, "base_value": None, "scenarios": specs, "desk": res, "stamps": stamps,
-                "message": res.get("error") or res.get("missing")}
+        return {"status": "desk_error", "values": None, "base_value": None, "scenarios": specs, "desk": res, "stamps": stamps, "message": desk_error_text(res)}
     values = {n: _desk_role_iv(res, n) for n in SCENARIOS}
     return {"status": BRIDGE_OK, "values": values, "base_value": values["Base"], "scenarios": specs, "desk": res, "stamps": stamps}
 

@@ -643,21 +643,34 @@ def rounds_to(true_value, shown_decimals, memo_value, memo_decimals):
     return abs(float(shown) - memo_value) <= 0.5 * 10 ** (-memo_decimals) + 1e-9
 
 
+_VERDICT_WORDS = re.compile(r"\b(no[ _-]call|undervalued|overvalued|fairly valued|fair|hold)\b", re.I)
+_VERDICT_LINE = re.compile(r"(?im)^[#>*_`\s-]*verdict\b")
+
+
 def _verdict_word(memo):
+    """The verdict word the memo states, as the code's label words (undervalued, overvalued, hold, no_call; fair and fairly valued read as hold), else None.
+    The memo's head is everything before the line that opens SECTION 1 (4000 characters at most). In it, a line that starts with `Verdict` (markdown emphasis, heading marks, quotes or a
+    list dash before it, a colon or a dash after it, any case) is the statement: the first verdict word within 120 characters after it. Wherever SECTION 0 is, or whether it is headed at all,
+    that line is read. Without such a line, a headed SECTION 0 is read as before: the first verdict word within 120 characters after the word `verdict` in it, else its first verdict word."""
     text = memo or ""
-    m = re.search(r"(?im)^[#*>\s]*SECTION\s+0\b", text)
-    if m is None:
-        return None
-    rest = text[m.end():]
-    end = re.search(r"(?im)^[#*>\s]*SECTION\s+1\b", rest)
-    sec = rest[:end.start()] if end else rest[:4000]
-    v = re.search(r"verdict", sec, re.I)
-    rx = re.compile(r"\b(no[ _]call|undervalued|overvalued|fairly valued|fair|hold)\b", re.I)
-    hit = rx.search(sec[v.end():v.end() + 120]) if v else None
-    hit = hit or rx.search(sec)
+    end1 = re.search(r"(?im)^[#*>\s]*SECTION\s+1\b", text)
+    head = (text[:end1.start()] if end1 else text)[:4000]
+    hit = None
+    for m in _VERDICT_LINE.finditer(head):
+        hit = _VERDICT_WORDS.search(head[m.end():m.end() + 120])
+        if hit:
+            break
+    if hit is None:
+        m = re.search(r"(?im)^[#*>\s]*SECTION\s+0\b", head)
+        if m is None:
+            return None
+        sec = head[m.end():]
+        v = re.search(r"verdict", sec, re.I)
+        hit = _VERDICT_WORDS.search(sec[v.end():v.end() + 120]) if v else None
+        hit = hit or _VERDICT_WORDS.search(sec)
     if hit is None:
         return None
-    w = hit.group(1).lower().replace(" ", "_")
+    w = hit.group(1).lower().replace(" ", "_").replace("-", "_")
     return "hold" if w in ("fair", "fairly_valued") else w
 
 

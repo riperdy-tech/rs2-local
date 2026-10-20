@@ -301,11 +301,13 @@ def label19(base, price, chk):
     return "hold", dm, [f"no_valid_crux:{reason}"]
 
 
-def form_problems(crux, run_date):
+def form_problems(crux, run_date, inputs=None):
     """The desk's form check (B2): the problems with the `crux` argument as sent, each a sentence for a refusal; [] when it is well formed or absent
     (a crux is optional: none means HOLD, never a refusal). A crux is a list of one to three objects; each carries an `input` in J, a `reason` that
     reads as given, and a list of one to five citations, each with a non-empty `source`, a `date` of the form YYYY-MM-DD that is not after
-    `run_date` (an ISO date string), and a `quote` of 30 to 600 characters after normalising."""
+    `run_date` (an ISO date string), and a `quote` of 30 to 600 characters after normalising. `inputs` (default J) is the inputs the desk path offers: the message names exactly those,
+    and an input of J that the path does not offer says so."""
+    offered = tuple(inputs) if inputs is not None else J
     if crux is None:
         return []
     if not isinstance(crux, list) or not 1 <= len(crux) <= MAX_ENTRIES:
@@ -316,8 +318,11 @@ def form_problems(crux, run_date):
         if not isinstance(e, dict):
             problems.append(f"{tag} (an object with input, reason and citations)")
             continue
-        if e.get("input") not in J:
-            problems.append(f"{tag}.input (one of {', '.join(J)})")
+        if e.get("input") not in offered:
+            if e.get("input") in J:
+                problems.append(f"{tag}.input ({e.get('input')!r} is not offered on this desk path; one of {', '.join(offered)})")
+            else:
+                problems.append(f"{tag}.input (one of {', '.join(offered)})")
         r = e.get("reason")
         s = "" if r is None else str(r).strip()
         if s == "" or s.lower() in ("null", "none"):
