@@ -1477,7 +1477,7 @@ def _stage3_messages(dossier, fc, vf, forecasts, val, cview, diag, run_date, rev
         "median_desk_result": r26_late.render_desk_result(vf, val["price"], fc),
         "base_values": r26_late.render_sample_values(forecasts["base_values"], forecasts["median_index"], forecasts["spread"]),
         "price": r26_late.render_price(val["price"]),
-        "price_implied_inputs": r26_late.render_price_implied(pi_lines),
+        "price_implied_inputs": r26_late.render_price_implied(pi_lines, r26_late.reachability_lines(pi, vf.get("base_value"), val["price"])),
         "consensus_corrected": r26_late.render_consensus(cview),
         "diagnostics": r26_late.render_diagnostics(diag),
         "task": r26_late.stage3_task(bar, run_date),
@@ -1546,7 +1546,7 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
             probs = cprobs + [x for x in crux_check.form_problems(st["resolved"], valuation["run_date"], r26_late.CRUX_INPUTS) if not any(x.startswith(t) for t in bad)]
             if probs and st["crux_attempts"] < CRUX_FORM_ATTEMPTS:
                 st["form_problems"] = probs
-                return {"accepted": False, "message": "The crux is malformed. Correct it once: " + "; ".join(probs)}, False
+                return {"accepted": False, "message": "The crux is malformed. This is a syntax-only repair, and it does not use your one correction for the content: fix the form and keep what you said. Correct it once: " + "; ".join(probs)}, False
             st["crux"] = crux
             st["form_problems"] = probs
             st["crux_state"] = "form_failed" if probs else "accepted"
@@ -1599,35 +1599,43 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
     # ---- the crux, resolved against the final run
     crux_t = translate_crux(st["resolved"]) if st["crux"] is not None else None
     chk = crux_check.check(crux_t, (final_vf.get("desk") or {}).get("price_implied"), blind_pack, list(fetch_calls), company, ticker, facts or {})
+    chk = assess_reach(chk, final_vf, valuation, final_fc, op_margin_bar)
     if st["crux_state"] == "form_failed":
         chk = dict(chk, valid=False, reason="crux_form: " + "; ".join(st["form_problems"]))
     reveal["crux"] = {"stated": st["crux"], "resolved": st["resolved"], "translated": crux_t, "form_problems": st["form_problems"], "state": st["crux_state"] or "not_stated", "check": chk, "valid": bool(chk.get("valid")),
+                      "reach_outcome": (chk.get("reach") or {}).get("outcome"), "reach": chk.get("reach"), "form_repair_used": st["crux_attempts"] > 1,
                       "entries": crux_entry_details(chk, (final_vf.get("desk") or {}).get("price_implied"), price)}
     if not chk.get("valid") and st["crux_state"] == "accepted" and res["ended"] in ("closed", "turn_budget"):
         # ruling 2026-10-19: ONE correction turn for an invalid crux (the one-repair rule), then no_call. Code names the failing entries and why.
         first = dict(reveal["crux"])
-        fix = {"crux": None, "resolved": None, "problems": [], "turns": 0}
+        fix = {"crux": None, "resolved": None, "problems": [], "turns": 0, "attempts": 0, "done": False}
 
         def handle_fix(name, args):
-            if name != "state_crux" or fix["crux"] is not None:
-                return {"error": "only one corrected state_crux call is accepted now"}, fix["crux"] is not None
-            fix["crux"] = args.get("crux")
-            fix["resolved"], cp = resolve_crux_citations(fix["crux"], dossier, valuation["run_date"], blind_pack)
-            fix["problems"] = cp + [x for x in crux_check.form_problems(fix["resolved"], valuation["run_date"], r26_late.CRUX_INPUTS) if not any(x.startswith(t.split(".fact_id")[0]) for t in cp)]
+            if name != "state_crux" or fix["done"]:
+                return {"error": "only one corrected state_crux call is accepted now"}, fix["done"]
+            fix["attempts"] += 1
+            crux = args.get("crux")
+            resolved, cp = resolve_crux_citations(crux, dossier, valuation["run_date"], blind_pack)
+            probs = cp + [x for x in crux_check.form_problems(resolved, valuation["run_date"], r26_late.CRUX_INPUTS) if not any(x.startswith(t.split(".fact_id")[0]) for t in cp)]
+            if probs and fix["attempts"] < CRUX_FORM_ATTEMPTS:      # amendment 1, B3: ONE syntax-only repair of the corrected crux; the content correction is already spent
+                return {"accepted": False, "message": "The corrected crux is malformed. This is a syntax-only repair: fix the form and keep the content. Correct it once: " + "; ".join(probs)}, False
+            fix.update(crux=crux, resolved=resolved, problems=probs, done=True)
             return {"accepted": True}, True
 
         msgs.append({"role": "user", "content": crux_correction_message(chk)})
-        res2 = _session(model, msgs, [r26_late.STATE_CRUX_TOOL], run_dir, "stage3_crux_fix", handle_fix, seed=seed, max_turns=3,
+        res2 = _session(model, msgs, [r26_late.STATE_CRUX_TOOL], run_dir, "stage3_crux_fix", handle_fix, seed=seed, max_turns=4,
                         nudge="You ended the turn without calling a tool. Call state_crux once with the corrected crux.", **sess)
         fix["turns"] = res2["turns"]
         reveal["turns"] += res2["turns"]
         if fix["crux"] is not None:
             crux_t2 = translate_crux(fix["resolved"])
             chk2 = crux_check.check(crux_t2, (final_vf.get("desk") or {}).get("price_implied"), blind_pack, list(fetch_calls), company, ticker, facts or {})
+            chk2 = assess_reach(chk2, final_vf, valuation, final_fc, op_margin_bar)
             if fix["problems"]:
                 chk2 = dict(chk2, valid=False, reason="crux_form: " + "; ".join(fix["problems"]))
             reveal["crux"] = {"stated": fix["crux"], "resolved": fix["resolved"], "translated": crux_t2, "form_problems": fix["problems"], "state": "corrected", "check": chk2,
-                              "valid": bool(chk2.get("valid")), "first": first, "correction_used": True,
+                              "valid": bool(chk2.get("valid")), "first": first, "correction_used": True, "form_repair_used": first.get("form_repair_used"), "correction_form_repair_used": fix["attempts"] > 1,
+                              "reach_outcome": (chk2.get("reach") or {}).get("outcome"), "reach": chk2.get("reach"),
                               "entries": crux_entry_details(chk2, (final_vf.get("desk") or {}).get("price_implied"), price)}
             chk = chk2
         else:
@@ -1637,8 +1645,57 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
     if not chk.get("valid"):
         reveal["no_call"] = True
         reveal["no_call_reasons"].append(f"crux_invalid:{chk.get('reason')}")
+    elif (chk.get("reach") or {}).get("outcome") == "beyond_reach":
+        reveal["beyond_reach"] = True                     # amendment 1: valid (every entry's quotes verify), published, and not actionable until reviewed
+        reveal["flags"] = list(reveal.get("flags") or []) + [BEYOND_REACH_FLAG]
     _write_json(run_dir / ARTIFACTS["stage3"], reveal)
     return reveal
+
+
+BEYOND_REACH_FLAG = "price_beyond_every_input_reach"
+BEYOND_REACH_REASON = "beyond_reach_review_required"
+
+
+def assess_reach(chk, vf, valuation, fc, bar):
+    """Amendment 1, B2: the reachability of a crux, per entry and jointly. `chk` is crux_check.check's result against the final run `vf` (forecast `fc`). Outcome code, recorded in
+    chk["reach"] with every value: `reachable` (every entry's single-input solve reaches the price), `jointly_reachable` (not all are, but moving all the named inputs together along
+    the ray from the analyst's values toward their price-favourable bounds, one shared fraction t, reaches it: t and the joint values recorded) or `beyond_reach` (it does not).
+    In the last two, an entry that is only unreachable is judged by its quotes alone (the desk's own `not_reachable` reason is lifted), so the crux is valid when every entry's quotes
+    verify. Nothing is assessed (chk returned as it came) when an entry is empty or not a judgment input, or the desk's price-implied block is missing or failed."""
+    import crux_check
+    import financial_model_tool as fmt
+    entries = (chk or {}).get("entries") or []
+    pi = (vf.get("desk") or {}).get("price_implied")
+    if not entries or not isinstance(pi, dict) or pi.get("error") or any(e.get("input") not in crux_check.J for e in entries):
+        return chk
+    base, price = vf.get("base_value"), valuation["price"]
+    single = []
+    for e in entries:
+        blk = pi.get(e["input"])
+        single.append({"input": e["input"], "reachable": bool(e.get("reachable")), "implied": e.get("implied"),
+                       "favourable": fmt.pi_favourable_end(blk, base, price) if isinstance(blk, dict) else None})
+    reach = {"outcome": None, "single": single, "joint": None}
+    if all(x["reachable"] for x in single):
+        reach["outcome"] = "reachable"
+        return dict(chk, reach=reach)
+    names = []
+    for e in entries:
+        if e["input"] not in names:
+            names.append(e["input"])
+    probe = _value(fc, dict(valuation, desk_context={**valuation["desk_context"], "pi_joint": names}), bar)
+    joint = (((probe.get("desk") or {}).get("price_implied") or {}).get("joint")) if probe.get("status") == rf.BRIDGE_OK else None
+    reach["joint"] = joint
+    if not isinstance(joint, dict) or not joint.get("computable"):
+        return dict(chk, reach=reach)                    # not assessed: the crux stands or falls on the single-input check as before
+    reach["outcome"] = "jointly_reachable" if joint.get("reachable") else "beyond_reach"
+    amended = []
+    for e in entries:
+        if e.get("reason") == "not_reachable":
+            ev = crux_check.evidence_failure(e.get("citations"))
+            e = dict(e, reason=ev, valid=ev is None, reach_outcome=reach["outcome"])
+        amended.append(e)
+    first = next((x for x in amended if not x["valid"]), None)
+    return dict(chk, entries=amended, valid=first is None, reason=None if first is None else first["reason"], reach=reach)
 
 
 def crux_entry_details(chk, price_implied, price):
@@ -1759,6 +1816,9 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
     crux_txt = json.dumps(shown, indent=1) if shown else "(no crux was stated)"
     chk = crux.get("check") or {}
     ver_lines = [f"Crux valid: {bool(crux.get('valid'))}" + (f" (reason: {chk.get('reason')})" if chk.get("reason") else "")]
+    if crux.get("reach_outcome") in ("jointly_reachable", "beyond_reach"):
+        ver_lines.append("Reach: " + ("not every named input reaches the price alone; moved together toward their price-favourable bounds they do." if crux["reach_outcome"] == "jointly_reachable"
+                                      else "the price is beyond the reach of every named input, alone and together; the verdict is not actionable until reviewed."))
     for e in chk.get("entries") or []:
         ver_lines.append(f"  {e.get('input')}: reachable {e.get('reachable')}; valid {e.get('valid')}" + (f" ({e.get('reason')})" if e.get("reason") else "")
                          + "; citations: " + ", ".join(f"{c['source']} [{c['class']}, quote found {c['quote_found']}]" for c in e.get("citations") or []))
@@ -1800,6 +1860,13 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
     near, norm = code_earnings(vf, valuation)
     verdict = dict(filled)
     verdict.update(near_term_earnings=near, normalized_earnings=norm)
+    rchk = (reveal.get("crux") or {}).get("check")
+    if not final["no_call"] and rchk and (rchk.get("reach") or {}).get("outcome") in ("jointly_reachable", "beyond_reach"):
+        # amendment 1: contract_fill re-checks the crux against the desk's single-input solves and would call a jointly reachable or beyond-reach crux invalid (hold, no_valid_crux:not_reachable);
+        # the label is the revision-19 label of the crux as stage 3 judged it, the same one the frozen table shows
+        import crux_check
+        lab, dm, stamps = crux_check.label19(pub.get("Base"), price, rchk)
+        verdict.update(verdict_label=lab, direction_m=dm, crux_check=dict(rchk, stamps=stamps))
     for k in r26_late.LABEL_ENUMS:                            # the three classifications are the stage-2 forecast's (revised or not): code writes them, never the memo
         v = (fc["scenarios"]["Base"].get(k) or {})
         verdict[k] = v.get("label")
@@ -1818,6 +1885,10 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
         reasons.append("contract_fields_unfilled")             # item 14: no code source for these numbers yet; resolve before any book-wide run
     if reveal.get("revision", {}).get("submitted") and not reveal["revision"].get("accepted"):
         final["flags"].append("revision_not_accepted")
+    if reveal.get("beyond_reach"):                                   # amendment 1, B2: published with the flag, non-actionable until the beyond-reach review
+        final["flags"] += [f for f in reveal.get("flags") or [] if f not in final["flags"]]
+        reasons.append(BEYOND_REACH_REASON)
+    reasons += samples_actionability_reasons(forecasts, price, valuation.get("min_mos"))
     verdict["r26"] = {"pilot_arm": ARM, "desk_schema": R26_DESK_SCHEMA, "pack_revision": PACK_REVISION_R26, "actionable": not reasons, "non_actionable_reasons": reasons,
                       "no_call": final["no_call"], "verifier": ver, "final_source": reveal.get("final_source"), "spread": forecasts.get("spread"),
                       "pre_reveal_base": (reveal.get("pre") or {}).get("base_value"), "post_reveal_base": (reveal.get("post") or {}).get("base_value"),
@@ -1834,6 +1905,23 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
     _write_json(run_dir / ARTIFACTS["stage4"], final)
     _append_snapshot_call(run_dir, call)
     return final
+
+
+SAMPLES_SPREAD_MAX = 0.20
+
+
+def samples_actionability_reasons(forecasts, price, min_mos=None):
+    """Amendment 1, C (every name): actionable only when the three blind Base samples agree on direction (no split under the existing band rule) and their spread is at most 20%.
+    Returns the reasons that fail: `samples_direction_split`, `samples_spread_above_20pct` (and `samples_spread_undefined` when no spread exists to test)."""
+    out = []
+    if rf.direction_split(forecasts.get("base_values") or [], {"price": price, "min_mos": min_mos}):
+        out.append("samples_direction_split")
+    sp = forecasts.get("spread")
+    if not rf._num(sp):
+        out.append("samples_spread_undefined")
+    elif sp > SAMPLES_SPREAD_MAX:
+        out.append("samples_spread_above_20pct")
+    return out
 
 
 def _bare_no_call_verdict(reasons):

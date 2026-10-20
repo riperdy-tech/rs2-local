@@ -266,7 +266,7 @@ In stage 2 a forecast was made blind, in three samples. You now see the forecast
 
 Treat the reveal as an audit of the market's view, not as an answer. The price is the market's opinion; the consensus is analysts' opinion; neither is evidence. Ask what the market must believe for the price to be right, and whether the dossier's facts support that belief, your forecast, or neither. Move a number only for a reason that a fact in the dossier supplies.
 
-(a) The crux. Call state_crux. Name one to three of the desk's judgment inputs (coe, fade_years, terminal_g, terminal_ronic, long_run_margin) that decide whether the price is right; the growth of years 3 to 5 and the year-2 level are declared in the forecast and are not offered. For each give your reason (why this company's value of the input is what you say, against what the price implies, and by how much) and one to five citations {{fact_id}} of this company's own evidence: the id of a usable dossier fact. You do not type a source, a date or a quote; code takes them from the fact and resolves the quote against its source. A fact whose quote is shorter than 30 characters cannot be cited. A crux is required whatever your view: if the evidence supports the price, name the inputs on which it does. One entry that fails makes the whole crux invalid, and without a valid crux there is no call.
+(a) The crux. Call state_crux. Name one to three of the desk's judgment inputs (coe, fade_years, terminal_g, terminal_ronic, long_run_margin) that decide whether the price is right; the growth of years 3 to 5 and the year-2 level are declared in the forecast and are not offered. Beside each offered input the reveal shows, before you answer, whether the price can be reached by moving that input alone within its bounds, and the Base value at the end of its bounds that is closest to the price. For each give your reason (why this company's value of the input is what you say, against what the price implies, and by how much) and one to five citations {{fact_id}} of this company's own evidence: the id of a usable dossier fact. You do not type a source, a date or a quote; code takes them from the fact and resolves the quote against its source. A fact whose quote is shorter than 30 characters cannot be cited. A crux is required whatever your view: if the evidence supports the price, name the inputs on which it does. An entry whose citations do not verify makes the whole crux invalid, and without a valid crux there is no call. An input that cannot reach the price alone does not by itself invalidate the crux: code then moves all the inputs you name together, each toward its price-favourable bound by the same fraction, and the crux stands as jointly reachable if together they reach the price. If even together they cannot, the crux still stands when every quote verifies; the price is then recorded as beyond the reach of every input you named, and the verdict is published as not actionable until it is reviewed.
 (b) Keep or revise. Keep is the default: the forecast was made blind, from the filed record, and the price and the consensus are not evidence. In the same state_crux call give decision: keep, or revise. Revise only when a dossier fact shows that the forecast contains an error of fact (a figure misread, a basis mixed up, a fact it ignored that contradicts it); a difference from the price or the consensus is never a reason. To revise, call submit_forecast once with the full revised forecast, revision_fact_ids (at least one usable dossier fact) and revision_reason (the error of fact, and how that fact corrects it). Code accepts one revision only; a second call is refused and the stage closes. A revision with no fact that supports it is not accepted, and a number that moved toward the consensus or the price is recorded by code as a pull toward it, whatever fact is cited. A company-adjusted or non-GAAP fact informs the direction of a change, never the level of a margin.
 
 You cannot see the reasoning behind the stage-2 forecast. You see its numbers, the ids of the facts it cited and its classification labels; judge it by the dossier."""
@@ -429,9 +429,33 @@ def revealed_price_context(facts):
     return "\n".join(out) if len(out) > 1 else "REVEALED: price and momentum: the pack held no price-derived line."
 
 
-def render_price_implied(pi_lines):
-    return "PRICE-IMPLIED INPUTS (the value of each judgment input at which the Base would equal the price, others held; [yours] is the forecast's own):\n" + "\n".join(
+def render_price_implied(pi_lines, reach_lines=None):
+    t = "PRICE-IMPLIED INPUTS (the value of each judgment input at which the Base would equal the price, others held; [yours] is the forecast's own):\n" + "\n".join(
         f"  {x}" for x in (pi_lines or ["not computed"]))
+    if reach_lines:
+        t += "\nREACH OF EACH OFFERED INPUT ALONE (others held; within the desk's bounds for the input):\n" + "\n".join(f"  {x}" for x in reach_lines)
+    return t
+
+
+def reachability_lines(pi, base_value, price):
+    """Amendment 1, B1: one plain line per offered input (CRUX_INPUTS): whether the price can be reached by moving that input alone within its bounds, and the Base value per
+    share at its price-favourable bound (the end of the bound that moves the value toward the price). Numbers are allowed: stage 3 already sees the price and the implied inputs."""
+    import financial_model_tool as fmt
+    import pi_text
+    if not isinstance(pi, dict) or pi.get("error"):
+        return []
+    out = []
+    for name in CRUX_INPUTS:
+        blk = pi.get(name)
+        if not isinstance(blk, dict):
+            continue
+        if blk.get("not_available"):
+            out.append(f"{name}: not available ({blk['not_available']}).")
+            continue
+        e = fmt.pi_favourable_end(blk, base_value, price)
+        tail = (f" At its price-favourable bound ({pi_text.fmt_bound(name, e['input'])}) the Base value is ${e['value']:.2f}, against the price ${price:.2f}." if e else "")
+        out.append(f"{name}: {'the price can be reached by this input alone.' if blk.get('reachable') else 'the price cannot be reached by this input alone.'}" + tail)
+    return out
 
 
 def render_consensus(cm):

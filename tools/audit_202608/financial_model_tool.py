@@ -1057,7 +1057,79 @@ def _pi_normalise(growth, terminal_g, fade, finite_life):
     return [float(g) for g in five], int(left)
 
 
-def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
+def pi_favourable_end(blk, base_value, price):
+    """The end of a price-implied block's bound that moves the Base value toward the price (revision 26, amendment 1): the end with the higher value when the price is at or above
+    the Base value, else the one with the lower value. Returns {"end": "low"|"high", "input": the input at that end, "value": the Base value there}, or None when the block holds
+    no bound values (not available) or the Base value or price is not a number."""
+    bd = (blk or {}).get("bound") or {}
+    cand = [(bd.get("low"), bd.get("value_low"), "low"), (bd.get("high"), bd.get("value_high"), "high")]
+    cand = [c for c in cand if c[0] is not None and _is_num(c[1])]
+    if not cand or not _is_num(base_value) or not _is_num(price):
+        return None
+    x, v, end = (max if price >= base_value else min)(cand, key=lambda c: c[1])
+    return {"end": end, "input": x, "value": v}
+
+
+def _joint_ray(raw, blocks, names, price, base_raw, wacc0, tg0, fade0, ronic0, lrm0):
+    """The joint reachability test (revision 26, amendment 1, B2): the named inputs move TOGETHER from the Base's own values toward their price-favourable bounds along a ray, one
+    shared fraction t in [0, 1] (x_i(t) = own_i + t (bound_i - own_i); the fade rounds to a whole year; the return on new investment moves through its charge wacc / RONIC, as its
+    single solve does, with the Base's discount rate). The Base is revalued at each t through the same rebuilt desk path (`raw`) and the root nearest t = 0 is found by
+    `solve_nearest`. Returns {"names", "used", "excluded", "favourable", "computable", "reachable", "t", "values", "value_at_t", "value_at_1", "side"}."""
+    rec = {"names": [n for n in PI_INPUTS if n in names], "used": [], "excluded": {}, "favourable": {}, "computable": False, "reachable": False, "t": None, "values": None,
+           "value_at_t": None, "value_at_1": None, "side": None}
+    own = {"coe": wacc0, "fade_years": float(fade0), "terminal_g": tg0, "long_run_margin": None if lrm0 is None else float(lrm0),
+           "terminal_ronic": None if ronic0 is None else (0.0 if math.isinf(ronic0) else wacc0 / ronic0)}
+    ray = {}
+    for n in rec["names"]:
+        blk = blocks.get(n)
+        if n not in own or own[n] is None or not isinstance(blk, dict):
+            rec["excluded"][n] = "not a movable input of this desk path"
+            continue
+        if blk.get("not_available"):
+            rec["excluded"][n] = f"not available: {blk['not_available']}"
+            continue
+        e = pi_favourable_end(blk, base_raw, price)
+        if e is None:
+            rec["excluded"][n] = "no value at its bound"
+            continue
+        x = e["input"]
+        z = (0.0 if (x == "unlimited" or (isinstance(x, float) and math.isinf(x))) else wacc0 / float(x)) if n == "terminal_ronic" else float(x)
+        ray[n] = (own[n], z)
+        rec["used"].append(n)
+        rec["favourable"][n] = {"end": e["end"], "input": x, "value": e["value"]}
+    if not ray:
+        return rec
+
+    def at(t):
+        kw = {}
+        for n, (a, z) in ray.items():
+            x = a + t * (z - a)
+            if n == "coe":
+                kw["wacc"] = x
+            elif n == "fade_years":
+                kw["fade"] = int(round(x))
+            elif n == "terminal_g":
+                kw["tg"] = x
+            elif n == "long_run_margin":
+                kw["lrm"] = x
+            else:
+                kw["ronic"] = math.inf if x <= 0.0 else wacc0 / x
+        return kw
+
+    def f(t):
+        v = raw(**at(t))
+        return None if v is None else v - price
+    res = solve_nearest(f, _linspace(0.0, 1.0, SOLVER_GRID_POINTS), 0.0)
+    v1 = f(1.0)
+    rec.update(computable=True, side=res["side"], value_at_1=None if v1 is None else v1 + price)
+    if res["found"]:
+        kw = at(res["s"])
+        vals = {"coe": kw.get("wacc"), "fade_years": kw.get("fade"), "terminal_g": kw.get("tg"), "long_run_margin": kw.get("lrm"), "terminal_ronic": _json_num(kw.get("ronic"))}
+        rec.update(reachable=True, t=res["s"], values={n: vals[n] for n in rec["used"]}, value_at_t=None if res["f"] is None else res["f"] + price)
+    return rec
+
+
+def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None, joint=None):
     """The price-implied value of each judgment input (brief_rev19 sections 1.1, A2-A4).
 
     `b` is the Base's exact applied arguments: cf ($B), growth (the applied explicit rates after any hold or cap), fade, wacc, tg, shares,
@@ -1241,6 +1313,8 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
         f = lambda x: diff(raw(lrm=x))
         res = solve_nearest(f, _linspace(lo, hi, SOLVER_GRID_POINTS), float(lrm0))
         out["long_run_margin"] = finish("long_run_margin", float(lrm0), ends(f, lo, hi), res, lambda s: s)
+    if joint:           # revision 26, amendment 1: only when asked (the r26 stage 3 crux test); every other caller leaves it None and the block is unchanged
+        out["joint"] = _joint_ray(raw, out, list(joint), float(price), b["raw"], wacc0, tg0, fade0, ronic0, lrm0)
     return out
 
 
@@ -2952,7 +3026,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         pi_key = "top-level"
     if pi_key is not None and _is_num(price) and price > 0:
         result["price_implied"] = price_implied(base_solver[pi_key], float(price), rf_eff=ctx.get("rf_eff"),
-                                                gdp_trend=ctx.get("nominal_gdp_trend"), levels=ctx.get("levels"))
+                                                gdp_trend=ctx.get("nominal_gdp_trend"), levels=ctx.get("levels"), joint=ctx.get("pi_joint"))
         if isinstance(params.get("crux"), list) and params["crux"]:
             result["crux_desk_check"] = crux_desk_check(params["crux"], result["price_implied"])
 
