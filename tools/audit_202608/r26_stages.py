@@ -65,6 +65,7 @@ if _TOOLS not in sys.path:
     sys.path.insert(0, _TOOLS)
 
 import analyst_tools  # noqa: E402
+import ops  # noqa: E402
 import llm_provider  # noqa: E402
 import r26_blind  # noqa: E402
 import r26_forecast as rf  # noqa: E402
@@ -945,6 +946,30 @@ def run_stage1(model, pack, run_dir, think="high", ctx=98304, num_predict=49152,
     return dossier
 
 
+NET_WAIT_S = 45 * 60      # how long a stage-1 research call waits for a dropped network before the run stops (2026-10-21: drops of 1-40 minutes)
+
+
+class NetworkDown(RuntimeError):
+    """The internet stayed unreachable for NET_WAIT_S during a stage-1 research call: an infra stop, the dossier is not frozen."""
+
+
+def _dispatch_net(name, args, snap_rec, **kw):
+    """analyst_tools.dispatch_tool behind the network guard: while the internet is unreachable the call waits (at most NET_WAIT_S) instead of
+    handing the model an empty search; a call that failed while the network dropped is retried once after it returns. The wait is recorded
+    on the call (network_wait_s)."""
+    for attempt in (0, 1):
+        if not ops.internet_up():
+            back, waited = ops.wait_for_internet(NET_WAIT_S)
+            snap_rec["network_wait_s"] = round(snap_rec.get("network_wait_s", 0) + waited, 1)
+            if not back:
+                raise NetworkDown(f"no internet connection for {waited:.0f}s during stage-1 {name}")
+        res = analyst_tools.dispatch_tool(name, args, **kw)
+        if attempt == 0 and isinstance(res, dict) and res.get("error") and not ops.internet_up():
+            continue
+        return res
+    return res
+
+
 def _research_call(name, args, call_index, snap_rec, evidence, q_cache, u_cache, known, primary_items, ticker, search_calls, max_search_calls, primary_refusals):
     """search_web / fetch_page for the stage-1 session. Adds `_counted` (it used a research call) and `_primary_refusal` to the result (popped by the caller)."""
     args = args if isinstance(args, dict) else {}
@@ -958,7 +983,7 @@ def _research_call(name, args, call_index, snap_rec, evidence, q_cache, u_cache,
         return {"status": "search_quota_met", "message": f"Web search budget completed ({max_search_calls} calls). Do not search again. Register your facts with register_facts "
                 f"and finish with done=true and your research_summary.", "_counted": False, "_primary_refusal": False}
     if name == "search_web":
-        res = analyst_tools.dispatch_tool("search_web", args, snap=None, query_cache=q_cache, url_cache=u_cache, known_urls=known)
+        res = _dispatch_net("search_web", args, snap_rec, snap=None, query_cache=q_cache, url_cache=u_cache, known_urls=known)
         if isinstance(res, dict):
             for r in (res.get("results") or []):
                 if isinstance(r, dict) and r.get("url"):
@@ -969,7 +994,7 @@ def _research_call(name, args, call_index, snap_rec, evidence, q_cache, u_cache,
         return {**res, "_counted": True, "_primary_refusal": False}
     # fetch_page: part 1 from the dispatcher (which fills the url cache), then the part or the find the model asked for
     u = args.get("url") or ""
-    res = analyst_tools.dispatch_tool("fetch_page", {"url": u}, snap=None, query_cache=q_cache, url_cache=u_cache, known_urls=known)
+    res = _dispatch_net("fetch_page", {"url": u}, snap_rec, snap=None, query_cache=q_cache, url_cache=u_cache, known_urls=known)
     if not isinstance(res, dict) or res.get("error") or res.get("refused"):
         return {**(res if isinstance(res, dict) else {"error": str(res)}), "_counted": True, "_primary_refusal": False}
     src = res.get("url") or u

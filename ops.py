@@ -21,6 +21,7 @@ Why the unload barrier exists (2026-08-04):
   from /api/ps AND the driver reports enough free VRAM.
 """
 import json
+import socket
 import subprocess
 import time
 import urllib.request
@@ -164,6 +165,32 @@ _INFRA_SIGNATURES = (
     "forcibly closed by the remote host",
     "model requires more system memory",
 )
+
+
+# ── Internet reachability (2026-10-21: the Wi-Fi dropped for 1-40 minutes about hourly; every DNS lookup then failed and
+#    LDR reported each topic as "zero sources", which read as a search outage instead of a network one) ──────────────────
+INTERNET_PROBES = (("1.1.1.1", 443), ("8.8.8.8", 53))
+
+
+def internet_up(timeout_s=3.0):
+    """True when a TCP connection to any probe address opens (no DNS involved)."""
+    for host, port in INTERNET_PROBES:
+        try:
+            socket.create_connection((host, port), timeout=timeout_s).close()
+            return True
+        except OSError:
+            continue
+    return False
+
+
+def wait_for_internet(max_wait_s, poll_s=15.0):
+    """Wait until internet_up(), at most max_wait_s. (back, waited_s)."""
+    t0 = time.time()
+    while not internet_up():
+        if time.time() - t0 >= max_wait_s:
+            return False, round(time.time() - t0, 1)
+        time.sleep(poll_s)
+    return True, round(time.time() - t0, 1)
 
 
 def infra_error(text):

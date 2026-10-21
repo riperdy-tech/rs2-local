@@ -478,6 +478,9 @@ def run_topic(query):
             if i:
                 print(f"[deep_research]   recovered on {tool} ({len(usable)} usable sources)", flush=True)
             return tool, res, urls
+        if not ops.internet_up():
+            # a dropped network makes every backend come back empty: that is an infra failure, never a NOT RESEARCHED topic
+            raise ResearchInfraError(f"network down: no internet connection while {tool} gave {sig or ('no usable sources' if urls else 'zero sources')}")
         if i + 1 < len(chain):
             print(f"[deep_research]   {tool} gave {sig or ('no usable sources' if urls else 'zero sources')} — "
                   f"falling back to {chain[i+1]}", flush=True)
@@ -671,6 +674,8 @@ def build(ticker, name, force=False):
         t0 = time.time()
         try:
             tool, res, urls = run_topic(q)
+        except ResearchInfraError:
+            raise                                  # network down: stop now, the brief is not written
         except Exception as e:
             failures.append((title, f"exception: {str(e)[:200]}"))
             print(f"[deep_research] {t} '{title}' ERROR {str(e)[:120]}", flush=True)

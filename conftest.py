@@ -303,3 +303,11 @@ def crux_valid_everywhere(monkeypatch):
     import depth_pipeline
     monkeypatch.setattr(depth_pipeline, "_crux_of_sample",
                         lambda r: {"sample": r.get("sample"), "valid": True, "reason": None, "inputs": ["coe"], "at_default": False})
+
+
+@pytest.fixture(autouse=True)
+def _internet_up_in_tests(monkeypatch):
+    """2026-10-21: the network guard (ops.internet_up) is a real TCP probe. Tests see the internet as up unless they set it themselves, so a
+    dropped connection never makes a test wait NET_WAIT_S."""
+    import ops
+    monkeypatch.setattr(ops, "internet_up", lambda timeout_s=3.0: True)
