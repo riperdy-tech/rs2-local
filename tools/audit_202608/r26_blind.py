@@ -444,6 +444,14 @@ def _span_of(spans: Sequence[Dict[str, Any]], line_no: int) -> Tuple[str, str]:
 _FACT_CLASSES = (("$", 1.0), ("bare", 1.0), ("x", 1.0), ("%", 1.0), ("B", 1.0), ("M", 1e3), ("K", 1e6))
 
 
+# removed facts that are dollar amounts in $B (the long-run earnings and revenue paths, consensus revenue and earnings): tried in the amount classes only
+_AMOUNT_FACT = re.compile(r"^fact:(long_run\.(e5|oe5|oe_path|oe_base|revenue_path)\b|.*(revenue_b|earnings_b)\b)")
+
+
+def _is_amount_fact(origin: str) -> bool:
+    return bool(_AMOUNT_FACT.match(origin or ""))
+
+
 def _leak_forms(nums: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str], List[str]]:
     """{(unit class, form): [origins]}: each removed number to 1-3 significant digits in the unit class it is printed in. A printed number keeps its own class and the
     scale it was printed at ($2.50 is a "$", $2.5M an "M", 2.5x an "x"). A fact has no recorded unit: it is tried as a "$", a bare number, a multiple, a percent, and a $B amount
@@ -459,9 +467,12 @@ def _leak_forms(nums: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str], List[st
         if n["kind"] == "printed":
             put(n.get("unit") or "bare", v, n["origin"])
             continue
+        amount = _is_amount_fact(n["origin"])
         for cls, scale in _FACT_CLASSES:
+            if amount and cls in ("%", "x"):
+                continue                  # a dollar amount is never printed as a percent or a multiple
             put(cls, v * scale, n["origin"])
-        if abs(v) <= 1.0:
+        if abs(v) <= 1.0 and not amount:
             put("%", v * 100.0, n["origin"])
     return forms
 
@@ -494,7 +505,8 @@ def _filed_eps_values(obj: Any) -> Iterable[float]:
 
 
 def _filed_support(lines: Sequence[str], classes: Sequence[Tuple[str, str]], facts: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
-    """{form: first section} for the numbers of the filed and derived lines, each at 1-3 significant digits, and for the filed EPS facts (section "filed_eps fact") to 6."""
+    """{form: first section} for the numbers of the filed and derived lines, each at 1-3 significant digits, for the filed EPS facts (section "filed_eps fact") to 6, and
+    for the company's own 8-K Item 2.02 releases of the trailing year (facts["r26_blind_source"]["filed_8k"], section "SEC 8-K <accession> filed <date>")."""
     support: Dict[str, str] = {}
     for v in _filed_eps_values(facts or {}):
         for f in sig_forms(v, 6):
@@ -510,6 +522,11 @@ def _filed_support(lines: Sequence[str], classes: Sequence[Tuple[str, str]], fac
                     continue
                 for f in set(sig_forms(v)) | {norm}:
                     support.setdefault(f, sec)
+    for rel in ((facts or {}).get("r26_blind_source") or {}).get("filed_8k") or []:
+        # the company's own 8-K Item 2.02 release, fetched verbatim from EDGAR by code: a filed document (its guidance often equals the consensus, which follows it)
+        for v, tok in numbers_in_text(rel.get("text") or ""):
+            for f in set(sig_forms(v)) | {_norm(tok)}:
+                support.setdefault(f, f"SEC 8-K {rel.get('accession')} filed {rel.get('filing_date')}")
     return support
 
 

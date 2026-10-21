@@ -200,6 +200,22 @@ def latest_earnings_release(cik, asof=None) -> dict | None:
     return res
 
 
+def earnings_releases(cik, asof=None, days=365, limit=4) -> list:
+    """The company's 8-K Item 2.02 earnings releases filed within `days` before `asof` (newest first, at most `limit`), each as
+    latest_earnings_release returns it. Stepping `asof` back to the day before each filing reuses that function's selection and cache."""
+    from datetime import date, timedelta
+    end = date.fromisoformat(asof.isoformat()[:10] if hasattr(asof, "isoformat") else (str(asof)[:10] if asof is not None else datetime.now().strftime("%Y-%m-%d")))
+    floor = (end - timedelta(days=days)).isoformat()
+    out, at = [], end
+    while len(out) < limit:
+        rel = latest_earnings_release(cik, asof=at.isoformat())
+        if not rel or (rel.get("filing_date") or "") < floor:
+            break
+        out.append(rel)
+        at = date.fromisoformat(rel["filing_date"]) - timedelta(days=1)
+    return out
+
+
 def guidance_excerpt(text: str, cap: int = 3000) -> str:
     """Extract first 400 chars and guidance/backlog/orders sentences from exhibit text."""
     if not text:

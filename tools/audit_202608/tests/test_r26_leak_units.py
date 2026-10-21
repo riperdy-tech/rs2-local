@@ -81,7 +81,9 @@ def test_false_positive_gold_billions_against_a_fraction_fact():
     # long_run.e5 = 0.08317: as $B it is 0.083, as a percent 8.3 - never "$8.3B"
     a = _audit("# t\n- Open questions: does the model hold up with $8.3B of sales", [], {"long_run": {"e5": 0.08317}})
     assert a["pass"] is True
-    b = _audit("# t\n- Growth of 8.3% a year", [], {"long_run": {"e5": 0.08317}})                         # the fraction x 100 as a percent is still a leak
+    # e5 is a dollar amount ($B): since 2026-10-21 it is never matched as a percent (DAR's insider 1.18% against oe_path 1.18); a margin fact still is
+    assert _audit("# t\n- Growth of 8.3% a year", [], {"long_run": {"e5": 0.08317}})["pass"] is True
+    b = _audit("# t\n- Growth of 8.3% a year", [], {"long_run": {"m5": 0.08317}})                         # the fraction x 100 as a percent is still a leak
     assert [x["token"] for x in b["leaks"]] == ["8.3%"]
 
 
