@@ -166,3 +166,26 @@ def test_reveal_json_records_the_entries_of_the_first_and_the_corrected_crux(tmp
             assert set(e) >= {"input", "own", "reachable", "valid", "implied", "not_computable", "bound", "side", "reason"}
             assert e["input"] == "long_run_margin" and e["reachable"] is True and e["implied"] is not None and e["not_computable"] is None
         assert (first["valid"], first["reason"]) == (False, "quote_not_found") and (final["valid"], final["reason"]) == (True, None)
+
+
+# ---------------------------------------------------------------- iteration 2: no positive share count (KOF, a 20-F filer whose DATA 2 count is filed as 0)
+
+@pytest.mark.parametrize("sh", [None, 0.0, -1.0])
+def test_no_positive_share_count_is_a_data_no_call_with_no_model_call(tmp_path, monkeypatch, sh):
+    facts = {"long_run": dict(LR), "owner_earnings_default_b": 0.5, "population_ranges": {"family": "operating"}, "op_margin_bar": dict(DBAR, basis="operating"),
+             "shares_warning": "DATA 2's count is filed as 0"}
+    ctx = dict(_ctx(price=PRICE, desk_schema=None), shares_default_b=sh)
+    u = r26.valuation_inputs(facts, PRICE, ctx)
+    assert u["base_cf"] == 0.5 and u["shares_unavailable"].startswith("shares_unavailable") and "filed as 0" in u["shares_unavailable"]
+    assert u["bridge_unavailable"] is None                       # decided before the bridge: one reason per name
+    script = Script()
+    monkeypatch.setattr(prov, "chat", script)
+    kw = dict(run_dir=tmp_path, model="m", dossier=dossier(), valuation=u, op_margin_bar=DBAR, verbose=False)
+    f2 = r26.run_stage2(blind_pack="B", seed=1, **kw)
+    r2 = r26.run_stage3(blind_pack="B", forecasts=f2, **kw)
+    assert script.bodies == [] and f2["samples"] == [] and f2["shares_unavailable"] and r2["no_call_reasons"] == ["shares_unavailable"]
+
+
+def test_a_positive_share_count_raises_no_shares_no_call():
+    facts = {"long_run": dict(LR), "owner_earnings_default_b": 0.5, "population_ranges": {"family": "operating"}}
+    assert r26.valuation_inputs(facts, PRICE, dict(_ctx(price=PRICE, desk_schema=None), shares_default_b=0.048))["shares_unavailable"] is None
