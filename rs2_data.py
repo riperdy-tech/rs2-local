@@ -1226,10 +1226,27 @@ def mri_duckdb_path():
     return p if p.exists() else None
 
 
-def _mri_query(sql, params=None):
-    """Run one read-only SQL query against the MRI duckdb store. [] on any failure (no store,
-    duckdb not installed, a locked file, a bad query) — a query failure here is an absent input
-    to the pack, not a reason to crash the whole build.
+class MriStoreLocked(RuntimeError):
+    """The MRI store stayed locked by a writer (MRI-Local-Daily 06:30, MRI-Events-Daily 13:00 KST) through every retry.
+    Raised, not returned as []: a lock is not "no data", and an empty result would pass for an absent input."""
+
+
+_MRI_LOCK_RETRIES = 6          # 6 waits of 10 s: rides out the ~20 s events job and most of a daily write
+_MRI_LOCK_WAIT_S = 10.0
+
+
+def _is_lock_error(exc):
+    text = str(exc).lower()
+    return "being used by another process" in text or "could not set lock" in text or "conflicting lock" in text
+
+
+def _mri_query(sql, params=None, *, _sleep=None):
+    """Run one read-only SQL query against the MRI duckdb store. [] when there is no store, duckdb is not installed,
+    or the query fails: an absent input to the pack, not a reason to crash the whole build.
+
+    A LOCKED store is different: DuckDB lets no other process read while MRI writes. The query is retried
+    _MRI_LOCK_RETRIES times, _MRI_LOCK_WAIT_S apart, and if the store is still locked MriStoreLocked is raised, so a
+    lock never passes as "no data".
     """
     path = mri_duckdb_path()
     if path is None:
@@ -1238,14 +1255,23 @@ def _mri_query(sql, params=None):
         import duckdb
     except ImportError:
         return []
-    try:
-        con = duckdb.connect(str(path), read_only=True)
+    import time as _time
+    sleep = _sleep or _time.sleep
+    for attempt in range(_MRI_LOCK_RETRIES + 1):
         try:
-            return con.execute(sql, params or []).fetchall()
-        finally:
-            con.close()
-    except Exception:
-        return []
+            con = duckdb.connect(str(path), read_only=True)
+            try:
+                return con.execute(sql, params or []).fetchall()
+            finally:
+                con.close()
+        except Exception as exc:
+            if not _is_lock_error(exc):
+                return []
+            if attempt == _MRI_LOCK_RETRIES:
+                raise MriStoreLocked(f"MRI store {path} still locked after {_MRI_LOCK_RETRIES} retries "
+                                     f"({_MRI_LOCK_RETRIES * _MRI_LOCK_WAIT_S:.0f} s): {exc}") from exc
+            sleep(_MRI_LOCK_WAIT_S)
+    return []  # unreachable: the loop returns or raises
 
 
 def bill_rate_mean(start, end):
