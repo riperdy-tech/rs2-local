@@ -233,7 +233,7 @@ def assign_ids(elements: Sequence[str]) -> List[str]:
     return out
 
 
-def blind_split(L: PackLines) -> Dict[str, Any]:
+def blind_split(L: PackLines, extra=None) -> Dict[str, Any]:
     """Split the full pack's elements by their source classes. {"blind_text", "full_text", "removed" [{cls, section, text}], "drops" [{source, rule, sentence}],
     "spans" [{start, end, cls, section}] (0-based blind-text lines, inclusive), "dropped_sections" [section names whose every body element was removed]}."""
     full = list(L)
@@ -254,7 +254,7 @@ def blind_split(L: PackLines) -> Dict[str, Any]:
                 removed.append({"cls": text.removed_cls, "section": sec, "id": sid, "text": text.removed_text, "replaced_by_blind_variant": True})
             shown = alt
         if cls == NARRATIVE and not header:
-            shown, d = filter_narrative(shown, sec)
+            shown, d = filter_narrative(shown, sec, extra)
             for x in d:
                 x["id"] = sid
             drops += d
@@ -569,6 +569,33 @@ def r26_leak_audit(blind_pack_text: str, facts: Dict[str, Any]) -> Dict[str, Any
             "weak_matches": weak, "n_removed_numbers": len(nums), "n_forms": len(forms),
             "rule": "removed-class numbers to 1-3 significant digits; a hit on a filed or derived line, or on another line whose number is also a filed or derived line's, "
                     "is a listed exception; any other hit is a leak; a bare integer is weak"}
+
+
+def collision_rule(forms: Dict[Tuple[str, str], List[str]], support: Dict[str, str]):
+    """The narrative filter's second rule (coordinator ruling 2026-10-21, VSNT): a sentence holding a number that equals a removed-class number at the number's own
+    written precision and unit, and is not a filed or derived figure, is dropped as `removed_number_collision` and listed. Another model's claim that coincides with
+    the consensus cannot be told from a copy of it; the blind stage loses the sentence, never the pack. Filed, derived and aggregator lines are not filtered."""
+    def rule(sentence: str) -> Optional[str]:
+        for tok, norm, strong in _tokens(sentence):
+            if strong and norm and _form_hit(forms, tok, norm) is not None and norm not in support:
+                return "removed_number_collision"
+        return None
+    return rule
+
+
+def blind_split_audited(L: PackLines, facts: Dict[str, Any], filed_8k: Sequence[Dict[str, Any]] = ()) -> Dict[str, Any]:
+    """blind_split twice: the first pass finds the removed lines and the filed lines' numbers; the second drops the narrative sentences that collide with a removed
+    number (collision_rule). Returns the second split, with "r26_blind_source" ready for the facts."""
+    first = blind_split(L)
+    src = {"removed_lines": first["removed"], "spans": first["spans"], "filed_8k": list(filed_8k)}
+    f = dict(facts)
+    f["r26_blind_source"] = src
+    lines = first["blind_text"].split(chr(10))
+    support = _filed_support(lines, [_span_of(first["spans"], i) for i in range(len(lines))], f)
+    split = blind_split(L, extra=collision_rule(_leak_forms(removed_numbers(f)), support))
+    split["r26_blind_source"] = {"removed_lines": split["removed"], "spans": split["spans"], "dropped_sections": split["dropped_sections"],
+                                 "removed_ids": split["removed_ids"], "partial_ids": split["partial_ids"], "filed_8k": list(filed_8k)}
+    return split
 
 
 # ---- the stage-2 views (cross-check 23, items 3 and 4) --------------------------------------------------------------------------------------------

@@ -75,3 +75,37 @@ def test_earnings_releases_walks_back_through_the_trailing_year(monkeypatch):
     got = sec_guidance.earnings_releases("1", asof="2026-10-21")
     assert [r["filing_date"] for r in got] == ["2026-08-06", "2026-05-07", "2026-02-20"]
     assert [r["filing_date"] for r in sec_guidance.earnings_releases("1", asof="2026-10-21", limit=2)] == ["2026-08-06", "2026-05-07"]
+
+
+def _pack():
+    L = rb.PackLines(["# DATA PACK - T", ""])
+    L.cls = rb.CONSENSUS
+    L += ["## DATA 8 - CONSENSUS & MULTIPLES", "| Revenue next FY | $6.439B |", ""]
+    L.cls = rb.FILED
+    L += ["## DATA 3 - FILED", "- revenue FY25: $6.69B", ""]
+    L.cls = rb.NARRATIVE
+    L += ["## DATA 11 - DEEP RESEARCH BRIEF", "Earlier guidance was $6.15-$6.4 billion. Revenue was $6.69B last year. Cord-cutting continues.", ""]
+    return L
+
+
+def test_a_narrative_sentence_colliding_with_a_removed_number_is_dropped_and_listed():
+    s = rb.blind_split_audited(_pack(), {})
+    assert "$6.4 billion" not in s["blind_text"] and "Cord-cutting continues." in s["blind_text"]
+    assert "Revenue was $6.69B last year." in s["blind_text"]                    # a filed figure is support, not a collision
+    assert [d["rule"] for d in s["drops"]] == ["removed_number_collision"]
+    f = {"r26_blind_source": s["r26_blind_source"]}
+    assert rb.r26_leak_audit(s["blind_text"], f)["pass"]
+
+
+def test_a_collision_with_filed_8k_support_is_kept():
+    rel = [{"accession": "a", "filing_date": "2026-05-14", "url": "u", "text": "Total Revenue of $6.15 billion to $6.4 billion"}]
+    s = rb.blind_split_audited(_pack(), {}, rel)
+    assert "$6.15-$6.4 billion" in s["blind_text"] and not s["drops"]
+    assert s["r26_blind_source"]["filed_8k"] == rel
+
+
+def test_without_collisions_the_audited_split_equals_the_plain_split():
+    L = _pack()
+    L[L.index("Earlier guidance was $6.15-$6.4 billion. Revenue was $6.69B last year. Cord-cutting continues.")] = "Cord-cutting continues."
+    a, b = rb.blind_split(L), rb.blind_split_audited(L, {})
+    assert a["blind_text"] == b["blind_text"] and a["spans"] == b["spans"] and a["drops"] == b["drops"]

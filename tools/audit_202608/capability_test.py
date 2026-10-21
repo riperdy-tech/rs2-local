@@ -4277,13 +4277,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             filed_eps_from_pack_shares=bool(_r26_base.get("filed_eps_from_pack_shares")),
             filed_x_margins=({"fy": _xh_last["fy"], "x_margin": _xh_last["x_margin"]} if isinstance(_xh_last, dict) else None),
             bridge_facts=facts, base_year=_xh.get("base_year"))
-        _split26 = r26_blind.blind_split(L)
+        # the company's own 8-K Item 2.02 releases of the trailing year: their numbers are filed support for the leak test
+        _filed_8k = [{k: r.get(k) for k in ("accession", "filing_date", "url", "text")} for r in (sec_guidance.earnings_releases(c, asof=pack_date) if c else [])]
+        _split26 = r26_blind.blind_split_audited(L, facts, _filed_8k)
         facts["r26_blind_drops"] = _split26["drops"]
-        facts["r26_blind_source"] = {"removed_lines": _split26["removed"], "spans": _split26["spans"], "dropped_sections": _split26["dropped_sections"],
-                                     "removed_ids": _split26["removed_ids"], "partial_ids": _split26["partial_ids"],
-                                     # the company's own 8-K Item 2.02 releases of the trailing year: their numbers are filed support for the leak test
-                                     "filed_8k": [{k: r.get(k) for k in ("accession", "filing_date", "url", "text")}
-                                                  for r in (sec_guidance.earnings_releases(c, asof=pack_date) if c else [])]}
+        facts["r26_blind_source"] = _split26["r26_blind_source"]
         facts["r26_leak_audit"] = r26_blind.r26_leak_audit(_split26["blind_text"], facts)
 
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS
