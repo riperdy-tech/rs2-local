@@ -467,12 +467,19 @@ def run_topic(query):
             quota.bump(tool, searches_per_topic())     # charge the meter for what we spent
         urls = extract_urls(res)
         sig = ops.infra_error((res.get("summary") or "").strip())
-        if urls and not sig:
+        # A backend counts as having answered only when it leaves USABLE sources: the same test the
+        # topic applies afterwards (LDR's citation numbering when present, then the low-trust filter).
+        # Before 2026-10-21 any returned URL counted, so a SearXNG answer whose links were all low-trust
+        # or uncited ended the chain and the topic was voided as ::NO SOURCES:: while the keyed
+        # providers (serper, tavily, exa) were never tried (KOF, VSNT under the 10-21 engine blocks).
+        numbered = numbered_sources(res)
+        usable, _ = drop_low_trust([u for _, u in numbered] if numbered else urls)
+        if usable and not sig:
             if i:
-                print(f"[deep_research]   recovered on {tool} ({len(urls)} sources)", flush=True)
+                print(f"[deep_research]   recovered on {tool} ({len(usable)} usable sources)", flush=True)
             return tool, res, urls
         if i + 1 < len(chain):
-            print(f"[deep_research]   {tool} gave {sig or 'zero sources'} — "
+            print(f"[deep_research]   {tool} gave {sig or ('no usable sources' if urls else 'zero sources')} — "
                   f"falling back to {chain[i+1]}", flush=True)
         last = (tool, res, urls)
     return last
