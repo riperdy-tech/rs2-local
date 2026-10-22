@@ -51,8 +51,8 @@ the 9 are data no-calls (PACS: no D&A filed; LPG: no tax provision filed). That 
 | MCY | property and casualty insurer | 173.88 / 210.55 / 264.36 | **43.0%** | 102.80 | undervalued, unanimous |
 | GOLD | precious-metals trading and dealing | 65.54 / 75.17 / 127.78 | **82.8%** | 39.35 | undervalued, unanimous |
 
-On the registered bar: direction is unanimous for 7 of 7, and the median spread is 17.6% (it passes). But 3 of 7 names fail the per-name
-20% rule, so 3 of 7 verdicts are not actionable. The readers' coherence scores are still pending.
+On the registered bar, the median spread is 17.6% (it passes) and direction is unanimous for 6 of 7 (it passes): one BUD sample ($86.47
+against a $82.59 price) falls inside the 10% hold band. But 3 of 7 names fail the per-name 20% rule. The readers' results are in section 7.
 
 ## 3. Where the spread comes from (measured: the inputs that differ between the three Base scenarios)
 
@@ -124,7 +124,41 @@ single judgment input reaches the price on its own: even a 0% long-run margin va
 therefore sits in the years 1–5 path (contracted charter revenue), which the crux cannot name as an input. Cross-check 24 deferred making the
 forecast path a crux input (B3), because the path is ten or more numbers.
 
-## 7. Questions
+## 7. What the two blind readers found (added after scoring)
+
+Two independent readers scored masked extracts (no values, price or verdict) on four criteria: (1) facts correct; (2) forecast consistent
+with the memo's stated economics and labels; (3) no unsupported copy of a revealed number; (4) the normalized state and the long-run margin
+defended by evidence of matching duration. They agreed on 27 of 28 ratings; the coordinator adjudicated the one difference (GOLD,
+criterion 4: questionable).
+
+**Scorecard (iteration 2, 7 callable names): FAIL.**
+- Coherent: **0 of 7** (a name is coherent only when all four criteria are). Incoherent: 1 (ITGR).
+- Loops 0; median spread 17.6%; unanimous direction 6 of 7; unverified pull 0.000; memo verdict mismatches 0 (all pass).
+
+**Criterion 4 was "questionable" for every name.** The long-run margin is held in perpetuity, and no fact "speaks for" perpetuity: the
+readers repeatedly wrote that the evidence is "shorter than the claim" (an 8-year margin record, a 5-year lease, a 4.7-year charter book).
+This is the same place the sample spread comes from.
+
+**Real faults the readers found:**
+- ITGR (incoherent): the memo calls Integer "an MRI business with an installed-base service annuity" and uses that as the basis of its
+  margin-persistence label; the dossier describes cardio, vascular and neuromodulation device segments only. The Bull case also cites
+  guidance the company withdrew, and the Base case adds "+0.5 pt for KKR cost discipline" to a standalone value.
+- Basis mixing: company-adjusted EBIT or EBITDA figures used to defend a filed GAAP operating margin (BUD, TASK).
+- Labels that contradict the inputs: MSGE's "accelerating" label on a path that slows every year; TASK's memo describing its baseline as
+  a size-bucket base rate when the input is the filed-history median.
+- A premium resting on a figure no fact contains (BUD's "H1 2026 normalized EBIT margin of 27.2%").
+- TASK's revision reached the right number (3.9%, from the 8-K) with a wrong comparison in its reason.
+
+**Questions added by these results:**
+7. Is criterion 4 achievable as written? Should "matching duration" for a perpetual long-run margin mean a long filed record (8 years or
+   more) plus an explicit statement of what would change it, or should the design stop asking for a perpetual margin at all (for example a
+   code-owned fade to the filed median after year 5, with the analyst arguing only for a departure)? Is that code substituting judgment?
+8. How should the next iteration attack the invented business description (ITGR), the basis mixing and the label contradictions:
+   prompt changes, a code check (for example a basis tag on every cited fact compared with the margin it supports), or a verifier pass
+   on the memo against the dossier?
+9. With 0 of 7 coherent, is iteration 3 (the last but one) worth spending on fixes alone, or does the design need a larger change first?
+
+## 8. Questions
 
 1. Is the spread on GOLD, MCY and ITGR a design defect to fix, or honest uncertainty that the per-name rule correctly withholds? Can you
    tell them apart from the evidence in section 3?
@@ -138,4 +172,4 @@ forecast path a crux input (B3), because the path is ten or more numbers.
    it require?
 6. Anything in these results that should change the plan before iteration 3?
 
-At the end, give your recommendation for iteration 3 in one line, and the result you would most expect to fail in it.
+Please answer questions 1–9. At the end, give your recommendation for iteration 3 in one line, and the result you would most expect to fail in it.
