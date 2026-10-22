@@ -68,6 +68,46 @@ LABEL_DESC = {"margin_persistence": "structural: the margin level rests on lasti
 CRUX_INPUTS = ("coe", "fade_years", "terminal_g", "terminal_ronic", "long_run_margin")      # what the price-implied solver supports on the 25.2 path (growth_years_3_5 and year2_level are "not applicable")
 
 
+DURABILITY_FIELDS = {"anchor": "the measured economics the normalized and long-run margins start from (a filed record, its span)",
+                     "mechanism": "why those economics persist after the explicit years (competition, assets, contracts, regulation)",
+                     "evidence_limit": "where the dossier's evidence stops speaking (the year or span)",
+                     "failure_condition": "what, observed in the filings, would show the long-run margin is wrong"}
+MAX_DURABILITY_WORDS = 40
+
+
+def validate_durability(forecast):
+    """Structure problems of the Base's durability thesis (cross-check 25: criterion 4 reads it): four statements, each non-empty and at most 40 words."""
+    base = ((forecast or {}).get("scenarios") or {}).get("Base")
+    if not isinstance(base, dict):
+        return []
+    d = base.get("durability")
+    if not isinstance(d, dict):
+        return [{"field": "Base.durability", "problem": "missing_or_not_an_object"}]
+    out = []
+    for k in DURABILITY_FIELDS:
+        v = d.get(k)
+        if not (isinstance(v, str) and v.strip()):
+            out.append({"field": f"Base.durability.{k}", "problem": "missing_text"})
+        elif len(v.split()) > MAX_DURABILITY_WORDS:
+            out.append({"field": f"Base.durability.{k}", "problem": f"more_than_{MAX_DURABILITY_WORDS}_words"})
+    return out
+
+
+def derive_growth_trajectory(growths):
+    """The Base growth-trajectory label code derives from the Base revenue-growth path (years 1-5, decimals): shrinking when most years shrink, else accelerating or
+    decelerating when the last year differs from the first by more than half a point, else steady (cross-check 25: a label code can compute is not left to the model)."""
+    g = [float(x) for x in growths if _num(x)]
+    if not g:
+        return None
+    if sum(1 for x in g if x < 0) > len(g) / 2:
+        return "shrinking"
+    if g[-1] - g[0] > 0.005:
+        return "accelerating"
+    if g[0] - g[-1] > 0.005:
+        return "decelerating"
+    return "steady"
+
+
 def validate_labels(forecast, dossier=None):
     """Structure problems of the Base's three classifications (stage 2 gives them; code fills the contract from them): each {"label": enum, "fact_ids": [existing ids]}."""
     out = []
@@ -134,9 +174,11 @@ def forecast_properties():
     sc = scenario_schema()
     base = copy.deepcopy(sc)
     base["properties"].update(_label_schema())
-    base["required"] = base["required"] + list(LABEL_ENUMS)
+    base["properties"]["durability"] = {"type": "object", "description": "The Base's durability thesis, four statements of at most 40 words each.",
+                                        "properties": {k: {"type": "string", "description": d} for k, d in DURABILITY_FIELDS.items()}, "required": list(DURABILITY_FIELDS)}
+    base["required"] = base["required"] + list(LABEL_ENUMS) + ["durability"]
     return {
-        "discount_rate": {"type": "number", "description": "The annual discount rate, a decimal."},
+        "discount_rate": {"type": "number", "description": "The cost-of-equity anchor the pack shows, a decimal. Code values every sample at the anchor."},
         "frame": {"type": "string", "enum": list(rf.FRAMES), "description": "Always equity: the flows are after interest and are valued at the cost of equity."},
         "scenarios": {"type": "object", "properties": {"Base": base, "Bull": copy.deepcopy(sc), "Bear": copy.deepcopy(sc)}, "required": list(SCEN)},
     }
@@ -255,10 +297,11 @@ You are the analyst for the company in the data pack above. In this stage you fo
 3. The normalized state. Choose the year N, a whole number from 3 to 5, by which the business is in its normalized state, and its revenue growth. The normalized margin is the year-N mid-cycle margin: a baseline plus a delta. Choose a baseline from the filed history (min, p25, median, p75, max or last) and delta_pts, the percentage points added to that baseline (a negative number subtracts, zero keeps the baseline). A delta_pts of one is one percentage point. You never type the normalized margin; code adds the two. A worked example, for illustration only: if the history's median were ten percent and you chose baseline median with delta_pts 2.5, code's normalized margin would be twelve and a half percent; delta_pts -1.5 would give eight and a half percent; delta_pts 0.025 would add only a fortieth of a point, so write 2.5 for two and a half points.
 4. The transition from year 2 to the normalized state: linear (a straight line from year 2 to year N), step_at_year (the year-2 values until transition_year, the normalized values from it) or hold_then_linear (the year-2 values through transition_year, then a straight line reaching the normalized values in year N). Growth moves the same way as the margin. After year N the normalized values hold to year 5.
 5. A normalization that comes later than year 5 (a contract that runs for many years, a ramp, a cycle) is not given as N. Give the state of year 5, and express the later normalization through long_run_margin_op, the post-year-5 terminal margin: the operating margin the business earns when the fade after year 5 has finished (it is not the year-N mid-cycle margin of item 3), and fade_years, the whole years that fade takes (growth also moves from year 5 to terminal_g over it).
-6. Also give for each scenario terminal_g, terminal_ronic (the return on new investment that pays for growth after the fade), prob (the three probabilities add to one), and for the forecast the discount_rate and the frame, which is always equity (the pack's flows are after interest and are valued at the cost of equity). The discount_rate must be above every terminal_g, terminal_ronic must be above zero, and each probability is between 0 and 1.
+6. Also give for each scenario terminal_g, terminal_ronic (the return on new investment that pays for growth after the fade), prob (the three probabilities add to one), and for the forecast the discount_rate, which is the cost-of-equity anchor the pack shows (code values every sample at that anchor), and the frame, which is always equity (the pack's flows are after interest and are valued at the cost of equity). The discount_rate must be above every terminal_g, terminal_ronic must be above zero, and each probability is between 0 and 1.
 7. Evidence. In near_term.fact_ids and normalized.fact_ids cite the usable dossier facts each rests on (each needs at least one), and in long_run_fact_ids the facts behind long_run_margin_op; if no fact speaks for as long as the long run, leave long_run_fact_ids out and say so in no_duration_matched_evidence, with the reason. A fact speaks only for the span its duration states: code values what happens when that evidence expires and reports it, so rest the normalized state and the long run on evidence of matching duration. Every id you cite must be one listed as usable; the dossier shows you no other. A company-adjusted or non-GAAP fact tells you the direction of a change; it never sets the level of a margin, which rests on filed figures. Give in normalized.reason, in at most 60 words, why this is the normalized state.
-8. Classify the Base, each with the dossier facts it rests on (fact_ids): margin_persistence says whether the margin level rests on lasting advantages (structural), only partly does (partly_structural) or is a passing condition (transient); cycle_position says where the business is in its cycle now (trough, mid, peak or not_cyclical); growth_trajectory says whether revenue growth is accelerating, steady, decelerating or shrinking. Each is judged from its own evidence and none is forced by another.
-9. Code checks the structure and a few domain rules: the fields, finite numbers, the enums, that the cited fact ids are usable, that the probabilities are between 0 and 1 and add to one, that revenue never goes negative, that the discount rate is above terminal growth and that terminal_ronic is positive. It never bounds a margin, so the judgment is yours. If a check fails you get one correction."""
+8. Classify the Base, each with the dossier facts it rests on (fact_ids): margin_persistence says whether the margin level rests on lasting advantages (structural), only partly does (partly_structural) or is a passing condition (transient); cycle_position says where the business is in its cycle now (trough, mid, peak or not_cyclical); growth_trajectory says whether revenue growth is accelerating, steady, decelerating or shrinking (code derives this label from your Base revenue-growth path and records yours beside it, so make the two agree). Each is judged from its own evidence and none is forced by another.
+9. The durability thesis of the Base, in durability: anchor (the measured economics your normalized and long-run margins start from: which filed record, over which years), mechanism (why those economics persist after the explicit years), evidence_limit (where the dossier's evidence stops speaking) and failure_condition (what, seen in the filings, would show your long-run margin is wrong). At most 40 words each. No fact speaks for the long run itself; say what you rest on and where it stops.
+10. Code checks the structure and a few domain rules: the fields, finite numbers, the enums, that the cited fact ids are usable, that the probabilities are between 0 and 1 and add to one, that revenue never goes negative, that the discount rate is above terminal growth and that terminal_ronic is positive. It never bounds a margin, so the judgment is yours. If a check fails you get one correction."""
 
 STAGE3_TASK = """STAGE 3 OF 4: THE REVEAL AND THE AUDIT.
 
@@ -276,7 +319,7 @@ STAGE4_TASK = """STAGE 4 OF 4: THE MEMORANDUM.
 The valuation is finished and frozen. Below are the revealed price and momentum facts, the final desk table (every number in it was computed by code), the conversion table, the crux with code's verification of its quotes, the stage-2 spread, the diagnostics, and the research dossier. Write the memorandum that explains the locked numbers. You cannot change a number, and you must never restate a number that is not in the table.
 
 1. Write SECTION 0 first: its first line is `Verdict: undervalued`, `Verdict: overvalued`, `Verdict: hold` or `Verdict: no call`, the word the table gives under "Verdict", with one sentence on why. Then the sections you need: the business and what drives its economics; the forecast and why (the normalized state, the transition and the baseline, with the dossier facts behind them by id); the crux, the quotes that support it and what code found; what the diagnostics show (the alternative path if a fact's evidence expires, or the early-fade stress when it speaks for longer than the five explicit years; the consensus divergence; the spread); the risks and what would change the view.
-2. Quote a number only under its label from the table, written exactly as the label is written (for example `Base value per share: $...`), and never round it more coarsely than the table does by more than the digits you write. Do not compute new numbers: no averages, differences or ratios of your own. In SECTION 2 state the forecast's labels exactly as the table writes them (for example `Base transition: ...`, `Base baseline: ...`, `Base margin persistence: ...`). Code checks every labelled number, the verdict word and these labels against the table and flags a difference.
+2. Quote a number only under its label from the table, written exactly as the label is written (for example `Base value per share: $...`), and never round it more coarsely than the table does by more than the digits you write. Do not compute new numbers: no averages, differences or ratios of your own. A value from the diagnostics is written under its own label, as the diagnostics write it (for example `Alternative-path Base value per share if F12 expires: $...`), never as the Base value per share. Describe the business only as the dossier does: every statement about the company's segments, products, customers or revenue model cites the dossier fact id it rests on, and add no economic premise (a business line, a synergy, an owner's cost plan) that no dossier fact states. In SECTION 2 state the forecast's labels exactly as the table writes them (for example `Base transition: ...`, `Base baseline: ...`, `Base margin persistence: ...`). Code checks every labelled number, the verdict word and these labels against the table and flags a difference.
 3. If the table says no call, say so in SECTION 0 and state the reasons the table gives; do not argue a verdict.
 4. End with the contract: a ```json:underwriting block holding only the text fields listed here, each as the system text describes: catalysts (a list of {date, event, direction, estimates_moved, scenario}), cycle_evidence, normalization_reason, margin_persistence_evidence, cycle_position_evidence, growth_trajectory_evidence (one line each: where the evidence for the Base classification in the table is; the classifications themselves are the forecast's and code fills them), momentum_view (confirming, neutral or contradicting; ground it in the REVEALED block), entry_timing (buy_now, wait_for_momentum or avoid), position_basis (value, momentum or none), momentum_evidence, momentum_flip_condition and momentum_break_rule ({metric, comparator, threshold, window_days}), invalidation_rules (a list of {metric, comparator, threshold, window, source}) and thesis_invalidation_trigger. Code fills every number of the contract (values, probabilities, sizes, margins) from the frozen table; leave them out."""
 
@@ -468,6 +511,13 @@ def render_consensus(cm):
     return "\n".join(lines)
 
 
+def alt_label(a):
+    """The frozen-table label of one alternative path's Base value (memo_number_mismatch read an alternative value written as `Base value per share`, 2026-10-22)."""
+    if a.get("label") == rf.EARLY_FADE_STRESS:
+        return f"Early-fade stress Base value per share for {a['fact_id']}"
+    return f"Alternative-path Base value per share if {a['fact_id']} expires"
+
+
 def render_diagnostics(dg):
     lines = ["DIAGNOSTICS:"]
     alts = dg.get("alt_paths") or []
@@ -477,10 +527,10 @@ def render_diagnostics(dg):
         v = a.get("value")
         val = f"${v:.2f}" if _num(v) else f"not computed ({a.get('status')})"
         if a.get("label") == rf.EARLY_FADE_STRESS:
-            lines.append(f"  Early-fade stress: the evidence of {a['fact_id']} speaks for {a['duration_years']:g} years, beyond the five explicit years; if the margin instead faded to its baseline from year 5, the Base value per share is {val}"
+            lines.append(f"  Early-fade stress: the evidence of {a['fact_id']} speaks for {a['duration_years']:g} years, beyond the five explicit years; if the margin instead faded to its baseline from year 5, the {alt_label(a)} is {val}"
                          + (f" ({'; '.join(a['stamps'])})" if a.get("stamps") else "") + ". This is a stress; it replaces nothing.")
             continue
-        lines.append(f"  If the evidence of {a['fact_id']} (speaks for {a['duration_years']:g} years) expires, the Base value per share is {val}"
+        lines.append(f"  If the evidence of {a['fact_id']} (speaks for {a['duration_years']:g} years) expires, the {alt_label(a)} is {val}"
                      + (f" ({'; '.join(a['stamps'])})" if a.get("stamps") else "") + ". This is reported; it replaces nothing.")
     for c in dg.get("consensus_divergence") or []:
         lines.append(f"  Year {c['year']}: the forecast's filed operating margin {_p(c['forecast_op'], 2)}; the consensus equivalent {_p(c['consensus_op'], 2)}; gap {c['gap_pts']:+.2f} percentage points.")
@@ -544,7 +594,7 @@ def consensus_view(cc, bridge_facts):
 
 # ---------------------------------------------------------------- the frozen table
 
-def table_rows(*, price, values, forecast, vf, verdict, pre_base=None, spread=None):
+def table_rows(*, price, values, forecast, vf, verdict, pre_base=None, spread=None, alt_paths=()):
     """[{"label", "value", "kind", "group"}] of the frozen final desk table. `values` {Base, Bull, Bear} per share, `forecast` the final forecast, `vf` its
     value_forecast result, `verdict` the code's word (undervalued, overvalued, hold or no_call)."""
     rows = []
@@ -564,6 +614,9 @@ def table_rows(*, price, values, forecast, vf, verdict, pre_base=None, spread=No
         add("Pre-reveal Base value per share", pre_base, "usd", "Valuation")
     if _num(spread):
         add("Stage-2 spread", spread, "pct", "Valuation")
+    for a in alt_paths or ():
+        if _num(a.get("value")):
+            add(alt_label(a), a["value"], "usd", "Valuation")
     add("Discount rate", forecast.get("discount_rate"), "pct", "Valuation")
     for n in SCEN:
         s = forecast["scenarios"][n]
@@ -814,7 +867,14 @@ def verify_memo(memo, rows, facts=None, cited_ids=(), input_texts=()):
             details.append({"flag": "memo_verdict_mismatch", "label": "Verdict", "memo": w, "table": vr["value"]})
     flags = [f for f in MEMO_FLAGS if any(d["flag"] == f for d in details)]
     prose = prose_number_mismatches(text, rows, facts, cited_ids, checked, input_texts)
-    return {"flags": flags, "annotations": ["memo_prose_number_mismatch"] if prose else [], "details": details + prose}
+    ann = ["memo_prose_number_mismatch"] if prose else []
+    if facts is not None:
+        known = {str(f.get("fact_id")) for f in facts if isinstance(f, dict) and f.get("fact_id")}
+        unknown = sorted({m for m in re.findall(r"\[([A-Z]{1,3}\d+[a-z]?)\]", text) if m not in known})
+        if unknown:
+            ann.append("memo_unknown_fact_id")
+            details.append({"flag": "memo_unknown_fact_id", "label": "fact ids", "memo": ", ".join(unknown), "table": None})
+    return {"flags": flags, "annotations": ann, "details": details + prose}
 
 
 # ---------------------------------------------------------------- the stage-4 contract text

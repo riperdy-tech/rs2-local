@@ -61,7 +61,9 @@ def fcast(m=0.40, **over):
         s["normalized"]["baseline"] = "last"
         s["normalized"]["reason"] = "REASON-MARKER of stage two"
     f["scenarios"]["Base"].update(margin_persistence={"label": "structural", "fact_ids": ["F1"]}, cycle_position={"label": "mid", "fact_ids": ["F2"]},
-                                  growth_trajectory={"label": "decelerating", "fact_ids": ["F1"]})
+                                  growth_trajectory={"label": "decelerating", "fact_ids": ["F1"]},
+                                  durability={"anchor": "the filed eight-year operating-margin record", "mechanism": "contracted service revenue",
+                                              "evidence_limit": "the contracts run to year five", "failure_condition": "two filed years below the record's p25"})
     f.update(over)
     return f
 
@@ -139,7 +141,7 @@ def test_the_stage_2_tool_schema_is_the_spec_s_submit_forecast():
     assert props["frame"]["enum"] == ["equity"] and set(props["scenarios"]["properties"]) == {"Base", "Bull", "Bear"}
     sc = props["scenarios"]["properties"]["Base"]["properties"]
     assert set(sc) == {"near_term", "normalized", "transition", "transition_year", "long_run_margin_op", "terminal_g", "terminal_ronic", "fade_years", "prob", "long_run_fact_ids",
-                       "no_duration_matched_evidence", "margin_persistence", "cycle_position", "growth_trajectory"}      # the Base also classifies (coordinator ruling a)
+                       "no_duration_matched_evidence", "margin_persistence", "cycle_position", "growth_trajectory", "durability"}      # the Base also classifies (coordinator ruling a)
     assert set(sc["near_term"]["properties"]) == {"rev_growth", "op_margin", "fact_ids"}
     assert set(sc["normalized"]["properties"]) == {"year", "rev_growth", "baseline", "delta_pts", "fact_ids", "reason"}
     assert sc["normalized"]["properties"]["baseline"]["enum"] == ["min", "p25", "median", "p75", "max", "last"]
@@ -338,7 +340,7 @@ def test_every_numeric_contract_field_comes_from_code(tmp_path, monkeypatch):
     assert "conviction_score" not in v and "business_quality_moat" not in v and "reentry_tranches" not in v
     assert fi["contract_text"] == {"cycle_evidence": "text", "momentum_flip_condition": liar["momentum_flip_condition"]} and v["margin_persistence"] == "structural"
     r = v["r26"]
-    assert v["pilot_arm"] == "r26" and v["desk_schema"] == "26" and v["pack_revision"] == 26 and r["contract_unfilled"] == ["conviction_score", "business_quality_moat", "reentry_tranches"]
+    assert v["pilot_arm"] == "r26" and v["desk_schema"] == "26" and v["pack_revision"] == 27 and r["contract_unfilled"] == ["conviction_score", "business_quality_moat", "reentry_tranches"]
     assert r["model_typed_numbers_in"] == ["momentum_flip_condition"] and fi["flags"] == []
     assert r["actionable"] is False and fi["actionable"] is False and fi["non_actionable_reasons"] == ["contract_fields_unfilled"]      # item 14
     # the report the harness parses: the memo plus a contract block whose numbers are the code's
@@ -602,7 +604,7 @@ def test_the_base_classifications_are_stage_2_structure_with_fact_ids(tmp_path, 
     del nolab["scenarios"]["Base"]["margin_persistence"]
     _, fc, _, _ = run_stages(tmp_path, monkeypatch, [sub(nolab), sub(fcast()), sub(fcast()), sub(fcast())], stages=(2,))
     assert fc["samples"][0]["repair_used"] and fc["samples"][0]["status"] == "valued"
-    assert "margin_persistence" in late.STAGE2_TASK and "partly_structural" in late.STAGE2_TASK and not re.search(r"\d", late.STAGE2_TASK.split("8. Classify")[1].split("9. Code")[0])
+    assert "margin_persistence" in late.STAGE2_TASK and "partly_structural" in late.STAGE2_TASK and not re.search(r"\d", late.STAGE2_TASK.split("8. Classify")[1].split("9. The durability")[0])
 
 
 def test_stage_4_fills_the_labels_from_the_final_forecast_and_the_model_cannot_set_them(tmp_path, monkeypatch):

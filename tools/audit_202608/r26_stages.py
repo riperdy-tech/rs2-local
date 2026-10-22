@@ -69,11 +69,12 @@ import ops  # noqa: E402
 import llm_provider  # noqa: E402
 import r26_blind  # noqa: E402
 import r26_forecast as rf  # noqa: E402
+import r26_spread  # noqa: E402
 import r26_late  # noqa: E402
 import sec_primary  # noqa: E402
 import turn_log  # noqa: E402
 
-PACK_REVISION_R26 = 26
+PACK_REVISION_R26 = 27            # 27 (2026-10-22, cross-check 25): code-owned discount rate, code-derived growth label, the durability thesis, grounded memo
 ARM = "r26"
 STAGES = ("stage1", "stage2", "stage3", "stage4")
 ARTIFACTS = {"stage1": "dossier.json", "stage2": "forecasts.json", "stage3": "reveal.json", "stage4": "final.json"}
@@ -1282,6 +1283,48 @@ def _structure_message(problems):
             + "; ".join(f"{p['field']}: {p['problem']}" + (f" ({p['detail']})" if p.get("detail") else "") for p in problems))
 
 
+NON_FILED_BASES = ("company_adjusted", "third_party")
+
+
+def code_owned_inputs(forecast, valuation):
+    """(forecast, stamps): the forecast with the inputs code owns since pack revision 27 (cross-check 25). discount_rate is the desk context's cost-of-equity anchor for
+    every sample (the submitted rate is kept as discount_rate_submitted). Without an anchor the submitted rate stands, stamped. Nothing else is changed."""
+    fc = copy.deepcopy(forecast)
+    anchor = ((valuation or {}).get("desk_context") or {}).get("coe_anchor")
+    if rf._num(anchor) and anchor > 0:
+        fc["discount_rate_submitted"] = fc.get("discount_rate")
+        fc["discount_rate"] = float(anchor)
+        return fc, ([] if fc["discount_rate_submitted"] == fc["discount_rate"] else ["discount_rate_set_to_anchor"])
+    return fc, ["discount_rate_no_anchor_submitted_rate_used"]
+
+
+def derive_labels(forecast, vf):
+    """(forecast, stamps): the Base growth_trajectory label derived by code from the valued Base revenue-growth path (r26_late.derive_growth_trajectory); the model's label is
+    kept as label_submitted. A path that was not valued leaves the label as submitted."""
+    fc = copy.deepcopy(forecast)
+    years = ((((vf or {}).get("scenarios") or {}).get("Base") or {}).get("path") or {}).get("years") or []
+    lab = r26_late.derive_growth_trajectory([y.get("rev_growth") for y in years[:rf.HORIZON]])
+    gt = (fc.get("scenarios") or {}).get("Base", {}).get("growth_trajectory")
+    if lab is None or not isinstance(gt, dict):
+        return fc, []
+    gt["label_submitted"] = gt.get("label")
+    gt["label"] = lab
+    return fc, ([] if gt["label_submitted"] == lab else [f"growth_trajectory_derived:{gt['label_submitted']}->{lab}"])
+
+
+def margin_basis_flags(forecast, dossier):
+    """The annotation of a margin level that rests on no filed fact: for each scenario's near_term and normalized parts, when every cited fact is company-adjusted or third-party
+    (the TASK: such a fact gives the direction of a change, never the level of a margin). It annotates and does not gate."""
+    basis = {str(f.get("fact_id")): f.get("basis") for f in (dossier or {}).get("facts") or [] if isinstance(f, dict)}
+    out = []
+    for n, sc in ((forecast or {}).get("scenarios") or {}).items():
+        for part in ("near_term", "normalized"):
+            ids = ((sc or {}).get(part) or {}).get("fact_ids") or []
+            if ids and all(basis.get(str(i)) in NON_FILED_BASES for i in ids):
+                out.append(f"margin_level_without_filed_fact:{n}.{part}")
+    return out
+
+
 def _stage2_sample(model, msgs0, dossier, run_dir, k, seed, sess, tool=None):
     """One of the K sessions. Returns the sample record without its valuation."""
     state = {"subs": 0, "forecast": None, "problems": [], "history": [], "ignored": 0, "closed": False}
@@ -1296,7 +1339,7 @@ def _stage2_sample(model, msgs0, dossier, run_dir, k, seed, sess, tool=None):
             return ({"accepted": True, "message": "A forecast was already accepted; this call is ignored."} if state["forecast"] is not None else
                     {"accepted": False, "message": "This sample is already closed; this call is ignored."}), True
         state["subs"] += 1
-        probs = rf.validate_forecast(args, dossier) + r26_late.validate_labels(args, dossier)
+        probs = rf.validate_forecast(args, dossier) + r26_late.validate_labels(args, dossier) + r26_late.validate_durability(args)
         state["history"].append(probs)
         if not probs:
             state["forecast"], state["problems"] = copy.deepcopy(args), []
@@ -1351,7 +1394,12 @@ def run_stage2(*, run_dir, model, blind_pack, dossier, op_margin_bar, valuation,
         s = _stage2_sample(model, msgs0, view, run_dir, i + 1, (seed if seed is not None else 0) + i, sess, r26_late.stage2_tool(op_margin_bar))
         if s["forecast"] is not None:
             s["stamps"] += [f"{rf.DELTA_SCALE_STAMP}:{n}" for n in SCEN if rf.delta_pts_scale_suspect(s["forecast"]["scenarios"][n]["normalized"]["delta_pts"])]
+            s["forecast"], st_ = code_owned_inputs(s["forecast"], valuation)
+            s["stamps"] += st_ + margin_basis_flags(s["forecast"], dossier)
             vf = _value(s["forecast"], valuation, op_margin_bar)
+            if vf["status"] == rf.BRIDGE_OK:
+                s["forecast"], st_ = derive_labels(s["forecast"], vf)
+                s["stamps"] += st_
             s["status"] = "valued" if vf["status"] == rf.BRIDGE_OK else vf["status"]
             s["valuation"] = trim_valuation(vf)
             s["base_value"] = vf.get("base_value") if vf["status"] == rf.BRIDGE_OK else None
@@ -1363,9 +1411,18 @@ def run_stage2(*, run_dir, model, blind_pack, dossier, op_margin_bar, valuation,
             print(f"    [stage2] sample {i + 1}: {s['status']}" + (f" base ${s['base_value']:.2f}" if rf._num(s["base_value"]) else ""), flush=True)
     agg = rf.aggregate([s["base_value"] for s in samples])
     stamps = ([f"samples_valued:{agg['n']}_of_{int(k)}"] if agg["n"] < int(k) else []) + view_stamps
+
+    def _base_of(fc_):
+        v_ = _value(fc_, valuation, op_margin_bar)
+        return v_.get("base_value") if v_["status"] == rf.BRIDGE_OK else None
+    valued = [s["forecast"] for s in samples if rf._num(s.get("base_value"))]
+    try:                                                    # S3 (cross-check 25): which inputs the spread comes from; a diagnostic, it changes no number
+        attribution = r26_spread.attribute_spread(valued, _base_of) if len(valued) >= 2 else {"status": "not_enough_samples"}
+    except Exception as e:                                  # noqa: BLE001 - a diagnostic never stops the run; the failure is recorded
+        attribution = {"status": "attribution_error", "error": f"{type(e).__name__}: {e}"}
     out = {"schema": "r26.forecasts.v1", "stage": "stage2", "pack_revision": PACK_REVISION_R26, "k": int(k), "seeds": [s["seed"] for s in samples],
            "samples": samples, "aggregate": agg, "median_index": agg["median_index"], "spread": agg["spread"],
-           "base_values": [s["base_value"] for s in samples], "op_margin_bar": op_margin_bar,
+           "base_values": [s["base_value"] for s in samples], "op_margin_bar": op_margin_bar, "spread_attribution": attribution,
            "valuation_inputs": {"rev0": valuation["rev0"], "base_cf": valuation["base_cf"], "bridge_facts": valuation["bridge_facts"], "price": valuation["price"]},
            "stamps": stamps, "elapsed_s": round(time.time() - t0), "task_sha256": hashlib.sha256(r26_late.stage2_task(op_margin_bar).encode("utf-8")).hexdigest(),
            "stage2_pack_sha256": hashlib.sha256(pack2.encode("utf-8")).hexdigest(),
@@ -1589,7 +1646,7 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
                 return {"accepted": False, "message": "Only one revision is accepted. This second call is refused and the stage is closed."}, True
             body = {k: v for k, v in args.items() if k not in ("revision_fact_ids", "revision_reason")}
             rids, rreason = args.get("revision_fact_ids"), args.get("revision_reason")
-            probs = [dict(p) for p in rf.validate_forecast(body, dossier) + r26_late.validate_labels(body, dossier)]
+            probs = [dict(p) for p in rf.validate_forecast(body, dossier) + r26_late.validate_labels(body, dossier) + r26_late.validate_durability(body)]
             if not (isinstance(rids, list) and rids and all(isinstance(x, str) for x in rids)):
                 probs.append({"field": "revision_fact_ids", "problem": "a revision must cite at least one fact id"})
             elif [x for x in rids if x not in known]:
@@ -1614,7 +1671,12 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
     final_fc, final_vf = pre_fc, pre_vf
     post = None
     if st["revision"] and st["revision"]["accepted"]:
+        st["revision"]["forecast"], st_ = code_owned_inputs(st["revision"]["forecast"], valuation)
+        reveal["stamps"] += st_ + margin_basis_flags(st["revision"]["forecast"], dossier)
         rvf = _value(st["revision"]["forecast"], valuation, op_margin_bar)
+        if rvf["status"] == rf.BRIDGE_OK:
+            st["revision"]["forecast"], st_ = derive_labels(st["revision"]["forecast"], rvf)
+            reveal["stamps"] += st_
         if rvf["status"] == rf.BRIDGE_OK:
             final_fc, final_vf = st["revision"]["forecast"], rvf
             post = {"forecast": final_fc, "valuation": trim_valuation(rvf), "base_value": rvf["base_value"]}
@@ -1679,11 +1741,16 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
     elif (chk.get("reach") or {}).get("outcome") == "beyond_reach":
         reveal["beyond_reach"] = True                     # amendment 1: valid (every entry's quotes verify), published, and not actionable until reviewed
         reveal["flags"] = list(reveal.get("flags") or []) + [BEYOND_REACH_FLAG]
+    elif (chk.get("reach") or {}).get("outcome") == "jointly_reachable" and not any(e.get("reachable") for e in (chk.get("reach") or {}).get("single") or []):
+        reveal["path_dominated"] = True                   # no named input reaches the price alone: the gap sits in the years-1-5 path the crux cannot name
+        reveal["flags"] = list(reveal.get("flags") or []) + [PATH_DOMINATED_FLAG]
     _write_json(run_dir / ARTIFACTS["stage3"], reveal)
     return reveal
 
 
 BEYOND_REACH_FLAG = "price_beyond_every_input_reach"
+PATH_DOMINATED_FLAG = "path_dominated_crux"
+PATH_DOMINATED_REASON = "path_dominated_review_required"
 BEYOND_REACH_REASON = "beyond_reach_review_required"
 
 
@@ -1838,7 +1905,8 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
     code_direction = contract_fill.label(pub.get("Base"), price)
     verdict_word = "no_call" if final["no_call"] else _label19_word(reveal, valuation, pub)
     rows = r26_late.table_rows(price=price, values=pub, forecast=fc, vf=vf, verdict=verdict_word,
-                               pre_base=(reveal.get("pre") or {}).get("base_value") if reveal.get("post") else None, spread=forecasts.get("spread"))
+                               pre_base=(reveal.get("pre") or {}).get("base_value") if reveal.get("post") else None, spread=forecasts.get("spread"),
+                               alt_paths=((reveal.get("diagnostics") or {}).get("alt_paths") or []))
     cview = reveal.get("consensus") or {"status": "unavailable", "reason": None, "years": {}}
     cview = {**cview, "years": {int(k): v for k, v in (cview.get("years") or {}).items()}}
     diag = reveal.get("diagnostics") or _diagnostics(fc, vf, cview, dossier, valuation, op_margin_bar)
@@ -1919,6 +1987,9 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
     if reveal.get("beyond_reach"):                                   # amendment 1, B2: published with the flag, non-actionable until the beyond-reach review
         final["flags"] += [f for f in reveal.get("flags") or [] if f not in final["flags"]]
         reasons.append(BEYOND_REACH_REASON)
+    if reveal.get("path_dominated"):                                 # cross-check 25: published with the flag, non-actionable until the explicit-year path is reviewed
+        final["flags"] += [f for f in reveal.get("flags") or [] if f not in final["flags"]]
+        reasons.append(PATH_DOMINATED_REASON)
     reasons += samples_actionability_reasons(forecasts, price, valuation.get("min_mos"))
     verdict["r26"] = {"pilot_arm": ARM, "desk_schema": R26_DESK_SCHEMA, "pack_revision": PACK_REVISION_R26, "actionable": not reasons, "non_actionable_reasons": reasons,
                       "no_call": final["no_call"], "verifier": ver, "final_source": reveal.get("final_source"), "spread": forecasts.get("spread"),
