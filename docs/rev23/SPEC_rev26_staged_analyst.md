@@ -277,3 +277,26 @@ is unchanged.
 **E. Deferred past the freeze (recorded):** the stage-1 context fix (an output cap, salvage of a length-cut call, a recovery turn), the proximity rule tripping on the company's
 own name, withdrawn-guidance and buyout-scope tags on stage-1 facts, a semantic memo entailment check, driver-level reverse stress tests for path-dominated names, D2 validation
 of DAC and MCY, and a scenario-coherence diagnostic.
+
+## 11. Amendment 3, registered 2026-10-23 01:30 KST: one SYSTEM-message defect-correction comparison (cross-check: ChatGPT; operator delegated)
+
+**The defect.** The stage sessions send no system message, so `ollama_raw` inserts the model tag's SYSTEM text: the v33 underwriting charter (2,400 words; price,
+momentum, consensus, reverse DCF, Kelly sizing, a 13-section memorandum), sha256 `ff033c25…`. Every revision-26 stage has run under it. It is instruction
+contamination, not a data leak.
+
+**Disclosure.** This protocol is registered AFTER iteration 3's score was read (FAIL: coherent 1 of 9, 0 incoherent; read 2026-10-22 ~22:15). It amends section
+10 D ("iteration 3 is the last"). It is bound by the conditions below so that it cannot act as a second chance at the benchmark.
+
+**The comparison (run as harness iteration 4, whatever the result):**
+1. One change only: each stage gets its own short SYSTEM message (`r26_late.STAGE_SYSTEM`); the charter no longer reaches any stage. Same frozen stage-1 dossiers,
+   same model tag and template, same seeds, same desk, same TASK texts and tools, same scoring rules and rubric. The rendered SYSTEM text and its sha256 are
+   recorded for every stage and checked to differ from the charter's.
+2. The memo stage is not told anything new beyond what its SYSTEM message says (the code-derived label note goes into the SYSTEM message of stage 4 only because
+   it describes the stage's own contract; recorded here as part of the one change).
+3. Reported side by side with iteration 3: the registered bar, the Amendment-2 rubric, spread, direction, the canary, unknown fact ids, path-dominated and
+   beyond-reach counts, runtime and tokens. **No winner is selected on benchmark score.** The freeze takes the design whose defects are better understood, with both
+   records kept; the charter fix is adopted on its merits (it removes instructions that contradict the stages), not on its score.
+4. Scope: this tests stages 2-4 only. Stage 1 under the corrected SYSTEM message is not validated by it; the holdout (CTVA, NHC, TTAM, CLDT) runs end to end on the
+   frozen design, stage 1 included.
+5. Paper only. If the comparison cannot be run and read properly before the Friday freeze, it is deferred, and the freeze takes iteration 3 with the defect
+   documented.
