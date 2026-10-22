@@ -769,3 +769,58 @@ Both reviews independently recommend the same change of architecture rather than
   - **(4)** the crux form message lists stale inputs;
   - **(5)** reveal.json does not record per-entry crux verification.
 - **Design question under measurement (6):** whether, for large mispricings, *no* offered crux input is reachable by the price-implied solver. If so, the crux rule makes a no_call inevitable. This is the open "price beyond every input's reach" policy.
+- **Rulings on cross-check 24** (ChatGPT and Gemini both: A2 and B2 modified), approved by the operator and frozen as **SPEC section 9, Amendment 1**.
+  - **A2 is recorded as a post-result protocol amendment,** per ChatGPT: the registered rule named `oe_base`, so Gemini's "bug fix" framing is rejected.
+  - **B2 with a joint-reachability ray, reachability shown up front, three outcomes, a non-actionable beyond-reach verdict with a 4-part review, and a syntax-only crux repair.**
+  - **The per-name actionability rule:** spread ≤ 20% and unanimous direction.
+  - **Rejected:** LPG tax as 0 (absent is not 0).
+  - **Deferred:** a medium-term margin as a crux input.
+- **Amendment 1 built and audited.**
+  - rs2 `05d925b` and `15669dc`: up-front reach, the joint ray (121-point grid with bisection; the builder showed the coordinator's suspected non-monotone defect was a misreading, so beyond-reach was correct), three outcome codes, a syntax-only crux repair, per-name actionability.
+  - The pilot: the draw replacements **KOF, DAR, VSNT** (base_cf 0.502, 0.709, 1.602) and the new holdout **CTVA, NHC, TTAM, CLDT**. Passed over: CBL, DEA, SM (no base_cf; a missing base_cf is not positive, per section 9); NREF, FRO (no x_L).
+  - The scorer reports coverage apart and counts outcome codes.
+- **Iteration numbering:** runs_p4r26/1 could not be moved (a file handle held by another process), so iteration 1 stays in place, recorded NON-COUNTING. The counted re-run is **iteration 2**, and `iteration.max` is raised 3 → 4 so three counted iterations remain, as registered. This is noted in the run file.
+- **Launched 2026-10-21 02:57** (`RS2-P4-R26-AMEND1`, tree `15669dc`): prep for KOF, DAR and VSNT, then smoke, end-to-end smoke, stage 1 for the 3, and stages 2–4 iteration 2 for all. About 14 h.
+- **Stage P for the replacements stopped (03:17).** KOF and VSNT P3 deep research aborted: 3 of 5 and 4 of 5 topics had no usable sources, so the guard refused to write a brief from model recall.
+  - Cause: SearXNG upstream engines blocking us after two days of heavy research. DuckDuckGo shows a CAPTCHA (never bypassed); Dogpile and Yep deny access; gabanza is down.
+  - A container restart cleared the in-memory suspensions, but the upstream blocks stand. DAR P3 succeeded at 03:12.
+  - **Coordinator decision (overnight rule):** wait. The chain is rescheduled once at 2026-10-21 09:00 (`RS2-P4-R26-AMEND1`); the stop records are kept with the suffix `_searchblock_0321`.
+- **Search fallback restored (operator approved, 2026-10-21 ~03:45).**
+  - The pilot tree had no `.secrets.json`, so its research ran on SearXNG alone, with none of the keyed fallback (Serper, Tavily, Exa) the main repo has. `tree_p4r26/.secrets.json` is now a **hardlink** to `rs2-local/.secrets.json`: one secrets file, git-ignored, contents not read. Keys present: serper 2400, tavily 900, exa 300.
+  - Note: the tree keeps its own `cache/quota.json` ledger.
+- **Extra free engines probed** on a temporary default-settings SearXNG (port 8899, since removed), with two finance queries each. Every candidate refused or returned nothing:
+  - mojeek, qwant and presearch: access denied;
+  - startpage: timeout or CAPTCHA;
+  - brave: too many requests;
+  - yahoo: protocol error;
+  - google: 0 results;
+  - google news and startpage news: CAPTCHA;
+  - qwant news and mojeek news: access denied.
+  - **None added** (refusals respected, per the settings file rule). The 09:00 retry now has the keyed fallback.
+- **The 09:00 retry failed the same way (09:07).** The keyed fallback never fired: `deep_research.run_topic` ended the chain on any returned URL, so a SearXNG answer whose links were all low-trust or uncited was accepted, and the topic was then voided as `::NO SOURCES::`.
+  - Fix rs2 `bb0d7ab`: a backend counts as having answered only when it leaves usable sources (the same test the topic applies afterwards). Two tests.
+  - A stray smoke test from a mistaken 11:55 start of the chain was still running on the old tree after the task was stopped; it was killed and its records kept with the suffix `_killed_1200` / `_pre_bb0d7ab`.
+- **Relaunched 12:00 on `bb0d7ab`.** KOF P3 done (12:10, all SearXNG). VSNT P3 stopped at the 900 s research bound (12:25): two topics recovered on Tavily, two found nothing on any of the four providers, and every attempt re-runs the summary.
+  - Probe: Serper and Exa answer directly (10 and 5 results) and through LDR's engines; five reruns of the bear-case topic gave sources on every provider except one Exa attempt (0 sources in 38 s). The empty answers are transient; LDR logs nothing about them.
+  - **Open item:** when LDR's searches all return nothing, its summary still cites "[1]" from model recall. Our guard discards it correctly. The cause (most likely the generated sub-questions for the topic) is to be measured after the run, with the GPU free.
+- **Relaunched 12:41.** VSNT P3 done (12:58) with one topic of five declared NOT RESEARCHED ("What Changed in the Last 12 Months"), under the existing gap rule. KOF and DAR P4 done.
+- **P5 (13:19): KOF passes; DAR and VSNT fail the leak audit on false positives.**
+  - DAR: "insider: 1.18%" matched the long-run owner-earnings path value 1.18 ($B).
+  - VSNT: ten hits, all the company's own FY26 revenue guidance: $6.2–6.45B in the Q2 8-K (Item 2.02, filed 2026-08-06, verbatim in the pack's GUIDANCE section) and $6.15–6.4B from the Q1 release, repeated in the catalyst and research briefs. The consensus revenue ($6.249B, $6.368B, $6.439B) follows that guidance.
+  - **Coordinator rulings (rs2 `b1ac1e9`):**
+    - (1) The numbers of the company's own 8-K Item 2.02 earnings releases of the trailing year, fetched verbatim from EDGAR by code, are filed support for the leak test, as filed EPS already is. SPEC section 5 excepts "the same number as a filed fact", and SPEC section 2 names a guidance horizon as a fact's duration, so company guidance is a legitimate blind input. The narrative filter (consensus, analyst, price language) is unchanged, and a consensus number absent from the releases still leaks.
+    - (2) A removed fact that is a dollar amount (the long-run `e5`, `oe5`, `oe_path`, `oe_base`, `revenue_path`; any `revenue_b` / `earnings_b`) is never matched as a percent or a multiple. The GOLD unit test's second half moved from `e5` to the margin fact `m5`, which keeps its intent.
+  - Tests: 7 new; full suite 44 failures, the 42 on record plus the two byte-identity pins already known stale (the revision-26 pin fails on unmodified HEAD too).
+  - The 10 names that passed P5 on earlier trees are not rebuilt: the rulings can only add exceptions, never a leak.
+- **Relaunched 13:38 on `b1ac1e9`:** P5 for DAR and VSNT, then smoke, end-to-end smoke, stage 1 for the 3, and stages 2–4 iteration 2.
+- **P5 at `b1ac1e9` (13:38):** DAR passes (0 leaks). VSNT keeps 4 leaks, all "$6.4 billion" from the research brief's earlier range $6.15–6.4B. Neither earlier filed release (FY25, 2026-03-03; Q1, 2026-05-14) states it, so the audit was right to fail closed: the claim cannot be told from the consensus ($6.439B, $6.368B).
+  - **Coordinator ruling (rs2 `abd2052`):** the narrative filter gets a second rule, `removed_number_collision`. A narrative sentence holding a number that equals a removed-class number at its own precision and unit, with no filed or derived support (the 8-K releases included), is dropped and listed. The blind stage loses the sentence, never the pack. Filed, derived and aggregator lines are not filtered, and the leak audit still runs afterwards as the backstop.
+  - Packs that already passed the audit have no such collision, so their blind text is unchanged by this rule; they are not rebuilt.
+  - Tests: 3 new; full suite unchanged (44, the same names as at `b1ac1e9`).
+- **Relaunched ~14:00 on `abd2052`:** VSNT P5, then smoke, end-to-end smoke, stage 1 for KOF, DAR and VSNT, and stages 2–4 iteration 2.
+- **Stage 1 restarted 20:35 (tree `abd2052`)** after DAR was re-researched with a stable connection (all 6 topics, 24 sources). DAR's earlier pins (never used by a model run) are kept in the run file as commented "superseded" lines; backup `run_p4r26_backup_pre_DAR_repin_2035.txt`.
+  - Root cause of today's empty searches: the Wi-Fi dropped for 1–40 minutes about hourly (WLAN event log); every DNS lookup failed on the host and in the SearXNG container. Network guard built (rs2 `24ff859`; research stops as an infra failure while offline; stage-1 calls wait up to 45 min and retry). Not in this run's tree, to keep the smoke pass; it goes into the next iteration. The operator fixed the connection.
+- **KOF stage 1: INCOMPLETE after 80 min, 34 facts (26 usable).** Turn 20 hit the 98,304-token window (prompt 42,663 + output 53,460; `done_reason: length`): 130k of its 145k characters were thinking, and the cut call held 39 facts (38 complete). The harness labelled it `no_tool_call` and froze the dossier.
+  - **Ruling (cross-check with Gemini, coordinator):** KOF is counted as a scored design failure (`context_exhausted`), not re-run; a post-result salvage would be a re-run. Stages 2–4 run on its dossier. The report adds a disclosed 11/12 side table; the registered pass bar stays on all 12.
+  - **Next-iteration fix, first:** a per-turn output cap (`num_predict` = min(12–16k, remaining window − 2k)), salvage of complete facts from a length-cut call (through the same verifier), one recovery turn, and the correct stop label. Zero change on healthy turns. Deferred, as separate labelled changes: eviction of old fetched pages, a prompt-level batch cap.
+  - **Found while checking:** most unusable facts fail the proximity rule, not the quote match, and many trip on the company's own name word ("gold", "integer", "inbev" read as metric terms). To measure after stages 2–4.
