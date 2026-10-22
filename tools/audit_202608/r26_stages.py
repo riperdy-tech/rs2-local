@@ -74,7 +74,7 @@ import r26_late  # noqa: E402
 import sec_primary  # noqa: E402
 import turn_log  # noqa: E402
 
-PACK_REVISION_R26 = 27            # 27 (2026-10-22, cross-check 25): code-owned discount rate, code-derived growth label, the durability thesis, grounded memo
+PACK_REVISION_R26 = 28            # 28 (2026-10-23, Amendment 3): each stage's own SYSTEM message. 27 (2026-10-22, cross-check 25): code-owned discount rate, code-derived growth label, the durability thesis, grounded memo
 ARM = "r26"
 STAGES = ("stage1", "stage2", "stage3", "stage4")
 ARTIFACTS = {"stage1": "dossier.json", "stage2": "forecasts.json", "stage3": "reveal.json", "stage4": "final.json"}
@@ -789,12 +789,13 @@ def fresh_messages(stage, inputs):
     extra = sorted(set(inputs) - ALLOWED_INPUTS[stage])
     if extra:
         raise ValueError(f"{stage} may not be handed {', '.join(extra)} (SPEC revision 26 names only {', '.join(sorted(ALLOWED_INPUTS[stage]))})")
+    system = {"role": "system", "content": r26_late.STAGE_SYSTEM[stage]}          # Amendment 3: the stage's own SYSTEM message, never the model tag's charter
     if stage == "stage1":
-        return [{"role": "user", "content": inputs["blind_pack"].rstrip() + "\n\n---\n\n" + inputs["task"]}]
+        return [system, {"role": "user", "content": inputs["blind_pack"].rstrip() + "\n\n---\n\n" + inputs["task"]}]
     head = inputs["blind_pack"].rstrip() + "\n\n---\n\n" if "blind_pack" in inputs else ""
     body = "\n\n".join(_as_text(n, inputs[n]) for n in STAGE_ORDER[stage] if n in inputs and n not in ("blind_pack", "task"))
     task = ("\n\n---\n\n" + inputs["task"]) if inputs.get("task") else ""
-    return [{"role": "user", "content": head + body + task}]
+    return [system, {"role": "user", "content": head + body + task}]
 
 
 # ---------------------------------------------------------------- stage 1: the session

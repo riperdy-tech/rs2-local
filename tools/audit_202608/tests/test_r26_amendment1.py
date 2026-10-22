@@ -92,7 +92,7 @@ def test_other_arms_are_untouched_the_joint_block_exists_only_when_asked():
 
 def test_stage_3_shows_each_offered_input_reach_and_value_at_its_favourable_bound_before_the_model_answers(tmp_path, monkeypatch):
     script, _, rv, _ = run_stages(tmp_path, monkeypatch, THREE + [crux2(entry("long_run_margin"), entry("terminal_ronic")), memo_step()], price=P_JOINT)
-    text = script.bodies[3]["messages"][0]["content"]
+    text = script.bodies[3]["messages"][1]["content"]
     assert "REACH OF EACH OFFERED INPUT ALONE" in text
     lrm = next(ln for ln in text.split("\n") if ln.strip().startswith("long_run_margin: the price"))
     assert "cannot be reached by this input alone" in lrm and "favourable bound (100.00%)" in lrm and "$1068.31" in lrm and "$1103.00" in lrm
@@ -123,7 +123,7 @@ def test_one_unreachable_input_is_jointly_reachable_with_the_second_and_the_crux
     assert j["reachable"] and 0 < j["t"] < 1 and set(j["values"]) == {"long_run_margin", "terminal_ronic"} and j["value_at_t"] == pytest.approx(P_JOINT, abs=0.01)
     assert [s["reachable"] for s in c["reach"]["single"]] == [False, False] and all(e["valid"] and e["reason"] is None for e in c["check"]["entries"])
     assert not rv.get("beyond_reach") and "price_beyond_every_input_reach" not in fi["flags"] and "beyond_reach_review_required" not in fi["non_actionable_reasons"]
-    assert "moved together toward their price-favourable bounds they do" in script.bodies[-1]["messages"][0]["content"]
+    assert "moved together toward their price-favourable bounds they do" in script.bodies[-1]["messages"][1]["content"]
 
 
 def test_beyond_reach_is_valid_when_every_quote_verifies_and_is_published_non_actionable(tmp_path, monkeypatch):

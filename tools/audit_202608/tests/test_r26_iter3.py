@@ -19,8 +19,8 @@ import r26_stages as r26  # noqa: E402
 from test_r26_stages24 import fcast  # noqa: E402
 
 
-def test_the_pack_revision_is_27():
-    assert r26.PACK_REVISION_R26 == 27
+def test_the_pack_revision_is_28():
+    assert r26.PACK_REVISION_R26 == 28
 
 
 def test_the_discount_rate_is_the_anchor_and_the_submitted_rate_is_kept():
@@ -130,3 +130,19 @@ def test_stage_2_records_the_spread_attribution_and_values_every_sample_at_the_a
         assert s["forecast"]["discount_rate"] == s["forecast"]["discount_rate"]
         anchor = s["forecast"]["discount_rate"] if anchor is None else anchor
         assert s["forecast"]["discount_rate"] == anchor and "discount_rate_submitted" in s["forecast"]
+
+
+def test_every_stage_sends_its_own_system_message_and_the_charter_never_reaches_the_rendered_prompt():
+    """Amendment 3: without a system message, ollama_raw inserted the model tag's SYSTEM text (the v33 charter) into every stage."""
+    import ollama_raw
+    charter = "CHARTER-MARKER: you are an institutional underwriter; use price, consensus, momentum and Kelly sizing."
+    for stage in ("stage1", "stage2", "stage3", "stage4"):
+        inputs = {"blind_pack": "PACK", "task": "TASK"} if stage in ("stage1", "stage2") else {"dossier": {"facts": []}, "task": "TASK"}
+        msgs = r26.fresh_messages(stage, inputs)
+        assert msgs[0] == {"role": "system", "content": late.STAGE_SYSTEM[stage]} and msgs[1]["role"] == "user"
+        rendered = ollama_raw.template_messages(msgs, charter)
+        assert [m for m in rendered if m.get("role") == "system"] == [msgs[0]]
+        assert not any(charter in str(m.get("content")) for m in rendered)
+    assert "undervalued" not in late.STAGE_SYSTEM["stage2"] and "price" in late.STAGE_SYSTEM["stage2"]
+    assert "a wish to keep the original" in late.STAGE_SYSTEM["stage3"]
+    assert len({late.STAGE_SYSTEM[s] for s in late.STAGE_SYSTEM}) == 4

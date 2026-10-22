@@ -101,7 +101,7 @@ FETCH = [{"tool": "fetch_page", "params": {"url": PAGE_URL}, "url": PAGE_URL, "t
 def memo_step(verdict=None, extra="", contract=None, mutate=None):
     """A stage-4 reply: SECTION 0 and every line of the frozen table copied under SECTION 1 (so every labelled number is the table's), then the contract."""
     def step(body):
-        text = body["messages"][0]["content"]
+        text = body["messages"][1]["content"]
         blk = text.split("FROZEN DESK TABLE")[1].split("\n\n")[0]
         lines = [ln for ln in blk.split("\n")[1:] if re.match(r"^[A-Z][^:\n]+: .+$", ln)]
         v = verdict or next(ln.split(": ", 1)[1] for ln in lines if ln.startswith("Verdict: "))
@@ -156,8 +156,8 @@ def test_k_equals_3_sessions_with_seeds_s_s1_s2_each_fresh_from_the_same_inputs(
     script, fc, _, _ = run_stages(tmp_path, monkeypatch, THREE, stages=(2,), seed=700)
     assert [b["options"]["seed"] for b in script.bodies] == [700, 701, 702] and fc["seeds"] == [700, 701, 702] and fc["k"] == 3
     firsts = [b["messages"] for b in script.bodies]
-    assert all(len(m) == 1 and m[0]["role"] == "user" for m in firsts) and firsts[0] == firsts[1] == firsts[2]
-    text = firsts[0][0]["content"]
+    assert all(len(m) == 2 and m[0] == {"role": "system", "content": late.STAGE_SYSTEM["stage2"]} and m[1]["role"] == "user" for m in firsts) and firsts[0] == firsts[1] == firsts[2]
+    text = firsts[0][1]["content"]
     assert text.startswith("BLIND PACK TEXT") and "RESEARCH DOSSIER" in text and "FILED OPERATING MARGIN HISTORY" in text and "STAGE 2 OF 4" in text
     assert [t["function"]["name"] for t in script.bodies[0]["tools"]] == ["submit_forecast"]
     assert "[F3]" not in text and "[F1] XYZ" in text and "UNUSABLE FACTS: 1 (not shown" in text and "quote not found" not in text         # item 2: a count and codes only
@@ -225,8 +225,8 @@ def test_an_unmeasured_tax_rate_leaves_the_sample_unvalued(tmp_path, monkeypatch
 def test_stage_3_sees_the_numbers_only_never_the_stage_2_reason_and_nothing_of_the_other_sessions(tmp_path, monkeypatch):
     script, fc, rv, _ = run_stages(tmp_path, monkeypatch, THREE + [crux_args("keep"), memo_step()], cc=cons_op(0.45))
     body = script.bodies[3]
-    assert len(body["messages"]) == 1
-    text = body["messages"][0]["content"]
+    assert len(body["messages"]) == 2 and body["messages"][0] == {"role": "system", "content": late.STAGE_SYSTEM["stage3"]}
+    text = body["messages"][1]["content"]
     assert "REASON-MARKER" not in text and "makes things" in text                          # the dossier is handed over, the stage-2 reasoning is not
     assert "MARKET PRICE: $400.00" in text and "PRICE-IMPLIED INPUTS" in text and "BASIS-CORRECTED CONSENSUS" in text and "DIAGNOSTICS" in text
     assert "BASE VALUES OF THE THREE STAGE-2 SAMPLES" in text and "the median" in text and "STAGE 3 OF 4" in text and RUN_DATE in text
@@ -235,7 +235,7 @@ def test_stage_3_sees_the_numbers_only_never_the_stage_2_reason_and_nothing_of_t
     assert body["options"]["seed"] == 700
     # no session sees another stage's messages
     for b in script.bodies:
-        assert len(b["messages"]) <= 3 and b["messages"][0]["role"] == "user"
+        assert len(b["messages"]) <= 4 and b["messages"][0]["role"] == "system" and b["messages"][1]["role"] == "user"
     assert "STAGE 2 OF 4" not in text and "STAGE 4 OF 4" not in text
 
 
@@ -299,7 +299,7 @@ def test_no_call_when_the_samples_split_by_direction_and_no_model_call_is_made(t
     assert len(script.bodies) == 4                                                       # three stage-2 sessions and the memo: stage 3 called no model
     assert fi["no_call"] and fi["verdict"]["no_call"]["reasons"] == ["samples_split_by_direction"] and fi["verdict"]["verdict_label"] == "hold"
     assert fi["actionable"] is False and "no_call" in fi["non_actionable_reasons"]
-    assert "No call" in script.bodies[-1]["messages"][0]["content"] and "Verdict: no_call" in script.bodies[-1]["messages"][0]["content"]
+    assert "No call" in script.bodies[-1]["messages"][1]["content"] and "Verdict: no_call" in script.bodies[-1]["messages"][1]["content"]
     assert fi["verifier"]["flags"] == []                                                 # the memo said NO CALL, as the table did
 
 
@@ -340,7 +340,7 @@ def test_every_numeric_contract_field_comes_from_code(tmp_path, monkeypatch):
     assert "conviction_score" not in v and "business_quality_moat" not in v and "reentry_tranches" not in v
     assert fi["contract_text"] == {"cycle_evidence": "text", "momentum_flip_condition": liar["momentum_flip_condition"]} and v["margin_persistence"] == "structural"
     r = v["r26"]
-    assert v["pilot_arm"] == "r26" and v["desk_schema"] == "26" and v["pack_revision"] == 27 and r["contract_unfilled"] == ["conviction_score", "business_quality_moat", "reentry_tranches"]
+    assert v["pilot_arm"] == "r26" and v["desk_schema"] == "26" and v["pack_revision"] == 28 and r["contract_unfilled"] == ["conviction_score", "business_quality_moat", "reentry_tranches"]
     assert r["model_typed_numbers_in"] == ["momentum_flip_condition"] and fi["flags"] == []
     assert r["actionable"] is False and fi["actionable"] is False and fi["non_actionable_reasons"] == ["contract_fields_unfilled"]      # item 14
     # the report the harness parses: the memo plus a contract block whose numbers are the code's
@@ -356,8 +356,8 @@ def test_every_numeric_contract_field_comes_from_code(tmp_path, monkeypatch):
 def test_stage_4_is_a_fresh_session_with_no_tools_and_the_named_inputs(tmp_path, monkeypatch):
     script, _, _, _ = run_stages(tmp_path, monkeypatch, THREE + [crux_args("keep"), memo_step()], cc=cons_op(0.45))
     b = script.bodies[-1]
-    text = b["messages"][0]["content"]
-    assert len(b["messages"]) == 1 and "tools" not in b and "STAGE 4 OF 4" in text
+    text = b["messages"][1]["content"]
+    assert len(b["messages"]) == 2 and b["messages"][0] == {"role": "system", "content": late.STAGE_SYSTEM["stage4"]} and "tools" not in b and "STAGE 4 OF 4" in text
     for part in ("RESEARCH DOSSIER", "FROZEN DESK TABLE", "CONVERSION TABLE", "Crux valid: True", "STAGE-2 SPREAD", "DIAGNOSTICS"):
         assert part in text, part
     assert "REASON-MARKER" not in text and "MARKET PRICE" not in text and "BASIS-CORRECTED CONSENSUS" not in text
@@ -645,9 +645,9 @@ def test_the_revealed_block_is_the_price_derived_removed_lines_only_and_reaches_
     rv = r26.run_stage3(blind_pack="B", fetch_calls=FETCH, company="Danaos Corporation", ticker="DAC", facts={}, forecasts=fc, revealed=blk, **kw)
     r26.run_stage4(facts={}, blind_pack="B", fetch_calls=FETCH, company="Danaos Corporation", ticker="DAC", forecasts=fc, reveal=rv, revealed=blk, **kw)
     s2, s3, s4 = (script.bodies[0], script.bodies[3], script.bodies[4])
-    assert "REVEALED" not in s2["messages"][0]["content"]
-    assert "REVEALED: price and momentum" in s3["messages"][0]["content"] and "12-1 momentum" in s3["messages"][0]["content"]
-    assert "REVEALED: price and momentum" in s4["messages"][0]["content"] and "CONSENSUS EPS" not in s4["messages"][0]["content"]
+    assert "REVEALED" not in s2["messages"][1]["content"]
+    assert "REVEALED: price and momentum" in s3["messages"][1]["content"] and "12-1 momentum" in s3["messages"][1]["content"]
+    assert "REVEALED: price and momentum" in s4["messages"][1]["content"] and "CONSENSUS EPS" not in s4["messages"][1]["content"]
 
 
 @pytest.mark.parametrize("pr,bar,expect", [({"family": "financial"}, {"basis": "x"}, ("financial", None)), ({"family": "operating"}, {"basis": "operating"}, ("operating", None)),

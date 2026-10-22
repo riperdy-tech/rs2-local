@@ -15,6 +15,7 @@ for p in (str(AUDIT_DIR), str(AUDIT_DIR.parents[1]), str(TESTS_DIR)):
 import analyst_tools as at  # noqa: E402
 import llm_provider as prov  # noqa: E402
 import r26_stages as r26  # noqa: E402
+import r26_late as late  # noqa: E402
 
 DAC_PACK = TESTS_DIR.parents[3] / "pilot_r25" / "frozen_p4sf" / "DAC" / "r25_sf" / "_pack.md"          # scratch/rev23 beside the worktrees; skipped elsewhere
 
@@ -339,8 +340,8 @@ def test_stage_1_end_to_end(tmp_path, monkeypatch, stub_world):
     assert (tmp_path / "s1" / "_research_snapshot.json").exists()
     # the session: a fresh message list from the blind pack and the stage-1 TASK only
     first = script.bodies[0]
-    assert len(first["messages"]) == 1 and first["messages"][0]["role"] == "user"
-    text = first["messages"][0]["content"]
+    assert len(first["messages"]) == 2 and first["messages"][0] == {"role": "system", "content": late.STAGE_SYSTEM["stage1"]} and first["messages"][1]["role"] == "user"
+    text = first["messages"][1]["content"]
     assert "TASK TEXT" not in text and "You are underwriting" not in text and "STAGE 1 OF 4" in text and "data-5, data-6a" in text and "primary-p2" in text
     assert sorted(t["function"]["name"] for t in first["tools"]) == ["fetch_page", "register_facts", "search_web"]
     assert first["options"]["seed"] == 5 and first["think"] == "high"
@@ -390,7 +391,7 @@ def test_the_search_budget_ends_research_but_not_registration(tmp_path, monkeypa
 
 
 def test_the_stage_sessions_take_only_the_artifacts_the_spec_names():
-    assert r26.fresh_messages("stage1", {"blind_pack": "P", "task": "T"})[0]["content"].endswith("T")
+    assert r26.fresh_messages("stage1", {"blind_pack": "P", "task": "T"})[1]["content"].endswith("T")
     with pytest.raises(ValueError, match="may not be handed"):
         r26.fresh_messages("stage1", {"blind_pack": "P", "task": "T", "price": 10})
     with pytest.raises(ValueError, match="may not be handed"):
@@ -398,7 +399,7 @@ def test_the_stage_sessions_take_only_the_artifacts_the_spec_names():
     with pytest.raises(ValueError, match="may not be handed"):
         r26.fresh_messages("stage2", {"blind_pack": "", "consensus_corrected": {}})
     # stages 2-4 are built (brief R26-A2, tests/test_r26_stages24.py): their sessions are made from the same allow-lists
-    assert r26.fresh_messages("stage2", {"blind_pack": "P", "task": "T"})[0]["content"].endswith("T")
+    assert r26.fresh_messages("stage2", {"blind_pack": "P", "task": "T"})[1]["content"].endswith("T")
     assert set(r26.ARTIFACTS.values()) == {"dossier.json", "forecasts.json", "reveal.json", "final.json"}
 
 

@@ -169,7 +169,7 @@ def test_item3_stage_2_is_given_the_audited_view_and_cannot_cite_a_withheld_fact
     script = Script(sub(f), sub(fcast()), sub(fcast()), sub(fcast()))
     monkeypatch.setattr(prov, "chat", script)
     fc = r26.run_stage2(run_dir=tmp_path, model="m", blind_pack=BLIND, dossier=d, op_margin_bar=DBAR, valuation=valuation(), seed=1, verbose=False, facts=facts)
-    text = script.bodies[0]["messages"][0]["content"]
+    text = script.bodies[0]["messages"][1]["content"]
     assert "Analysts are bullish" not in text and "price target of 12" not in text and "FACTS WITHHELD FROM THIS STAGE: 1" in text and "XYZ makes things." in text
     s1 = fc["samples"][0]
     assert s1["repair_used"] and s1["problem_history"][0][0]["problem"] == "fact_id_not_in_dossier"
@@ -202,12 +202,12 @@ def test_item4_stage_2_receives_the_cut_pack_and_stamps_when_it_cannot(tmp_path,
     monkeypatch.setattr(prov, "chat", script)
     fc = r26.run_stage2(run_dir=tmp_path, model="m", blind_pack=BLIND, dossier=dossier(), op_margin_bar=DBAR, valuation=valuation(), seed=1, verbose=False,
                         facts={"r26_blind_source": REMOVED_LINES})
-    t = script.bodies[0]["messages"][0]["content"]
+    t = script.bodies[0]["messages"][1]["content"]
     assert t.startswith("## DATA 5 - FILINGS") and "narrative about the business" not in t and "Vendor beta" not in t and "stage2_pack_not_filtered:no_spans" not in fc["stamps"]
     script = Script(sub(fcast()), sub(fcast()), sub(fcast()))
     monkeypatch.setattr(prov, "chat", script)
     fc2 = r26.run_stage2(run_dir=tmp_path / "b", model="m", blind_pack=BLIND, dossier=dossier(), op_margin_bar=DBAR, valuation=valuation(), seed=1, verbose=False)
-    assert "stage2_pack_not_filtered:no_spans" in fc2["stamps"] and "narrative about the business" in script.bodies[0]["messages"][0]["content"]
+    assert "stage2_pack_not_filtered:no_spans" in fc2["stamps"] and "narrative about the business" in script.bodies[0]["messages"][1]["content"]
 
 
 # ---------------------------------------------------------------- 5. stronger fact association
@@ -441,7 +441,7 @@ def test_item9_the_stage_3_tool_and_task_ask_for_fact_ids_only(tmp_path, monkeyp
     c = rv["crux"]
     assert c["stated"][0]["citations"] == [{"fact_id": "F4"}] and c["resolved"][0]["citations"][0]["quote"] == QUOTE and c["translated"][0]["citations"][0]["source"] == PAGE_URL
     assert c["valid"] is True and c["check"]["entries"][0]["citations"][0]["quote_found"] is True
-    assert '"fact_id": "F4"' in script.bodies[-1]["messages"][0]["content"] and QUOTE in script.bodies[-1]["messages"][0]["content"]       # stage 4 reads the resolved crux
+    assert '"fact_id": "F4"' in script.bodies[-1]["messages"][1]["content"] and QUOTE in script.bodies[-1]["messages"][1]["content"]       # stage 4 reads the resolved crux
 
 
 def test_item9_a_free_text_citation_is_a_form_problem_once_then_invalid(tmp_path, monkeypatch):
