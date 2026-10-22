@@ -241,3 +241,39 @@ Any mismatch means the verdict is published with the flag, and `actionable` is f
 - a medium-term margin as a solvable crux input (a later revision);
 - the LPG zero-tax question (handled by the materiality rule later);
 - D2 for negative-cash-flow names.
+
+## 10. Amendment 2, frozen 2026-10-22 before iteration 3 (cross-check 25; operator delegated the rulings with a Friday 2026-10-23 freeze)
+
+**A. Pack revision 27 (the model-facing changes).**
+- The discount rate is code-owned: every stage-2 sample and any stage-3 revision is valued at the desk context's cost-of-equity anchor; the submitted rate is kept as
+  `discount_rate_submitted`. The crux may still name `coe` (its solve moves the rate on purpose).
+- The Base growth-trajectory label is derived by code from the valued Base revenue-growth path (more than half a point of change from year 1 to year 5: accelerating or
+  decelerating; most years negative: shrinking; else steady); the model's label is kept as `label_submitted`.
+- The Base carries a durability thesis (anchor, mechanism, evidence_limit, failure_condition; at most 40 words each), checked for structure like every other field.
+- Stage 4: a diagnostic value is written under its own label (`Alternative-path Base value per share if <fact> expires`, `Early-fade stress Base value per share for <fact>`), which
+  the frozen table now carries; the business is described only as the dossier does, with fact ids, and no new economic premise.
+- Not code-owned (ruled against): `terminal_ronic`, the normalized baseline and the long-run margin stay the analyst's.
+
+**B. Annotations and flags (code only).**
+- `margin_level_without_filed_fact:<scenario>.<part>`: every fact cited for a near-term or normalized margin is company-adjusted or third-party. Annotates; does not gate.
+- `path_dominated_crux`: the crux is jointly reachable but no named input reaches the price alone; published, non-actionable until the explicit-year path is reviewed
+  (`path_dominated_review_required`).
+- `memo_unknown_fact_id`: the memo cites an id the dossier does not hold. Annotates.
+- `spread_attribution` (S3) in forecasts.json: which input groups the three samples' spread comes from. A diagnostic; it changes no number.
+- `shares_unavailable` (rs2 `afec2b0`) is a data no-call, like `base_cf_unavailable`; `bridge_unavailable` is scored as a data no-call (the ruling of `58d7bdd`).
+
+**C. Criterion 4, amended.** "Defended by evidence of matching duration" is replaced by "rests on a stated, internally consistent durability thesis" (READER_RUBRIC.md; the
+original is READER_RUBRIC_v1.md). A thesis that names its anchor and its evidence limit honestly, with any departure argued from facts of matching span, is coherent; an anchor
+that does not exist, margins that do not start from it, or a mechanism that contradicts the dossier, is incoherent. The pass bar itself (SPEC section 6, as amended by section 9)
+is unchanged.
+
+**D. The freeze rule (coordinator, under the operator's time box).** Iteration 3 is the last design iteration of revision 26, whatever it scores.
+- **Approved for the book-wide paper run** if iteration 3 has 0 incoherent names and at least 70% of callable names coherent under the amended rubric (the registered 83% bar
+  is still reported, pass or fail).
+- **Otherwise frozen as "paper-only, low confidence"**: the book-wide paper run proceeds with every name's flags visible, and the result is recorded as a failed benchmark.
+- Either way: real money stays gated by KIS_HALT and a graded paper track record, never by this benchmark; the four-name holdout (CTVA, NHC, TTAM, CLDT) is run once on the frozen
+  design.
+
+**E. Deferred past the freeze (recorded):** the stage-1 context fix (an output cap, salvage of a length-cut call, a recovery turn), the proximity rule tripping on the company's
+own name, withdrawn-guidance and buyout-scope tags on stage-1 facts, a semantic memo entailment check, driver-level reverse stress tests for path-dominated names, D2 validation
+of DAC and MCY, and a scenario-coherence diagnostic.
