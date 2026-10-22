@@ -209,3 +209,35 @@ Any mismatch means the verdict is published with the flag, and `actionable` is f
 - **Applying the rule:** each drawn name must satisfy the existing draw rule (a positive base-year `x_L`, and positive `oe_base`), or it is skipped with the reason recorded and the next name is taken.
 - **Panel additions:** OGE, HNRG, PTCT, LPG, ITGR.
 - **Holdout:** the next four eligible names after them, beginning KOF, DAR, VSNT, CTVA.
+
+## 9. Amendment 1, frozen 2026-10-21 before the counted re-run (cross-check 24; operator approved)
+**Status.** This is a **protocol amendment made after iteration 1's results**, not a bug fix. The registered draw rule (section 8) tested `long_run.oe_base`; it is now extended to the desk's base cash flow. The original panel and iteration 1's artifacts stay on record unchanged (iteration 1 is non-counting because of code defects).
+
+**A. Eligibility and the draw.**
+- **Eligible** means the existing rule (positive `x_L` and `oe_base`) **and** a positive desk base cash flow (`owner_earnings_default_b` > 0).
+- **OGE, HNRG and PTCT** fail the new condition and are recorded as skipped (base_cf −0.054, −0.039, −0.086 $B).
+- **Replacements** are drawn mechanically from DRAW_ORDER.json, continuing after the last panel name, applying the full rule, with each skip recorded.
+- **The holdout** is the next 4 eligible names after the replacements.
+- **PACS and LPG** stay in the panel as data no-calls (coverage).
+- **Coverage is reported apart:** callable among all names drawn, including the skips.
+
+**B. The crux.**
+- **Up front:** stage 3 shows, per offered input, its single-input reachability and the value at its price-favourable bound.
+- **Single entries:** an entry is reachable when its single-input solve reaches the price within bounds.
+- **Joint check:** a crux whose entries are not individually reachable is tested jointly. All named inputs move together along the ray from the analyst's values toward their price-favourable bounds (one shared fraction t in [0, 1]). The crux is `jointly_reachable` if some t reaches the price.
+- **Otherwise:** `beyond_reach`. Quotes are still verified per entry; the verdict is published with `price_beyond_every_input_reach` and is **non-actionable** until reviewed.
+- **The beyond-reach review** has four parts:
+  - (1) the three blind samples agree on direction, with spread ≤ 20%;
+  - (2) the years 1–5 path against the basis-corrected consensus and the cited evidence;
+  - (3) a base-year check (capex against D&A; margins against the cycle);
+  - (4) the operator's sign-off.
+- **Repair turns:** a crux failing the form check gets one syntax-only repair turn, which does not use the one substantive correction.
+
+**C. Per-name actionability (new, for every name).** Actionable only when the three blind Base samples agree on direction **and** their spread ≤ 20%, in addition to every existing condition. The benchmark's aggregate pass criteria are unchanged.
+
+**D. Frozen before the counted re-run:** eligibility, the replacements and the holdout (drawn and recorded before any stage-2–4 run), outcome codes, review rules, the scoring denominators (callable names), prompts, seeds and the code revision. **Nothing here changes after re-run outputs are seen.**
+
+**E. Deferred (recorded):**
+- a medium-term margin as a solvable crux input (a later revision);
+- the LPG zero-tax question (handled by the materiality rule later);
+- D2 for negative-cash-flow names.
