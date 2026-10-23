@@ -349,7 +349,7 @@ def _assumptions(inp: Dict[str, Any]) -> List[str]:
         return ["financial_family_identity: margins are already on the X basis, no conversion"]
     return ["bridge_calibrated_to_base_year: K_0 = filed operating income - X-basis earnings / (1 - tax rate), held in dollars",
             "k_0_carries_net_interest_other_nonoperating_and_acquired_amortization_all_held_flat_in_dollars",
-            (f"tax_rate_clipped: measured {inp['tax_rate_raw']:.4f}, applied {inp['tau']:.4f} (clipped to [0, 0.35])" if inp.get("tax_rate_clipped") else "tax_rate_measured")]
+            (f"tax_rate_clipped: measured {inp['tax_rate_raw']:.4f}, applied {inp['tau']:.4f} (base-year rate outside [0, 0.35]; the multi-year median applied)" if inp.get("tax_rate_clipped") else "tax_rate_measured")]
 
 
 def bridge_to_x(path: Dict[str, Any], facts: Dict[str, Any]) -> Dict[str, Any]:

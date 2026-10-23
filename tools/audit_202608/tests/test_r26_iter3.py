@@ -146,3 +146,33 @@ def test_every_stage_sends_its_own_system_message_and_the_charter_never_reaches_
     assert "undervalued" not in late.STAGE_SYSTEM["stage2"] and "price" in late.STAGE_SYSTEM["stage2"]
     assert "a wish to keep the original" in late.STAGE_SYSTEM["stage3"]
     assert len({late.STAGE_SYSTEM[s] for s in late.STAGE_SYSTEM}) == 4
+
+
+@pytest.mark.parametrize("value, memo", [(5.25, 5.2), (4.25, 4.2), (5.25, 5.3)])
+def test_a_memo_that_copies_the_printed_table_is_not_a_mismatch(value, memo):
+    # the table prints 5.25 as "5.2" (Python's format); half-up reads it as 5.3; both are the table's value
+    assert late.rounds_to(value, 1, memo, 1)
+    assert not late.rounds_to(value, 1, 5.4, 1)
+
+
+def test_the_task_table_row_and_memo_from_iteration_4_verify():
+    rows = [{"label": "Verdict", "value": "undervalued", "kind": "word", "group": "Verdict"},
+            {"label": "Base revenue growth year 3", "value": 0.0525, "kind": "pct", "group": "Base"}]
+    ver = late.verify_memo("Verdict: undervalued. Base revenue growth year 3: 5.2% as guided.", rows)
+    assert ver["flags"] == []
+
+
+@pytest.mark.parametrize("bcf, x0, flag", [(0.709, 0.156, "cash_scaling_out_of_band:4.54"), (0.11, 0.117, None), (0.314, 0.495, "cash_scaling_out_of_band:0.63"),
+                                          (1.0, None, None), (1.0, 0.0, None)])
+def test_a_cash_scaling_far_from_one_is_flagged(bcf, x0, flag):
+    assert r26.cash_scaling_flag({"base_cf": bcf, "bridge_facts": {"x_0": x0}}) == flag
+
+
+def test_positive_terminal_growth_on_a_shrinking_business_is_flagged():
+    f = fcast()
+    b = f["scenarios"]["Base"]
+    b["near_term"]["rev_growth"], b["normalized"]["rev_growth"], b["terminal_g"] = [-0.054, -0.025], -0.02, 0.015
+    assert r26.shrinking_terminal_flag(f) == "terminal_growth_positive_for_shrinking_business"
+    b["terminal_g"] = 0.0
+    assert r26.shrinking_terminal_flag(f) is None
+    assert r26.shrinking_terminal_flag(fcast()) is None

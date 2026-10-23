@@ -1047,7 +1047,22 @@ def _write_json(p, obj):
 
 # ---------------------------------------------------------------- the valuation inputs (code-owned; the model sees none of this)
 
-def bridge_facts_from_row(row, family="operating"):
+TAX_BOUNDS = (0.0, 0.35)
+TAX_MEDIAN_MIN_YEARS = 3
+TAX_MEDIAN_WINDOW = 8
+TAX_MEDIAN_STAMP = "tax_rate_multi_year_median"
+TAX_UNMEASURED_STAMP = "tax_rate_unmeasured"
+
+
+def _measured_tax(row):
+    """tax_provision / pretax_income of one history row, or None (either missing, or the pretax income not positive)."""
+    row = row or {}
+    pre, tax = row.get("pretax_income"), row.get("tax_provision")
+    ok = all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in (pre, tax))
+    return tax / pre if ok and pre > 0 else None
+
+
+def bridge_facts_from_row(row, family="operating", history_rows=None):
     """The filed inputs of r26_forecast's base-year-calibrated bridge from the base fiscal year's row of the screener history (dollars -> $B, the unit of the desk's revenue):
     operating_income_0 the filed operating income, and tax_rate the MEASURED rate tax_provision / pretax_income clipped to [0, 0.35] (None when either is missing or the
     pretax income is not positive; not the record's 0.21 fallback); `tax_rate_raw` is the unclipped figure, and a clipped rate is stamped `tax_rate_clipped` (item 8). X_0, the X-basis earnings, is the pack's own (x_L x rev_L): valuation_inputs adds it. Net interest and
@@ -1063,9 +1078,20 @@ def bridge_facts_from_row(row, family="operating"):
     if pre is not None and tax is not None and pre > 0:
         raw = tax / pre
         out["tax_rate_raw"] = raw                                 # item 8: the measured rate, kept beside the applied one
-        out["tax_rate"] = min(0.35, max(0.0, raw))
-        if out["tax_rate"] != raw:
-            out["stamps"].append(rf.TAX_CLIPPED_STAMP)
+        if TAX_BOUNDS[0] <= raw <= TAX_BOUNDS[1]:
+            out["tax_rate"] = raw
+        else:
+            # 2026-10-23: a base-year rate outside [0, 35%] (DAR's -15% of credits; a one-off charge) is not the sustainable rate and is no longer clipped to a bound.
+            # The company's own measured median over the window stands in when at least TAX_MEDIAN_MIN_YEARS years are measured and it is in bounds; else the rate is
+            # unavailable (the bridge says so) - never a default (cross-check 21: an unmeasured rate is unavailable, never a stamped default).
+            rates = sorted(r for r in (_measured_tax(h) for h in (history_rows or [])[-TAX_MEDIAN_WINDOW:]) if r is not None)
+            med = (rates[len(rates) // 2] if len(rates) % 2 else (rates[len(rates) // 2 - 1] + rates[len(rates) // 2]) / 2) if rates else None
+            if len(rates) >= TAX_MEDIAN_MIN_YEARS and med is not None and TAX_BOUNDS[0] <= med <= TAX_BOUNDS[1]:
+                out["tax_rate"] = med
+                out["stamps"].append(TAX_MEDIAN_STAMP)
+                out["tax_rate_median_years"] = len(rates)
+            else:
+                out["stamps"].append(TAX_UNMEASURED_STAMP)
     return out
 
 
@@ -1077,7 +1103,8 @@ def load_bridge_facts(ticker, family="operating", root=None):
     yrs = sorted(int(y) for y in h if str(y).isdigit())
     if not yrs:
         return None
-    return bridge_facts_from_row(h.get(str(yrs[-1])) or h.get(yrs[-1]), family)
+    rows = [h.get(str(y)) or h.get(y) for y in yrs]
+    return bridge_facts_from_row(rows[-1], family, history_rows=rows)
 
 
 def default_desk_params():
@@ -1324,6 +1351,31 @@ def margin_basis_flags(forecast, dossier):
             if ids and all(basis.get(str(i)) in NON_FILED_BASES for i in ids):
                 out.append(f"margin_level_without_filed_fact:{n}.{part}")
     return out
+
+
+KAPPA_BAND = (0.67, 1.5)
+CASH_SCALING_FLAG = "cash_scaling_out_of_band"
+CASH_SCALING_REASON = "cash_scaling_review_required"
+SHRINKING_TERMINAL_FLAG = "terminal_growth_positive_for_shrinking_business"
+
+
+def cash_scaling_flag(valuation):
+    """CASH_SCALING_FLAG when kappa = base_cf / X_0 (the desk's years-1-5 cash scaling) lies outside KAPPA_BAND, else None (also None when either is not held)."""
+    bcf, x0 = (valuation or {}).get("base_cf"), ((valuation or {}).get("bridge_facts") or {}).get("x_0")
+    if not (rf._num(bcf) and rf._num(x0)) or x0 <= 0:
+        return None
+    k = bcf / x0
+    return None if KAPPA_BAND[0] <= k <= KAPPA_BAND[1] else f"{CASH_SCALING_FLAG}:{k:.2f}"
+
+
+def shrinking_terminal_flag(forecast):
+    """SHRINKING_TERMINAL_FLAG when the Base revenue shrinks in most of years 1-2 and the normalized state, yet the Base terminal growth is above zero."""
+    b = ((forecast or {}).get("scenarios") or {}).get("Base") or {}
+    g = list((b.get("near_term") or {}).get("rev_growth") or []) + [(b.get("normalized") or {}).get("rev_growth")]
+    g = [x for x in g if rf._num(x)]
+    if g and sum(1 for x in g if x < 0) > len(g) / 2 and rf._num(b.get("terminal_g")) and b["terminal_g"] > 0:
+        return SHRINKING_TERMINAL_FLAG
+    return None
 
 
 def _stage2_sample(model, msgs0, dossier, run_dir, k, seed, sess, tool=None):
@@ -1992,6 +2044,13 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
         final["flags"] += [f for f in reveal.get("flags") or [] if f not in final["flags"]]
         reasons.append(PATH_DOMINATED_REASON)
     reasons += samples_actionability_reasons(forecasts, price, valuation.get("min_mos"))
+    ck = cash_scaling_flag(valuation)
+    if ck:                                                           # 2026-10-23: the 25.2 desk scales years 1-5 by kappa and not the long run (the year-6 jump); until that is fixed
+        final["flags"].append(ck)                                    # a kappa far from 1 moves value between the explicit years and the long run: published, non-actionable
+        reasons.append(CASH_SCALING_REASON)
+    sd = shrinking_terminal_flag(fc)
+    if sd:
+        final["flags"].append(sd)                                    # annotates, does not gate
     verdict["r26"] = {"pilot_arm": ARM, "desk_schema": R26_DESK_SCHEMA, "pack_revision": PACK_REVISION_R26, "actionable": not reasons, "non_actionable_reasons": reasons,
                       "no_call": final["no_call"], "verifier": ver, "final_source": reveal.get("final_source"), "spread": forecasts.get("spread"),
                       "pre_reveal_base": (reveal.get("pre") or {}).get("base_value"), "post_reveal_base": (reveal.get("post") or {}).get("base_value"),

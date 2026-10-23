@@ -375,10 +375,16 @@ def test_item7_after_the_second_failure_a_later_valid_call_does_not_revive_the_s
 
 def test_item8_the_raw_and_the_applied_tax_rate_are_recorded_and_a_clipped_rate_is_stamped():
     row = {"pretax_income": 100e9, "tax_provision": 52e9, "operating_income": 20e9, "revenue": 200e9}
+    # 2026-10-23: a base-year rate outside [0, 35%] is no longer clipped: the company's measured multi-year median stands in (>= 3 measured years, in bounds), else unavailable
     bf = r26.bridge_facts_from_row(row)
-    assert bf["tax_rate"] == 0.35 and bf["tax_rate_raw"] == pytest.approx(0.52) and bf["stamps"] == ["tax_rate_clipped"]
-    neg = r26.bridge_facts_from_row(dict(row, tax_provision=-3e9))
-    assert neg["tax_rate"] == 0.0 and neg["tax_rate_raw"] == pytest.approx(-0.03) and neg["stamps"] == ["tax_rate_clipped"]
+    assert bf["tax_rate"] is None and bf["tax_rate_raw"] == pytest.approx(0.52) and bf["stamps"] == ["tax_rate_unmeasured"]
+    hist = [{"pretax_income": 10e9, "tax_provision": t} for t in (2.1e9, 2.3e9, 1.9e9)]
+    bm = r26.bridge_facts_from_row(row, history_rows=hist + [row])
+    assert bm["tax_rate"] == pytest.approx(0.22) and bm["tax_rate_raw"] == pytest.approx(0.52) and bm["stamps"] == ["tax_rate_multi_year_median"] and bm["tax_rate_median_years"] == 4
+    neg = r26.bridge_facts_from_row(dict(row, tax_provision=-3e9), history_rows=hist)
+    assert neg["tax_rate"] == pytest.approx(0.21) and neg["tax_rate_raw"] == pytest.approx(-0.03) and neg["stamps"] == ["tax_rate_multi_year_median"]
+    few = r26.bridge_facts_from_row(dict(row, tax_provision=-3e9), history_rows=hist[:2])
+    assert few["tax_rate"] is None and few["stamps"] == ["tax_rate_unmeasured"]
     ok = r26.bridge_facts_from_row(dict(row, tax_provision=21e9))
     assert ok["tax_rate"] == ok["tax_rate_raw"] == pytest.approx(0.21) and ok["stamps"] == []
     none = r26.bridge_facts_from_row(dict(row, pretax_income=-1e9))
@@ -396,7 +402,7 @@ def test_item8_the_bridge_shows_both_rates_and_says_clipped_instead_of_measured(
     assert plain["assumptions"][-1] == "tax_rate_measured" and rf.TAX_CLIPPED_STAMP not in plain["stamps"] and plain["rows"][0]["tax_rate_clipped"] is False
     assert "tax_rate_raw" not in rf.bridge_to_x(path, DFACTS)["rows"][0]                        # a caller that gave no raw rate gets the old row
     vf = rf.value_forecast(desk_forecast(), DBAR, 100.0, dict(DFACTS, tax_rate=0.35, tax_rate_raw=0.52), **desk_inputs())
-    assert "measured 52.0%, clipped" in late.render_bridge_table(vf)
+    assert "measured 52.0%, outside 0-35%; the company's multi-year median is used" in late.render_bridge_table(vf)
 
 
 # ---------------------------------------------------------------- 9. the crux cites fact ids
@@ -594,8 +600,8 @@ def test_item14_unfilled_contract_numbers_make_a_result_non_actionable(tmp_path,
     _, _, _, fi = run_stages(tmp_path, monkeypatch, THREE + [crux_args("keep"), memo_step()])
     r = fi["verdict"]["r26"]
     assert r["contract_unfilled"] == ["conviction_score", "business_quality_moat", "reentry_tranches"]
-    assert fi["actionable"] is False and r["actionable"] is False and fi["non_actionable_reasons"] == ["contract_fields_unfilled"]
-    assert fi["flags"] == []                                              # a reason, not a flag
+    assert fi["actionable"] is False and r["actionable"] is False and fi["non_actionable_reasons"] == ["contract_fields_unfilled", "cash_scaling_review_required"]
+    assert fi["flags"] == ["cash_scaling_out_of_band:3.56"]                # contract_fields_unfilled is a reason, not a flag; the fixture kappa (24 / 6.75) is out of band
     for k in r["contract_unfilled"]:
         assert fi["verdict"].get(k) is None
 

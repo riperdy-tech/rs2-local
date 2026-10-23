@@ -720,7 +720,7 @@ def render_bridge_table(vf):
             out.append(f"  year {r['year']}: margin {_p(r['x_margin'], 2)} (financial family: no conversion)")
         else:
             out.append(f"  year {r['year']}: operating margin {_p(r['op_margin'], 2)}; less net interest, other non-operating items and acquired amortization, held at their base-year dollars,"
-                       f" {_p(r['k_0_pct'], 2)} of revenue; tax rate {_p(r['tax_rate'], 1)}" + (f" (measured {_p(r['tax_rate_raw'], 1)}, clipped)" if r.get("tax_rate_clipped") else "")
+                       f" {_p(r['k_0_pct'], 2)} of revenue; tax rate {_p(r['tax_rate'], 1)}" + (f" (the base year measured {_p(r['tax_rate_raw'], 1)}, outside 0-35%; the company's multi-year median is used)" if r.get("tax_rate_clipped") else "")
                        + f"; valuation-basis margin {_p(r['x_margin'], 2)}")
     out.append("Assumptions: " + ("; ".join(br.get("assumptions") or []) or "none"))
     return "\n".join(out)
@@ -748,8 +748,11 @@ def _number_right_after(text, pos):
 def rounds_to(true_value, shown_decimals, memo_value, memo_decimals):
     """True when memo_value is true_value as the table shows it (`shown_decimals`), rounded to the memo's own decimals; a memo more precise than the table must equal it."""
     shown = Decimal(repr(float(true_value))).quantize(Decimal(1).scaleb(-shown_decimals), rounding=ROUND_HALF_UP)
+    # the table itself is printed with Python's format (round-half-even on exact binary halves: 5.25 -> "5.2"); a memo that copies the printed table is right
+    # (2026-10-23: TASK and ITGR were flagged for "5.2%" and "4.2%" against tables printing exactly that)
+    printed = float(f"{float(true_value):.{shown_decimals}f}")
     if memo_decimals >= shown_decimals:
-        return abs(float(shown) - memo_value) <= 1e-9
+        return abs(float(shown) - memo_value) <= 1e-9 or abs(printed - memo_value) <= 1e-9
     return abs(float(shown) - memo_value) <= 0.5 * 10 ** (-memo_decimals) + 1e-9
 
 

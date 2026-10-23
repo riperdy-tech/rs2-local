@@ -341,8 +341,8 @@ def test_every_numeric_contract_field_comes_from_code(tmp_path, monkeypatch):
     assert fi["contract_text"] == {"cycle_evidence": "text", "momentum_flip_condition": liar["momentum_flip_condition"]} and v["margin_persistence"] == "structural"
     r = v["r26"]
     assert v["pilot_arm"] == "r26" and v["desk_schema"] == "26" and v["pack_revision"] == 28 and r["contract_unfilled"] == ["conviction_score", "business_quality_moat", "reentry_tranches"]
-    assert r["model_typed_numbers_in"] == ["momentum_flip_condition"] and fi["flags"] == []
-    assert r["actionable"] is False and fi["actionable"] is False and fi["non_actionable_reasons"] == ["contract_fields_unfilled"]      # item 14
+    assert r["model_typed_numbers_in"] == ["momentum_flip_condition"] and fi["flags"] == ["cash_scaling_out_of_band:3.56"]
+    assert r["actionable"] is False and fi["actionable"] is False and fi["non_actionable_reasons"] == ["contract_fields_unfilled", "cash_scaling_review_required"]      # item 14
     # the report the harness parses: the memo plus a contract block whose numbers are the code's
     blk = json.loads(re.search(r"```json:underwriting\s*(\{.*?\})\s*```", fi["report"], re.S).group(1))
     assert blk["base_iv"] == pub["Base"] and blk["verdict_label"] == "hold" and "conviction_score" not in blk
@@ -445,7 +445,7 @@ def test_bridge_facts_from_a_history_row_measure_nothing_it_cannot():
     g = r26.bridge_facts_from_row({"pretax_income": -5e9, "tax_provision": 1e9, "operating_income": -2e9})
     assert g["tax_rate"] is None and g["operating_income_0"] == -2.0                   # a negative operating income is a value
     h = r26.bridge_facts_from_row({"pretax_income": 100e9, "tax_provision": 50e9})
-    assert h["tax_rate"] == 0.35 and h["operating_income_0"] is None and h["revenue_0"] is None
+    assert h["tax_rate"] is None and h["stamps"] == ["tax_rate_unmeasured"] and h["operating_income_0"] is None and h["revenue_0"] is None
 
 
 def test_valuation_inputs_adds_x_0_from_the_pack_and_the_bridge_then_needs_only_tau_oi_0_and_x_0():
