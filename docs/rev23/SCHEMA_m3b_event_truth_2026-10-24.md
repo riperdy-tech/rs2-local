@@ -4,7 +4,7 @@
 ## 1. Three disjoint datasets
 Do not use the current SEC cache as a ground truth by default. The registry must have **separate denominators** and independent time labels:
 
-1. **Snapshot census**: every PIT eligible screener nomination/held-name at T, including missing-issuer-id and missing-source cases. Stable id `(formation_utc, issuer_cik, role)`; never restrict to AI-selected or previously risky names. Counts missing data separately from negatives.
+1. **Snapshot census**: every PIT eligible screener nomination/held-name at T, including missing-issuer-id and missing-source cases. Stable id `(formation_utc, symbol_asof, issuer_cik, role)`; this includes the share-class symbol so distinct classes of the same issuer (e.g. SENEA/SENEB) cannot collide; never restrict to AI-selected or previously risky names. Counts missing data separately from negatives.
 2. **External event opportunity register**: all independently identified positive events in the eligible issuer universe and prespecified future observation window, including events **not** found by the deterministic checker and not raised by Qwen. Reviewers consult contemporaneously published primary sources; retrospective enrichment requires a disclosed collection-time limitation. A form code alone creates a candidate, not an opportunity.
 3. **Time-stratified negative/control samples**: randomly sampled company-months from the *same* eligible universe and dates, with reviewed source coverage. Reviewers record credible no-event only where sufficiently complete event sources exist; otherwise `unknown`. Random seed, frame, strata, exclusions and every draw must be registered before opening model predictions.
 
