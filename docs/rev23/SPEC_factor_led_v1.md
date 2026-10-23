@@ -88,7 +88,7 @@ directly before it is used.
 ## 6. Prerequisites (offline or near it)
 1. **Baseline A:** the screener alone on the point-in-time history (the gate-1 harness), three return bounds, factor-controlled. This also answers
    whether the screener itself is a sound primary engine.
-2. **Qwen 3.8's knowledge cutoff:** a probe of dated events (as done for Muse).
+2. **Qwen 3.8's knowledge cutoff: measured 2026-10-23 (`scratch/qwen_cutoff/REPORT_cutoff.md`): about mid-April 2025 (band 2025-02 to 2025-06).** Dense through 2024-12, thinning to early April 2025, nothing from 21 April 2025 (Pope Francis 'alive'); no genuine knowledge from 2025-10. **Historical AI-rung tests use dates from 2025-10 onward only**; 2025-05 to 2025-09 only with a stated leakage caveat; earlier dates are not used for AI rungs.
 3. **Desk fixes** (diagnostic quality, not blocking): the kappa / year-6 inconsistency with the D2 fade ruling, the tax clip, decliners' terminal state,
    financials' route; the verifier rounding bug.
 4. **The hard-stop list** confirmed against filing types the data layer can see.
