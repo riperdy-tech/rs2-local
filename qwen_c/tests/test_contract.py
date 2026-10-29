@@ -310,3 +310,16 @@ def test_dates_in_either_order_and_month_form():
     assert chk("Cash was $519,847 (table in thousands) at December 31, 2025") == "supported"
     assert chk("Cash was $519,847 (table in thousands) at 31 December 2025") == "supported"
     assert chk("Cash was $519,847 (table in thousands) at 30 Dec 2025") == "number_not_listed"          # a date no item prints
+
+
+def test_year_lists_ranges_and_due():
+    # M-LIVE 2026-10-29 (CMRE, ILMN): years in a list or range, a year before "to", and "due 2029"
+    item = "Utilization was 99.0%, 99.8% and 99.6% in 2023, 2024 and 2025. Coverage is 98.2% in 2026 and 15.1% in 2032 2036. Notes due 2029."
+    c = {"fact_ids": ["P1"], "quotes": [], "confidence_basis": "stated"}
+    chk = lambda claim, numbers: contract.check_claim({**c, "claim": claim, "numbers": numbers}, {"P1": item}, "CMRE")["support"]
+    assert chk("Utilization was 99.0%, 99.8% and 99.6% in 2023, 2024 and 2025", ["99.0%", "99.8%", "99.6%"]) == "supported"
+    assert chk("Coverage falls from 98.2% in 2026 to 15.1% in 2032-2036", ["98.2%", "15.1%"]) == "supported"
+    assert contract.check_claim({**c, "claim": "The notes are due 2029", "numbers": ["2029"]}, {"P1": item}, "CMRE")["support"] == "supported"
+    assert chk("Coverage falls from 98.2% in 2026 to 15.1% in 2032-2037", ["98.2%", "15.1%"]) == "number_not_listed"   # 2037 is printed nowhere
+    assert chk("The company closed 2025 stores and 2024 more", []) == "number_not_listed"                             # not years: no year word
+    assert contract.figures_of("in 2026 to 15.1%", claim_side=True) == {(Decimal("2026"), "", ""), (Decimal("15.1"), "", "%")}

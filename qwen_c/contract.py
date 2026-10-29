@@ -42,7 +42,8 @@ and has "percent" / "per cent" after a number written as %. Every number is then
               "$10.6T"), % (and percent), x (x or the multiplication sign: a multiple), bp (bp, bps, basis point), pp (pp, ppt, percentage
               point). A plural scale word is read as its singular (ruling 1.1). Any other word after a number is not a unit.
     ranges    in "a-b", "a–b" and "a to b", a lower bound with no unit takes the upper bound's unit, and its currency when it has none
-              ("8-10%" is 8% and 10%; "$4.60-$4.64 billion" is $4.60bn and $4.64bn; ruling 1.3), in items and model text alike.
+              ("8-10%" is 8% and 10%; "$4.60-$4.64 billion" is $4.60bn and $4.64bn; ruling 1.3), in items and model text alike; a
+              lower bound that is a year by its form ("in 2026 to 15.1%") takes nothing (M-LIVE 2026-10-29).
 Two readers differ only in what may stand before a number. The ITEM reader (cited item text) reads no number right after a letter, a
 digit, "," or ".". The CLAIM-SIDE reader (the claim text and the `numbers` entries, the model's own text) also reads a number after "."
 or "," that is not inside a number ("approx.99%", "est.$999 million"; ruling 1.2). Neither reads a number glued to letters (H100, Q3,
@@ -70,7 +71,8 @@ not found in a bare "15.4", and a bare "15.4" is not found in "15.4%", "15.4x" o
 
 A YEAR of the claim text need not be listed (ruling 1.5) only when all hold: it is a bare token of exactly four digits with no comma and
 no decimal, 1900-2100; it is directly preceded (by spaces or one hyphen) by a year word: in, fiscal, FY, year, since, by, through, until,
-from, during, of, ended, ending, end, before, after, early, late, mid, a month's full name, Q1-Q4, H1, H2, quarter, half; and a cited
+from, during, of, ended, ending, end, before, after, early, late, mid, a month's full name, Q1-Q4, H1, H2, quarter, half, due, or by an earlier year of a list or range of years that is so
+preceded ("in 2023, 2024 and 2025", "in 2032-2036"); and a cited
 item prints the same four digits as a bare token with no comma. "closed 2025 stores" and "2,025" are not years.
 A DATE of the claim text ("June 30, 2026", "Jun. 30, 2026", "30 June 2026", "30 Jun 2026") that a cited item prints as the same month,
 day and year, in any of those forms, exempts its day and year from listing (dated_spans).
@@ -112,7 +114,7 @@ TASK_EXTRA = {
 SCALE = {"k": Decimal(10) ** 3, "m": Decimal(10) ** 6, "bn": Decimal(10) ** 9, "tn": Decimal(10) ** 12}
 YEAR_WORDS = ("in", "fiscal", "fy", "year", "since", "by", "through", "until", "from", "during", "of", "ended", "ending", "end",
               "before", "after", "early", "late", "mid", "january", "february", "march", "april", "may", "june", "july", "august",
-              "september", "october", "november", "december", "q1", "q2", "q3", "q4", "h1", "h2", "quarter", "half")
+              "september", "october", "november", "december", "q1", "q2", "q3", "q4", "h1", "h2", "quarter", "half", "due")
 
 
 # ---------------------------------------------------------------- the shape
@@ -241,7 +243,8 @@ _MONTH_NO = {**{m: i for i, m in enumerate(_MONTHS, 1)}, **{m[:3]: i for i, m in
 _MONTH = r"(" + "|".join(_MONTHS + ("sept", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec")) + r")\.?"
 _DATE = re.compile(r"(?<![A-Za-z])" + _MONTH + r"\s+(\d{1,2}),?\s+(\d{4})(?!\d)", re.I)          # June 30, 2026 / Jun. 30, 2026
 _DATE_DMY = re.compile(r"(?<![A-Za-z0-9])(\d{1,2})\s+" + _MONTH + r",?\s+(\d{4})(?!\d)", re.I)    # 31 Dec 2025 (M-LIVE, CMRE)
-_YEAR_BEFORE = re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(YEAR_WORDS) + r")(?:\s+|-)$", re.I)
+_YEAR_BEFORE = re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(YEAR_WORDS) + r")(?:\s+|-)"
+                          r"(?:\d{4}(?:,\s*|,?\s+(?:and|or|to)\s+|\s?[-–]\s?))*$", re.I)     # a list or range of years continues
 
 
 def norm_figure_text(text):
@@ -277,7 +280,7 @@ def read_figures(text, claim_side=False):
         out.append([v, _CUR_CANON.get(cur, cur), _unit_canon(m.group(3)), core, s[:m.start(2)], m.start(), m.end()])
     for i in range(len(out) - 2, -1, -1):              # a range's lower bound takes the upper bound's unit (and currency, if it has none)
         lo, hi = out[i], out[i + 1]
-        if not lo[2] and hi[2] and _RANGE_GAP.fullmatch(s[lo[6]:hi[5]]):
+        if not lo[2] and hi[2] and _RANGE_GAP.fullmatch(s[lo[6]:hi[5]]) and _year_of(lo) is None:
             lo[2] = hi[2]
             lo[1] = lo[1] or hi[1]
     return [tuple(f) for f in out]
