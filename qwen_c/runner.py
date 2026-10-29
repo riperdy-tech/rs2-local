@@ -283,6 +283,17 @@ def _ledger_tail(path):
     return "ok" if data.endswith(b"\n") else "needs_newline"
 
 
+def _subset_run(root, r):
+    """True when the run requested neither growth_thesis nor risks (its ledger line's tasks_requested, else its manifest's)."""
+    req = r.get("tasks_requested")
+    if req is None:
+        try:
+            req = json.loads((Path(root) / "runs" / r["run_id"] / "manifest.json").read_text(encoding="utf-8")).get("tasks_requested")
+        except (OSError, ValueError):
+            return False
+    return isinstance(req, list) and not {"growth_thesis", "risks"} & set(req)
+
+
 def find_prior(root, ticker, T):
     """(prior, problem). The prior run is the newest finished run (complete or analysis_incomplete) in read_ledger (the ledger's lines,
     then the finished runs whose line is missing) for this ticker with a decision time before T (the later row wins among equal
@@ -290,11 +301,14 @@ def find_prior(root, ticker, T):
     tasks_missing, ledger_missing, manifest_sha256, analysis_sha256} or None. problem is None or {"kind", "detail"}: kind
     "unverifiable" when its records do not recompute or cannot be read, or a run without a ledger line has no finished_at
     (thesis_change becomes infra_error), "no_ok_tasks" when neither its growth_thesis nor its risks is ok (thesis_change becomes
-    prior_unusable)."""
+    prior_unusable). A run that requested neither growth_thesis nor risks (a subset run, such as material_events alone) is not a
+    candidate (AUDIT_N2 condition 3); its requested tasks come from its ledger line, else from its manifest, and a run whose
+    requested tasks cannot be read stays a candidate, so its records are checked as above."""
     t = _parse_t(T)
     rows = [(i, r) for i, r in enumerate(read_ledger(root))
             if r.get("ticker") == ticker and r.get("status") in ("complete", "analysis_incomplete")
-            and _parse_t(r.get("T")) is not None and t is not None and _parse_t(r.get("T")) < t]
+            and _parse_t(r.get("T")) is not None and t is not None and _parse_t(r.get("T")) < t
+            and not _subset_run(root, r)]
     if not rows:
         return None, None
     _, r = max(rows, key=lambda x: (_parse_t(x[1]["T"]), x[0]))
@@ -617,8 +631,8 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
         man["ledger_not_appended"] = "the last line of ledger.jsonl is torn: appending would bury it mid-file; repair it by hand"
     man["finished_at"] = now_utc()
     man_sha = _write_json(run_dir / "manifest.json", man)
-    line = {"run_id": run_id, "ticker": ticker, "T": T, "packet_sha256": packet_sha, "status": status, "support_summary": summary,
-            "manifest_sha256": man_sha}
+    line = {"run_id": run_id, "ticker": ticker, "T": T, "packet_sha256": packet_sha, "tasks_requested": list(requested), "status": status,
+            "support_summary": summary, "manifest_sha256": man_sha}
     if tail != "torn":
         root.mkdir(parents=True, exist_ok=True)
         with open(ledger, "a", encoding="utf-8") as f:

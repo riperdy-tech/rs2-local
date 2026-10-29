@@ -219,7 +219,9 @@ def test_a_clean_run_is_complete_and_every_record_recomputes(env):
     (line,) = runner._read_jsonl(runner.M3M_DIR / "ledger.jsonl")
     summary = {"claims": 14, "supported": 7, "unsupported": 7}            # ruling 4.1: seven tasks sent, one good and one bad claim each
     assert line == {"run_id": res["run_id"], "ticker": "ACME", "T": "2026-10-29T13:00:00Z", "packet_sha256": man["packet"]["packet_sha256"],
-                    "status": "complete", "support_summary": summary, "manifest_sha256": sha((d / "manifest.json").read_bytes())}
+                    "tasks_requested": man["tasks_requested"], "status": "complete", "support_summary": summary,
+                    "manifest_sha256": sha((d / "manifest.json").read_bytes())}
+    assert man["tasks_requested"] == list(tasks.TASKS)
     assert an["support_summary"] == res["support_summary"] == summary and res["ledger_appended"] is True
     # rulings 6.3 and 6.4: the server preflights are recorded
     assert man["gpu_preflight"] == {"loaded": []} and man["model"]["show"]["parameters"] == SHOW["parameters"]
@@ -539,6 +541,33 @@ def test_a_finished_run_missing_from_the_ledger_is_still_the_prior(env):
     assert man["prior_run"]["run_id"] == newer["run_id"] and man["prior_run"]["ledger_missing"] is True
     assert man["prior_run"]["manifest_sha256"] == sha((Path(newer["run_dir"]) / "manifest.json").read_bytes())
     assert "as of 2026-05-01T13:00:00Z" in posts_of("thesis_change")[-1]["prompt"]               # the late run's (newer's own is first)
+
+
+def test_a_subset_run_without_growth_or_risks_is_never_the_prior(env):
+    # AUDIT_N2 condition 3: a newer material_events-only run must not make the next full run's thesis_change prior_unusable
+    full = runner.run(_packet_at(env, "2026-04-01T13:00:00Z", "full.json"), url=env["url"])
+    sub = runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "sub.json"), url=env["url"], task_ids=["material_events"])
+    assert sub["status"] == "complete"
+    assert runner._read_jsonl(runner.M3M_DIR / "ledger.jsonl")[1]["tasks_requested"] == ["material_events"]
+    late = run(env)
+    assert manifest(late)["prior_run"]["run_id"] == full["run_id"] and late["status"] == "complete"
+    assert "as of 2026-04-01T13:00:00Z" in posts_of("thesis_change")[-1]["prompt"]
+
+
+def test_a_run_with_risks_alone_is_a_prior_and_a_line_without_tasks_requested_is_read_from_its_manifest(env):
+    runner.run(_packet_at(env, "2026-04-01T13:00:00Z", "full.json"), url=env["url"])
+    risks = runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "risks.json"), url=env["url"], task_ids=["risks"])
+    sub = runner.run(_packet_at(env, "2026-06-01T13:00:00Z", "sub.json"), url=env["url"], task_ids=["material_events"])
+    ledger = runner.M3M_DIR / "ledger.jsonl"
+    rows = runner._read_jsonl(ledger)
+    for r in rows:                                               # ledger lines written before the field existed
+        r.pop("tasks_requested")
+    ledger.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    assert runner._subset_run(runner.M3M_DIR, rows[2]) is True and runner._subset_run(runner.M3M_DIR, rows[1]) is False
+    late = run(env)
+    man = manifest(late)
+    assert man["prior_run"]["run_id"] == risks["run_id"] != sub["run_id"]
+    assert man["prior_run"]["tasks_used"] == ["risks"] and man["prior_run"]["tasks_missing"] == {"growth_thesis": "absent"}
 
 
 def test_a_torn_last_ledger_line_is_skipped_and_reported_and_not_appended_after(env):
