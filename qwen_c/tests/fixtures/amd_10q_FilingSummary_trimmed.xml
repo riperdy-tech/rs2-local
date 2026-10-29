@@ -1,0 +1,125 @@
+<?xml version='1.0' encoding='utf-8'?>
+<FilingSummary>
+  <Version>3.26.1</Version>
+  <ProcessingTime/>
+  <ReportFormat>html</ReportFormat>
+  <ContextCount>254</ContextCount>
+  <ElementCount>291</ElementCount>
+  <EntityCount>1</EntityCount>
+  <FootnotesReported>false</FootnotesReported>
+  <SegmentCount>64</SegmentCount>
+  <ScenarioCount>0</ScenarioCount>
+  <TuplesReported>false</TuplesReported>
+  <UnitCount>5</UnitCount>
+  <MyReports>
+<Report instance="amd-20260627.htm">
+      <IsDefault>false</IsDefault>
+      <HasEmbeddedReports>false</HasEmbeddedReports>
+      <HtmlFileName>R1.htm</HtmlFileName>
+      <LongName>0000001 - Document - Cover Page</LongName>
+      <ReportType>Sheet</ReportType>
+      <Role>http://www.amd.com/role/CoverPage</Role>
+      <ShortName>Cover Page</ShortName>
+      <MenuCategory>Cover</MenuCategory>
+      <Position>1</Position>
+    </Report>
+<Report instance="amd-20260627.htm">
+      <IsDefault>false</IsDefault>
+      <HasEmbeddedReports>false</HasEmbeddedReports>
+      <HtmlFileName>R2.htm</HtmlFileName>
+      <LongName>9952151 - Statement - Condensed Consolidated Statements of Operations</LongName>
+      <ReportType>Sheet</ReportType>
+      <Role>http://www.amd.com/role/CondensedConsolidatedStatementsofOperations</Role>
+      <ShortName>Condensed Consolidated Statements of Operations</ShortName>
+      <MenuCategory>Statements</MenuCategory>
+      <Position>2</Position>
+    </Report>
+<Report instance="amd-20260627.htm">
+      <IsDefault>false</IsDefault>
+      <HasEmbeddedReports>false</HasEmbeddedReports>
+      <HtmlFileName>R3.htm</HtmlFileName>
+      <LongName>9952152 - Statement - Condensed Consolidated Statements of Comprehensive Income</LongName>
+      <ReportType>Sheet</ReportType>
+      <Role>http://www.amd.com/role/CondensedConsolidatedStatementsofComprehensiveIncome</Role>
+      <ShortName>Condensed Consolidated Statements of Comprehensive Income</ShortName>
+      <MenuCategory>Statements</MenuCategory>
+      <Position>3</Position>
+    </Report>
+<Report instance="amd-20260627.htm">
+      <IsDefault>false</IsDefault>
+      <HasEmbeddedReports>false</HasEmbeddedReports>
+      <HtmlFileName>R4.htm</HtmlFileName>
+      <LongName>9952153 - Statement - Condensed Consolidated Balance Sheets</LongName>
+      <ReportType>Sheet</ReportType>
+      <Role>http://www.amd.com/role/CondensedConsolidatedBalanceSheets</Role>
+      <ShortName>Condensed Consolidated Balance Sheets</ShortName>
+      <MenuCategory>Statements</MenuCategory>
+      <Position>4</Position>
+    </Report>
+<Report instance="amd-20260627.htm">
+      <IsDefault>false</IsDefault>
+      <HasEmbeddedReports>false</HasEmbeddedReports>
+      <HtmlFileName>R5.htm</HtmlFileName>
+      <LongName>9952154 - Statement - Condensed Consolidated Balance Sheet (Parenthetical)</LongName>
+      <ReportType>Sheet</ReportType>
+      <Role>http://www.amd.com/role/CondensedConsolidatedBalanceSheetParenthetical</Role>
+      <ShortName>Condensed Consolidated Balance Sheet (Parenthetical)</ShortName>
+      <MenuCategory>Statements</MenuCategory>
+      <Position>5</Position>
+    </Report>
+<Report instance="amd-20260627.htm">
+      <IsDefault>false</IsDefault>
+      <HasEmbeddedReports>false</HasEmbeddedReports>
+      <HtmlFileName>R6.htm</HtmlFileName>
+      <LongName>9952155 - Statement - Condensed Consolidated Statements of Cash Flows</LongName>
+      <ReportType>Sheet</ReportType>
+      <Role>http://www.amd.com/role/CondensedConsolidatedStatementsofCashFlows</Role>
+      <ShortName>Condensed Consolidated Statements of Cash Flows</ShortName>
+      <MenuCategory>Statements</MenuCategory>
+      <Position>6</Position>
+    </Report>
+<Report instance="amd-20260627.htm">
+      <IsDefault>false</IsDefault>
+      <HasEmbeddedReports>false</HasEmbeddedReports>
+      <HtmlFileName>R7.htm</HtmlFileName>
+      <LongName>9952156 - Statement - Condensed Consolidated Statements of Stockholders' Equity</LongName>
+      <ReportType>Sheet</ReportType>
+      <Role>http://www.amd.com/role/CondensedConsolidatedStatementsofStockholdersEquity</Role>
+      <ShortName>Condensed Consolidated Statements of Stockholders' Equity</ShortName>
+      <MenuCategory>Statements</MenuCategory>
+      <Position>7</Position>
+    </Report>
+<Report instance="amd-20260627.htm">
+      <IsDefault>false</IsDefault>
+      <HasEmbeddedReports>false</HasEmbeddedReports>
+      <HtmlFileName>R32.htm</HtmlFileName>
+      <LongName>9955522 - Disclosure - Supplemental Balance Sheet Information - Schedules (Details)</LongName>
+      <ReportType>Sheet</ReportType>
+      <Role>http://www.amd.com/role/SupplementalBalanceSheetInformationSchedulesDetails</Role>
+      <ShortName>Supplemental Balance Sheet Information - Schedules (Details)</ShortName>
+      <MenuCategory>Details</MenuCategory>
+      <Position>32</Position>
+    </Report>
+<Report instance="amd-20260627.htm">
+      <IsDefault>false</IsDefault>
+      <HasEmbeddedReports>false</HasEmbeddedReports>
+      <HtmlFileName>R33.htm</HtmlFileName>
+      <LongName>9955523 - Disclosure - Supplemental Balance Sheet Information - Narrative (Details)</LongName>
+      <ReportType>Sheet</ReportType>
+      <Role>http://www.amd.com/role/SupplementalBalanceSheetInformationNarrativeDetails</Role>
+      <ShortName>Supplemental Balance Sheet Information - Narrative (Details)</ShortName>
+      <MenuCategory>Details</MenuCategory>
+      <Position>33</Position>
+    </Report>
+</MyReports>
+  <InputFiles />
+  <SupplementalFiles />
+  <BaseTaxonomies>
+    <BaseTaxonomy items="1">http://fasb.org/srt/2026</BaseTaxonomy>
+    <BaseTaxonomy items="909">http://fasb.org/us-gaap/2026</BaseTaxonomy>
+    <BaseTaxonomy items="29">http://xbrl.sec.gov/dei/2026</BaseTaxonomy>
+    <BaseTaxonomy items="28">http://xbrl.sec.gov/ecd/2026</BaseTaxonomy>
+  </BaseTaxonomies>
+  <HasPresentationLinkbase>true</HasPresentationLinkbase>
+  <HasCalculationLinkbase>true</HasCalculationLinkbase>
+</FilingSummary>

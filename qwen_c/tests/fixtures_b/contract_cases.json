@@ -1,0 +1,669 @@
+[
+ {
+  "name": "supported_claims",
+  "task": "business_model",
+  "status": "ok",
+  "reply": {
+   "task": "business_model",
+   "claims": [
+    {
+     "claim": "Revenue rose to $1,200 million in 2025, up 9.1% from 2024.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [
+      "Revenue rose to $1,200 million in 2025"
+     ],
+     "numbers": [
+      "$1,200 million",
+      "9.1%",
+      "2025",
+      "2024"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Revenue was $1.2 billion in 2025.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "$1.2 billion",
+      "2025"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "The company sells industrial pumps to utilities.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [
+      "We sell \"industrial pumps\" to utilities."
+     ],
+     "numbers": [],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Total revenue was 1,200 (table in millions).",
+     "fact_ids": [
+      "F1"
+     ],
+     "quotes": [
+      "Total revenue | 1,200 | 1,100"
+     ],
+     "numbers": [
+      "1,200"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "The screener row shows revenue_growth_yoy of 0.",
+     "fact_ids": [
+      "S0"
+     ],
+     "quotes": [
+      "revenue_growth_yoy: 0"
+     ],
+     "numbers": [
+      "0"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Gross margin was 31.2 percent in the second quarter.",
+     "fact_ids": [
+      "P2"
+     ],
+     "quotes": [],
+     "numbers": [
+      "31.2%"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Second-quarter revenue was 310.5, in millions of dollars.",
+     "fact_ids": [
+      "P2",
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      310.5
+     ],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": [
+    "No segment table is in the evidence."
+   ]
+  },
+  "supports": [
+   "supported",
+   "supported",
+   "supported",
+   "supported",
+   "supported",
+   "supported",
+   "supported"
+  ]
+ },
+ {
+  "name": "fabricated_quote",
+  "task": "business_model",
+  "status": "ok",
+  "reply": {
+   "task": "business_model",
+   "claims": [
+    {
+     "claim": "Revenue hit a record.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [
+      "Revenue rose to a record $1,200 million"
+     ],
+     "numbers": [
+      "$1,200 million"
+     ],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "quote_not_found"
+  ]
+ },
+ {
+  "name": "quote_across_an_omission_marker",
+  "task": "business_model",
+  "status": "ok",
+  "reply": {
+   "task": "business_model",
+   "claims": [
+    {
+     "claim": "Pumps.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [
+      "to utilities. [… 4,321 characters omitted …]"
+     ],
+     "numbers": [],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "quote_not_found"
+  ]
+ },
+ {
+  "name": "number_off_by_scale",
+  "task": "financial_health",
+  "status": "ok",
+  "reply": {
+   "task": "financial_health",
+   "claims": [
+    {
+     "claim": "Total revenue was 1.2 billion.",
+     "fact_ids": [
+      "F1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "1.2 billion"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Revenue rose to $1,200 billion.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "$1,200 billion"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Revenue rose to $1.2 million.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "$1.2 million"
+     ],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "number_not_found",
+   "number_not_found",
+   "number_not_found"
+  ]
+ },
+ {
+  "name": "number_in_an_uncited_item_or_another_currency",
+  "task": "financial_health",
+  "status": "ok",
+  "reply": {
+   "task": "financial_health",
+   "claims": [
+    {
+     "claim": "Gross margin was 31.2%.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "31.2%"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Second-quarter revenue was €310.5 million.",
+     "fact_ids": [
+      "P2"
+     ],
+     "quotes": [],
+     "numbers": [
+      "€310.5 million"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Revenue was reported for the year.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "FY"
+     ],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "number_not_found",
+   "number_not_found",
+   "number_not_found"
+  ]
+ },
+ {
+  "name": "unlisted_number",
+  "task": "financial_health",
+  "status": "ok",
+  "reply": {
+   "task": "financial_health",
+   "claims": [
+    {
+     "claim": "Backlog was $2.5 billion at year end.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [
+      "Our backlog was $2.5 billion at year end."
+     ],
+     "numbers": [],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Backlog was $2.5 billion at year end.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "2.5 billion"
+     ],
+     "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Gross margin was 31.2 percent.",
+     "fact_ids": [
+      "P2"
+     ],
+     "quotes": [],
+     "numbers": [
+      "31.2"
+     ],
+     "confidence_basis": "stated"
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "number_not_listed",
+   "number_not_listed",
+   "number_not_listed"
+  ]
+ },
+ {
+  "name": "unknown_fact_id",
+  "task": "competitive_position",
+  "status": "ok",
+  "reply": {
+   "task": "competitive_position",
+   "claims": [
+    {
+     "claim": "Revenue rose to $1,200 million.",
+     "fact_ids": [
+      "P9",
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "$1,200 million"
+     ],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "unknown_fact_id"
+  ]
+ },
+ {
+  "name": "no_citation",
+  "task": "competitive_position",
+  "status": "ok",
+  "reply": {
+   "task": "competitive_position",
+   "claims": [
+    {
+     "claim": "The market is competitive.",
+     "fact_ids": [],
+     "quotes": [],
+     "numbers": [],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "no_citation"
+  ]
+ },
+ {
+  "name": "missing_field",
+  "task": "business_model",
+  "status": "malformed",
+  "reply": {
+   "task": "business_model",
+   "claims": [
+    {
+     "claim": "x",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": []
+    }
+   ],
+   "unknowns": []
+  }
+ },
+ {
+  "name": "wrong_type",
+  "task": "business_model",
+  "status": "malformed",
+  "reply": {
+   "task": "business_model",
+   "claims": [
+    {
+     "claim": "x",
+     "fact_ids": "P1",
+     "quotes": [],
+     "numbers": [],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  }
+ },
+ {
+  "name": "boolean_number",
+  "task": "business_model",
+  "status": "malformed",
+  "reply": {
+   "task": "business_model",
+   "claims": [
+    {
+     "claim": "x",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      true
+     ],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  }
+ },
+ {
+  "name": "missing_unknowns",
+  "task": "business_model",
+  "status": "malformed",
+  "reply": {
+   "task": "business_model",
+   "claims": []
+  }
+ },
+ {
+  "name": "wrong_task_id",
+  "task": "business_model",
+  "status": "malformed",
+  "reply": {
+   "task": "risks",
+   "claims": [],
+   "unknowns": []
+  }
+ },
+ {
+  "name": "unknown_task_id",
+  "task": "business_model",
+  "status": "malformed",
+  "reply": {
+   "task": "valuation",
+   "claims": [],
+   "unknowns": []
+  }
+ },
+ {
+  "name": "risk_type_outside_the_list",
+  "task": "risks",
+  "status": "malformed",
+  "reply": {
+   "task": "risks",
+   "claims": [
+    {
+     "claim": "Liquidity is tight.",
+     "fact_ids": [
+      "F1"
+     ],
+     "quotes": [],
+     "numbers": [],
+     "confidence_basis": "stated in the cited item",
+     "risk_type": "liquidity"
+    }
+   ],
+   "unknowns": []
+  }
+ },
+ {
+  "name": "risk_type_missing",
+  "task": "risks",
+  "status": "malformed",
+  "reply": {
+   "task": "risks",
+   "claims": [
+    {
+     "claim": "Liquidity is tight.",
+     "fact_ids": [
+      "F1"
+     ],
+     "quotes": [],
+     "numbers": [],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  }
+ },
+ {
+  "name": "risk_with_type",
+  "task": "risks",
+  "status": "ok",
+  "reply": {
+   "task": "risks",
+   "claims": [
+    {
+     "claim": "The 2025 net loss of 45 (table in millions) could strain liquidity.",
+     "fact_ids": [
+      "F1"
+     ],
+     "quotes": [
+      "Net income (loss) | (45) | 30"
+     ],
+     "numbers": [
+      "45",
+      "2025"
+     ],
+     "confidence_basis": "stated in the cited item",
+     "risk_type": "liquidity_rupture",
+     "mechanism": "losses consume cash",
+     "horizon": "not stated",
+     "counter": null
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "supported"
+  ]
+ },
+ {
+  "name": "thesis_change_needs_point_and_change_type",
+  "task": "thesis_change",
+  "status": "malformed",
+  "reply": {
+   "task": "thesis_change",
+   "claims": [
+    {
+     "claim": "Unchanged.",
+     "fact_ids": [
+      "P2"
+     ],
+     "quotes": [],
+     "numbers": [],
+     "confidence_basis": "stated in the cited item",
+     "change_type": "unchanged"
+    }
+   ],
+   "unknowns": []
+  }
+ },
+ {
+  "name": "thesis_change_ok",
+  "task": "thesis_change",
+  "status": "ok",
+  "reply": {
+   "task": "thesis_change",
+   "claims": [
+    {
+     "claim": "Second-quarter revenue was $310.5 million.",
+     "fact_ids": [
+      "P2"
+     ],
+     "quotes": [],
+     "numbers": [
+      "$310.5 million"
+     ],
+     "confidence_basis": "stated in the cited item",
+     "point": "G1",
+     "change_type": "unchanged"
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "supported"
+  ]
+ },
+ {
+  "name": "unresolved_needs_settled_by",
+  "task": "unresolved_questions",
+  "status": "malformed",
+  "reply": {
+   "task": "unresolved_questions",
+   "claims": [
+    {
+     "claim": "What drives the backlog?",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [],
+     "confidence_basis": "stated in the cited item"
+    }
+   ],
+   "unknowns": []
+  }
+ },
+ {
+  "name": "dropped_fields_are_logged",
+  "task": "growth_thesis",
+  "status": "ok",
+  "reply": {
+   "task": "growth_thesis",
+   "claims": [
+    {
+     "claim": "Backlog was $2.5 billion.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "$2.5 billion"
+     ],
+     "confidence_basis": "stated in the cited item",
+     "support": "supported",
+     "note": "x"
+    }
+   ],
+   "unknowns": [],
+   "extra": 1
+  },
+  "supports": [
+   "supported"
+  ],
+  "dropped": [
+   "extra",
+   "claims[0].support",
+   "claims[0].note"
+  ]
+ },
+ {
+  "name": "percent_word_is_percent",
+  "task": "growth_thesis",
+  "status": "ok",
+  "reply": {
+   "task": "growth_thesis",
+   "claims": [
+    {
+     "claim": "Revenue rose 9.1 percent.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "9.1 percent"
+     ],
+     "confidence_basis": "stated"
+    },
+    {
+     "claim": "Revenue rose by about 9.1.",
+     "fact_ids": [
+      "P1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "9.1"
+     ],
+     "confidence_basis": "stated"
+    },
+    {
+     "claim": "Total revenue rose 1,200 percent.",
+     "fact_ids": [
+      "F1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "1,200 percent"
+     ],
+     "confidence_basis": "stated"
+    }
+   ],
+   "unknowns": []
+  },
+  "supports": [
+   "supported",
+   "supported",
+   "number_not_found"
+  ]
+ }
+]
