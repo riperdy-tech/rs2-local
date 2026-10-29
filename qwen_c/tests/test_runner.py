@@ -660,3 +660,98 @@ def test_no_model_parameters_refuses_the_run(env, show):
 def test_parse_reply(content, ok):
     obj, err = runner.parse_reply(content)
     assert (obj is not None) is ok and (err is None) is ok
+
+
+# ---------------------------------------------------------------- 3N (WO_N2): --tasks and --seed-base
+
+def test_the_default_run_requests_every_task_and_records_the_seed_base(env):
+    res = run(env)
+    man, an = manifest(res), analysis(res)
+    assert man["tasks_requested"] == an["tasks_requested"] == list(tasks.TASKS) and len(tasks.TASKS) == 8
+    assert man["options"]["seed_base"] == 1000 and man["options"]["seeds"]["material_events"] == 1007
+    assert set(an["tasks"]) == set(man["tasks"]) == set(tasks.TASKS)
+    assert [p["task"] for p in generate_posts()] == SENT
+
+
+def test_a_subset_runs_only_those_tasks_in_task_order_with_their_own_seeds(env):
+    res = run(env, task_ids=["risks", "material_events", "business_model"])
+    assert res["status"] == "complete" and res["incomplete_tasks"] == {}
+    assert [p["task"] for p in generate_posts()] == ["business_model", "risks", "material_events"]       # TASKS order, not the list's
+    assert [p["req"]["options"]["seed"] for p in generate_posts()] == [1000, 1004, 1007]                 # seed = base + index in TASKS
+    man, an = manifest(res), analysis(res)
+    assert man["tasks_requested"] == an["tasks_requested"] == ["business_model", "risks", "material_events"]
+    assert list(man["tasks"]) == list(an["tasks"]) == ["business_model", "risks", "material_events"]
+    assert sorted(man["prompts"]) == ["business_model.txt", "material_events.txt", "risks.txt"]
+    assert an["support_summary"] == res["support_summary"] == {"claims": 6, "supported": 3, "unsupported": 3}
+    assert man["status"] == "complete" and "thesis_change" not in man["tasks"] and man["prior_run"] is None
+
+
+def test_a_subset_is_complete_when_every_requested_task_is_ok_and_names_the_ones_that_are_not(env):
+    Stub.script = {"material_events": ["no_json", "no_json"]}
+    res = run(env, task_ids=["material_events", "risks"])
+    assert res["status"] == "analysis_incomplete" and res["incomplete_tasks"] == {"material_events": "malformed"}
+    assert analysis(res)["tasks"]["risks"]["status"] == "ok" and "business_model" not in analysis(res)["tasks"]
+    Stub.script = {"material_events": ["no_json", "no_json"]}
+    res = run(env, task_ids=["material_events"])
+    assert res["status"] == "failed" and res["incomplete_tasks"] == {"material_events": "malformed"}
+    assert runner.read_ledger()[-1]["status"] == "failed"
+
+
+def test_the_material_events_task_is_checked_by_its_own_contract_fields(env):
+    res = run(env, task_ids=["material_events"])
+    (c, bad) = analysis(res)["tasks"]["material_events"]["claims"]
+    assert (c["event_type"], c["status"], c["occurred_on"]) == ("other_material_event", "occurred", "not stated")
+    assert c["support"] == "supported" and bad["support"] == "number_not_found"
+    assert manifest(res)["contract"] == "m3m.analysis.v2" and manifest(res)["prompt_version"] == "m3m.prompt.v3"
+
+
+def test_thesis_change_runs_only_when_requested_and_the_prior_is_looked_up_only_then(env):
+    runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "early.json"), url=env["url"])
+    Stub.posts.clear()
+    late = run(env, task_ids=["risks"])
+    man = manifest(late)
+    assert posts_of("thesis_change") == [] and "thesis_change" not in man["tasks"] and man["prior_run"] is None
+    assert "prior_run_problem" not in man and late["status"] == "complete"
+    Stub.posts.clear()
+    late = run(env, task_ids=["thesis_change"])                    # requested: sent against the prior, with its own seed (1000 + 5)
+    (req,) = posts_of("thesis_change")
+    assert req["options"]["seed"] == 1005 and "as of 2026-05-01T13:00:00Z" in req["prompt"] and late["status"] == "complete"
+    assert manifest(late)["prior_run"]["point_ids"] == ["G1", "R1"]
+
+
+def test_thesis_change_alone_with_no_prior_is_not_applicable_and_the_run_is_not_complete(env):
+    res = run(env, task_ids=["thesis_change"])
+    assert generate_posts() == []
+    assert manifest(res)["tasks"]["thesis_change"]["status"] == "not_applicable_no_prior"
+    assert res["status"] == "failed" and res["incomplete_tasks"] == {"thesis_change": "not_applicable_no_prior"}
+    # with other tasks beside it, the old rule holds: not applicable is not a failure
+    assert run(env, task_ids=["thesis_change", "risks"])["status"] == "complete"
+
+
+@pytest.mark.parametrize("bad", [[], "risks", ["nope"], ["risks", "risks"], ["risks", "Material_Events"], [""], 7])
+def test_a_bad_task_list_is_refused_and_nothing_is_written(env, bad):
+    with pytest.raises(runner.RunRefused):
+        run(env, task_ids=bad)
+    assert not runner.M3M_DIR.exists() and generate_posts() == []
+
+
+def test_the_seed_base_moves_every_seed_and_the_retry_offset_is_unchanged(env):
+    Stub.script = {"material_events": ["no_json"]}
+    res = run(env, task_ids=["business_model", "material_events"], seed=3000)
+    first, second = posts_of("material_events")
+    assert first["options"]["seed"] == 3007 and second["options"]["seed"] == 3007 + 50000
+    assert posts_of("business_model")[0]["options"]["seed"] == 3000
+    man = manifest(res)
+    assert man["options"]["seed_base"] == man["options"]["seed"] == 3000 and man["options"]["differs_from_defaults"] == ["seed"]
+    assert man["options"]["seeds"] == {t: 3000 + i for i, t in enumerate(tasks.TASKS)}
+    assert man["tasks"]["material_events"]["seed"] == 3007
+
+
+def test_the_cli_takes_tasks_and_seed_base(env, capsys):
+    assert runner.main([str(env["packet"]), "--url", env["url"], "--tasks", "material_events, risks", "--seed-base", "3000"]) == 0
+    res = json.loads(capsys.readouterr().out)
+    man = manifest(res)
+    assert man["tasks_requested"] == ["risks", "material_events"] and man["options"]["seed_base"] == 3000
+    assert [p["req"]["options"]["seed"] for p in generate_posts()] == [3004, 3007]
+    assert runner.main([str(env["packet"]), "--url", env["url"], "--tasks", "risks,nope"]) == 2
+    assert capsys.readouterr().err.startswith("refused: unknown task id(s) ['nope']")

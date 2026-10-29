@@ -1,11 +1,18 @@
-"""runner.py - one `qwen_c` run over one frozen packet: seven tasks, their errors and their records (SPEC_m3m_qwen_pipeline.md section 6).
+"""runner.py - one `qwen_c` run over one frozen packet: its tasks, their errors and their records (SPEC_m3m_qwen_pipeline.md section 6).
 
-    python -m qwen_c.runner <packet.json> [--num-predict N] [--think low|medium|high] [--url ...]
+    python -m qwen_c.runner <packet.json> [--num-predict N] [--think low|medium|high] [--url ...] [--tasks a,b] [--seed-base N]
 
 The model is called through ollama_raw.chat directly (config.json `depth_provider` is not read or changed), with our own SYSTEM
 message (tasks.SYSTEM) and `think` passed as the pinned template expects (ollama_raw.think_kwargs).
 
-PER TASK (TASK_TIMEOUT_S per call; seed = the run's seed + the task index, 0-based):
+TASKS RUN (3N, SPEC_m3n_event_validation.md section 3): all of tasks.TASKS by default, or only the `--tasks` / `task_ids` given (a comma
+list; each one of tasks.TASKS, no duplicates), always in tasks.TASKS order. The manifest and analysis.json record `tasks_requested`. The
+seed of a task is still the seed base + its index in tasks.TASKS (not in the requested list), so a task has the same seed in a subset
+run as in a full run. `thesis_change` is run, or recorded as not applicable, only when it is requested; the prior run is looked up only
+then. The run is `complete` when every requested task is ok (`not_applicable_no_prior` aside); a run in which no requested task is
+applicable (only thesis_change, with no prior) is `failed`, not complete.
+
+PER TASK (TASK_TIMEOUT_S per call; seed = the run's seed base + the task index in tasks.TASKS, 0-based):
     PREFLIGHT (ruling 4.2): a rendered prompt whose characters / CHARS_PER_TOKEN + num_predict exceed num_ctx is not sent ->
     `context_overflow` (this holds for a malformed-retry prompt too);
     a reply is parsed (parse_reply) and checked (contract.check_task) -> `ok`; a reply that does not parse or has the wrong shape (an
@@ -23,7 +30,7 @@ PER TASK (TASK_TIMEOUT_S per call; seed = the run's seed + the task index, 0-bas
     `prior_unusable` (ruling 4.4), not sent. Only the prior's supported claims are points (ruling 3.4); a claim naming another point is
     a shape error and the points no claim names are recorded as `points_not_addressed` (ruling 4.3).
 
-RUN STATUS: `complete` when every applicable task is `ok`; `failed` when none is; otherwise `analysis_incomplete` with
+RUN STATUS: `complete` when every applicable requested task is `ok`; `failed` when none is; otherwise `analysis_incomplete` with
 `incomplete_tasks` (`prior_unusable` is applicable and not ok). analysis.json, the ledger line and the result carry `support_summary`
 {claims, supported, unsupported} over every stored claim (ruling 4.1), so a `complete` run whose claims are all unsupported is visible.
 `run()` never raises once the run directory exists: an unexpected error finishes the run as `failed` with the cause.
@@ -493,10 +500,27 @@ def _check_opts(num_ctx, num_predict, think, seed):
         raise RunRefused(f"think must be one of {ollama_raw.EFFORTS}, got {think!r}")
 
 
-def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predict=NUM_PREDICT, think=THINK, seed=SEED_BASE):
-    """One run over one packet. Returns {run_id, run_dir, status, incomplete_tasks, support_summary, manifest_sha256,
-    ledger_appended}."""
+def _check_tasks(task_ids):
+    """The requested tasks as a tuple in tasks.TASKS order (all of them when `task_ids` is None); raises RunRefused for an empty list, a
+    task that is not one of tasks.TASKS, or a task named twice."""
+    if task_ids is None:
+        return tuple(tasks.TASKS)
+    if isinstance(task_ids, str) or not isinstance(task_ids, (list, tuple)) or not task_ids:
+        raise RunRefused(f"tasks must be a non-empty list of task ids, got {task_ids!r}")
+    bad = [t for t in task_ids if t not in tasks.TASKS]
+    if bad:
+        raise RunRefused(f"unknown task id(s) {bad!r}: each must be one of {', '.join(tasks.TASKS)}")
+    if len(set(task_ids)) != len(task_ids):
+        raise RunRefused(f"a task is named twice in {list(task_ids)!r}")
+    return tuple(t for t in tasks.TASKS if t in task_ids)
+
+
+def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predict=NUM_PREDICT, think=THINK, seed=SEED_BASE,
+        task_ids=None):
+    """One run over one packet. `seed` is the seed base (a task's seed is seed + its index in tasks.TASKS); `task_ids` are the tasks to run
+    (None: all). Returns {run_id, run_dir, status, incomplete_tasks, support_summary, manifest_sha256, ledger_appended}."""
     _check_opts(num_ctx, num_predict, think, seed)
+    requested = _check_tasks(task_ids)
     packet, src = load_packet(packet_path)
     loaded = gpu_preflight(url)
     show = model_show(url)
@@ -515,7 +539,8 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
         "model": {**llm_provider.ollama_serving(MODEL), "provider": "ollama_raw", "tag": MODEL, "show": show},
         "gpu_preflight": {"loaded": loaded},
         "template_sha256": ollama_raw.TEMPLATE_SHA256, "system_sha256": sha256_bytes(tasks.SYSTEM.encode("utf-8")),
-        "options": {**opts, "seeds": {t: seed + i for i, t in enumerate(tasks.TASKS)}, "retry_seed_offset": RETRY_SEED_OFFSET,
+        "tasks_requested": list(requested),
+        "options": {**opts, "seed_base": seed, "seeds": {t: seed + i for i, t in enumerate(tasks.TASKS)}, "retry_seed_offset": RETRY_SEED_OFFSET,
                     "task_timeout_s": TASK_TIMEOUT_S, "chars_per_token": CHARS_PER_TOKEN,
                     "sampling": "the Modelfile's defaults (not overridden): model.show.parameters",
                     "differs_from_defaults": sorted(k for k in opts if opts[k] != defaults[k])},
@@ -529,7 +554,7 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
         back = (run_dir / "packet.json").read_bytes()
         if sha256_bytes(back) != sha256_bytes(src) or sha256_bytes(canonical_bytes(json.loads(back.decode("utf-8")))) != packet_sha:
             raise RuntimeError("packet.json copy does not recompute")
-        prior, prior_problem = find_prior(root, ticker, T)
+        prior, prior_problem = find_prior(root, ticker, T) if "thesis_change" in requested else (None, None)
         point_ids = [p for p, _ in tasks.prior_points(prior)] if prior else []
         if prior and not point_ids:                     # nothing to compare: the task is not sent and is not ok
             prior_problem = {"kind": "no_supported_points",
@@ -541,6 +566,8 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
             man["prior_run_problem"] = prior_problem
         _write_json(run_dir / "manifest.json", man)
         for idx, task in enumerate(tasks.TASKS):
+            if task not in requested:
+                continue
             if task == "thesis_change" and (prior is None or prior_problem):
                 st = {None: "not_applicable_no_prior", "unverifiable": "infra_error"}.get(
                     prior_problem and prior_problem["kind"], "prior_unusable")
@@ -557,9 +584,11 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
                                  {"status": "infra_error", "seed": seed + idx, "seconds": 0.0, "attempts": [], "cause": cause})
             man["tasks"][task] = results[task][1]
             _write_json(run_dir / "manifest.json", man)
-        applicable = [t for t in tasks.TASKS if results[t][0]["status"] != "not_applicable_no_prior"]
+        applicable = [t for t in requested if results[t][0]["status"] != "not_applicable_no_prior"]
         not_ok = {t: results[t][0]["status"] for t in applicable if results[t][0]["status"] != "ok"}
-        if not not_ok:
+        if not applicable:                              # only thesis_change was requested and there is no prior: nothing was analysed
+            status, not_ok = "failed", {t: results[t][0]["status"] for t in requested}
+        elif not not_ok:
             status = "complete"
         elif len(not_ok) == len(applicable):
             status = "failed"
@@ -567,17 +596,18 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
             status = "analysis_incomplete"
         analysis = {
             "contract": contract.CONTRACT, "prompt_version": tasks.PROMPT_VERSION, "run_id": run_id, "ticker": ticker,
-            "decision_time_utc": T, "packet_sha256": packet_sha, "status": status, "incomplete_tasks": not_ok,
+            "decision_time_utc": T, "packet_sha256": packet_sha, "tasks_requested": list(requested), "status": status,
+            "incomplete_tasks": not_ok,
             "support_summary": support_summary(results),
             "note": "A claim whose support is not 'supported' is not a verified value; it stays visible with its reason.",
-            "tasks": {t: results[t][0] for t in tasks.TASKS},
+            "tasks": {t: results[t][0] for t in requested},
         }
         man["analysis_sha256"] = _write_json(run_dir / "analysis.json", analysis)
         man["status"], man["incomplete_tasks"] = status, not_ok
     except Exception as e:  # noqa: BLE001 - see the module docstring
         status = man["status"] = "failed"
         man["cause"] = f"runner exception: {type(e).__name__}: {e}"
-        man["incomplete_tasks"] = {t: man["tasks"].get(t, {}).get("status", "not_run") for t in tasks.TASKS}
+        man["incomplete_tasks"] = {t: man["tasks"].get(t, {}).get("status", "not_run") for t in requested}
     summary = support_summary(results)
     turns = run_dir / "turns"
     man["turns"] = {p.relative_to(run_dir).as_posix(): sha256_file(p) for p in sorted(turns.glob("*.json"))} if turns.is_dir() else {}
@@ -641,9 +671,12 @@ def main(argv=None):
     ap.add_argument("--num-predict", type=int, default=NUM_PREDICT)
     ap.add_argument("--think", choices=("low", "medium", "high"), default=THINK)
     ap.add_argument("--url", default=llm_provider.OLLAMA_URL)
+    ap.add_argument("--tasks", help="comma list of the tasks to run (default: all of %s), run in that order" % ", ".join(tasks.TASKS))
+    ap.add_argument("--seed-base", type=int, default=SEED_BASE, help="a task's seed is this plus its index in the task list")
     a = ap.parse_args(argv)
     try:
-        res = run(a.packet, url=a.url, num_predict=a.num_predict, think=a.think)
+        res = run(a.packet, url=a.url, num_predict=a.num_predict, think=a.think, seed=a.seed_base,
+                  task_ids=[t.strip() for t in a.tasks.split(",")] if a.tasks is not None else None)
     except RunRefused as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
