@@ -110,7 +110,8 @@ position in the IV band, in half-widths). Full detail:
 ### Pack revision 21 — primary sources, and the crux follow-up
 
 The pack carries a `## PRIMARY SOURCES` section directly after GUIDANCE & CONSENSUS: the company's own SEC filings as verbatim
-text (HTML cleaned, nothing paraphrased), built once per pack by `sec_primary.py` from EDGAR with `sec_guidance`'s User-Agent, one
+text (HTML cleaned, nothing paraphrased), built once per pack by `sec_primary.py` from EDGAR with `sec_guidance.sec_ua()` as User-Agent (the operator's own name and
+email from the `SEC_USER_AGENT` environment variable; unset, every SEC fetch raises rather than degrade), one
 request at a time, each accession cached forever in `cache/sec_primary/`. In order: the latest 8-K Item 2.02 earnings release
 (14,000 characters at most; a longer one keeps its start, its outlook, guidance, segment and backlog paragraphs and its tables, every cut
 marked `[… n characters omitted …]`), that 8-K's other text exhibits (6,000 each; a PDF is skipped and said so), the segment report of

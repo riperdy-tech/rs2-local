@@ -62,9 +62,10 @@ UA = {"User-Agent": "Mozilla/5.0 (RS2 analyst research)"}
 # sec.gov fetch with UA failed with HTTP 403 - including the filings the pack tells the analyst to
 # check. sec.gov fetches use the declared identity sec_guidance already uses.
 try:
-    from sec_guidance import UA as SEC_UA  # noqa: E402
+    from sec_guidance import sec_ua  # noqa: E402
 except Exception:
-    SEC_UA = UA
+    def sec_ua():
+        return UA
 # Certificate verification with Mozilla's root bundle (certifi) plus the Windows store. The
 # Windows store alone missed roots some sites chain to: cnn.com failed with "unable to get local
 # issuer certificate" in the E9 discovery runs. Verification stays on.
@@ -844,7 +845,7 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None, _fallb
     host = (urllib.parse.urlparse(url).hostname or "").lower()
     is_sec = host == "sec.gov" or host.endswith(".sec.gov")
     try:
-        req = urllib.request.Request(url, headers=SEC_UA if is_sec else UA)
+        req = urllib.request.Request(url, headers=sec_ua() if is_sec else UA)
         with urllib.request.urlopen(req, timeout=40, context=_SSL_CTX) as r:
             data = r.read(1_500_000)
             headers = getattr(r, "headers", None)

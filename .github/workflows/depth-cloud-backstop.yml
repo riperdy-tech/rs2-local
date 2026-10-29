@@ -328,6 +328,8 @@ jobs:
           # hours old by the time the driver publishes (_pc_alive_recheck).
           RS2_SUPABASE_URL: ${{ secrets.RS2_SUPABASE_URL }}
           RS2_SUPABASE_SERVICE_KEY: ${{ secrets.RS2_SUPABASE_SERVICE_KEY }}
+          # SEC refuses requests without a contact; sec_guidance.sec_ua() raises when this is unset.
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         # -u: the driver's own lines must not lag its children's in the job log
         run: python3 -u api_llm/cloud_backstop.py
 

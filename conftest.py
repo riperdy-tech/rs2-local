@@ -168,6 +168,7 @@ def _isolate_sec_guidance_in_tests(monkeypatch, tmp_path):
     monkeypatch.setattr(sec_guidance, "SEC_8K_CACHE", tmp_path / "sec_8k")
     monkeypatch.setattr(sec_guidance, "SUB_CACHE", tmp_path / "sec_submissions")
     monkeypatch.setattr(depth_triggers, "SUB_CACHE", tmp_path / "sec_submissions")
+    monkeypatch.setenv("SEC_USER_AGENT", "RS2 test runner test@example.com")
 
     def _no_network_urlopen(*args, **kwargs):
         raise urllib.error.URLError("Network disabled in tests")
