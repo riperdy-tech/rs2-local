@@ -2,31 +2,46 @@
 
 `build(ticker, T, screener_commit, online=..., verified_record=...)` freezes, for one ticker and one decision time T, the screener's row
 (git blobs at a verified commit) and the company's own SEC documents (through sec_store) into one packet dict. `canonical_bytes` is the one
-byte form a packet is stored and hashed in. `build` reads no clock: T is an argument, and with online=False over the same store and commit
-it gives byte-identical output.
+byte form a packet is stored and hashed in. `build` reads no clock: T is an argument. With online=False it gives byte-identical output
+over the same store state and commit; the store is append-only and `get` serves the LATEST receipt of a url, so a later online fetch of a
+submissions JSON changes what an offline build reads. The determinism gate is replay.py, which reads only the pinned bytes (get_pinned).
 
 ELIGIBILITY. A filing is used only when effective_at(accepted_at(acceptanceDateTime)) <= T (policy SEC_POLICY, re-implemented from
 m3l_sec_pit_asof.py; no cross-repository import). An ineligible filing that would otherwise have been chosen for a slot is listed in
 `excluded` with its accession and effective_at.
 
 EVIDENCE, in this fixed order (ids S0, then F1..., then P1..., sequential within their letter):
-  S0 screener_row       the stocks.json record and the factor_scores_dual_door.json profile, rendered as `key: value` lines (0 prints as 0)
+  S0 screener_row       identity and market fields of the stocks.json record only (S0_FIELDS), `key: value` lines (0 prints as 0);
+                        Last_Updated is labelled as the price as-of. Nothing from factor_scores_dual_door.json is evidence: its blob
+                        is pinned in the header for audit only
   F  statement          balance sheet, income statement, cash flows: FilingSummary R reports of the latest eligible 10-Q/10-K/20-F/40-F
   P  annual_section     Business, Risk Factors, MD&A of the latest eligible 10-K / 20-F / 40-F
   P  quarterly_section  MD&A and Part II Item 1A of the latest eligible 10-Q accepted after that annual report
-  P  release            the latest eligible 8-K Item 2.02 EX-99 release (sec_primary.select_text rules)
-  P  other_8k           eligible 8-Ks of the OTHER_8K_DAYS before T with a listed item, newest first, at most MAX_OTHER_8K
+  P  amendment          up to MAX_AMENDMENTS eligible 10-K/A, 10-Q/A, 20-F/A, 40-F/A accepted after that annual report, newest first:
+                        the primary document from its first Item heading, at most AMENDMENT_CAP characters
+  P  release            the latest eligible 8-K Item 2.02 EX-99 release (sec_primary.select_text rules); one accepted more than
+                        RELEASE_MAX_DAYS before T is not used and is annotated release_stale
+  P  other_8k           eligible 8-Ks of the OTHER_8K_DAYS before T with a listed item, newest first, at most MAX_OTHER_8K: the 8-K body
+                        from its first Item heading of an item the filing lists, then its EX-99.x exhibits, to OTHER_8K_CAP. Contracts
+                        and other exhibits (EX-1, EX-3, EX-4, EX-10, ...) are never used
 A section is found only by its heading in the cleaned text and ends at the next item heading; a heading followed by under TOC_MIN_CHARS
 characters before the next item heading is a table-of-contents entry and is skipped. A section or statement that cannot be found is an
 annotation, never a guess and never a whole-document fallback. Every cut is marked with sec_primary.OMIT.
 
+HEADER. `screener` carries the commit, the three blob shas and `verified_row`, the verified record's row as found (run_id, verdict, pair,
+output_commit, run_updated_at). `builder_code` carries the sha256 of the builder's source files (line ends normalised to LF) and the
+exchange_calendars and tzdata versions.
+
 REFUSALS (PacketRefused; a degraded packet is never built): an excluded ticker; a screener commit that is not on a PASS / pair PASS row of
-the verified record; a ticker missing from that commit's stocks.json or from its factor profiles; no CIK; a screener commit dated after T.
+the verified record; a verified row without a readable GitHub `run_updated_at`, or with one after T; a T outside the trading calendar;
+a ticker missing from that commit's stocks.json or from its factor profiles; no CIK; a screener commit dated after T; a T older than the
+oldest row of the submissions' filings.recent (older filings are in filings.files, which v1 does not read).
 A document that cannot be had (NotInStore offline, FetchFailed online, StoreCorrupt) raises too.
 """
 import argparse
 import hashlib
 import html
+import importlib.metadata
 import json
 import os
 import re
@@ -40,14 +55,15 @@ from zoneinfo import ZoneInfo
 import exchange_calendars as xcals
 import pandas as pd
 
+import sec_guidance
+import sec_primary
 from sec_guidance import _has_item_202
-from sec_primary import (_is_text_exhibit, _items_list, _main_exhibit, _release_doc, _split_documents, blocks_of, canonical,
-                         prefix_text, select_text)
+from sec_primary import _is_text_exhibit, _items_list, _release_doc, _split_documents, blocks_of, canonical, prefix_text, select_text
 
 from qwen_c import sec_store
 
 CONTRACT = "m3m.packet.v1"
-BUILDER_VERSION = "m3m.packet.builder.v1"
+BUILDER_VERSION = "m3m.packet.builder.v3"
 SEC_POLICY = "sec_acceptance_next_full_xnys_session_late_after_1730_plus_one_v1"
 EXCLUDED_TICKERS = ("MG", "MOV", "SENEA", "SENEB")
 
@@ -65,13 +81,25 @@ OTHER_8K_CAP = 4_000
 OTHER_8K_DAYS = 120
 MAX_OTHER_8K = 4
 OTHER_8K_ITEMS = ("1.01", "1.03", "2.01", "2.03", "2.04", "2.06", "3.01", "4.01", "4.02", "5.02", "8.01")
+RELEASE_MAX_DAYS = 120
+AMENDMENT_CAP = 4_000
+MAX_AMENDMENTS = 2
 TOC_MIN_CHARS = 1_500
-SHORT_MIN_CHARS = 100            # a short section kept only as the last of two or more headings (find_section)
+SHORT_MIN_CHARS = 100            # a short section kept only as the last of two or more headings (find_section); an amendment's heading
 MIN_TRIMMED = 600
 
 PERIODIC_FORMS = ("10-Q", "10-K", "20-F", "40-F")
 ANNUAL_FORMS = ("10-K", "20-F", "40-F")
+AMENDMENT_FORMS = ("10-K/A", "10-Q/A", "20-F/A", "40-F/A")
 EIGHT_K_FORMS = ("8-K", "8-K/A")
+
+# S0: the stocks.json fields printed, in this order, with their label (CROSS_CHECK_M ruling 3.1). Nothing else of the row is evidence.
+S0_FIELDS = (("symbol", "symbol"), ("name", "name"), ("sector", "sector"), ("industry", "industry"), ("country", "country"),
+             ("price", "price"), ("marketCap", "marketCap"), ("Last_Updated", "price as-of (Last_Updated, zone not stated)"),
+             ("last_listed", "last_listed"))
+VERIFIED_FIELDS = ("run_id", "verdict", "pair", "output_commit", "run_updated_at")
+BUILDER_FILES = (("packet.py", Path(__file__)), ("sec_primary.py", Path(sec_primary.__file__)),
+                 ("sec_guidance.py", Path(sec_guidance.__file__)))
 
 EASTERN = ZoneInfo("America/New_York")
 _CAL = []
@@ -127,6 +155,18 @@ def effective_at(accepted_utc, calendar=None):
     if loc.time() >= time(17, 30):
         session = calendar.next_session(session)
     return calendar.session_open(session).to_pydatetime().astimezone(timezone.utc)
+
+
+def check_T_in_calendar(T):
+    """Refuses (T_outside_calendar) a T before the calendar's first session open, or so late that the policy cannot be applied to a
+    filing accepted at T (its effective session lies past the calendar's end)."""
+    cal = _calendar()
+    if T < cal.first_session_open.to_pydatetime():
+        raise PacketRefused("T_outside_calendar", f"T {_z(T)} is before the calendar's first session open {_z(cal.first_session_open)}")
+    try:
+        effective_at(T, cal)
+    except (xcals.errors.DateOutOfBounds, xcals.errors.RequestedSessionOutOfBounds) as e:
+        raise PacketRefused("T_outside_calendar", f"T {_z(T)}: a filing accepted at T has no session in the calendar ({e})") from e
 
 
 def _z(dt):
@@ -199,6 +239,25 @@ def verified_row(rows, commit_full):
     raise PacketRefused("screener_commit_not_verified", f"{commit_full} is on no PASS / pair PASS row of the verified record")
 
 
+def pinned_row(row):
+    """The verified row as the header pins it: VERIFIED_FIELDS as found (a field the row lacks is null)."""
+    return {k: row.get(k) for k in VERIFIED_FIELDS}
+
+
+def check_run_time(verified, T):
+    """The run-time check of a pinned verified row (CROSS_CHECK_M 2.1): GitHub's `run_updated_at` (the end of the run that witnessed the
+    commit) must be a zoned ISO time at or before T. Refuses when it is missing, unreadable or after T."""
+    raw = verified.get("run_updated_at") if isinstance(verified, dict) else None
+    try:
+        at = datetime.fromisoformat(raw.replace("Z", "+00:00")) if isinstance(raw, str) and raw else None
+    except ValueError:
+        at = None
+    if at is None or at.tzinfo is None:
+        raise PacketRefused("verified_run_time_missing", f"the verified row has no readable zoned run_updated_at ({raw!r})")
+    if at.astimezone(timezone.utc) > T:
+        raise PacketRefused("verified_run_after_T", f"the verified run ended at {raw}, after T {_z(T)}")
+
+
 def _fmt(v):
     """A JSON value as S0 prints it: 0 and 0.0 print as 0, null as null, a float in its shortest round-trip form."""
     if v is None:
@@ -218,15 +277,9 @@ def _fmt(v):
     return str(v)
 
 
-def _kv_lines(obj, prefix=""):
-    out = []
-    for k, v in obj.items():
-        key = f"{prefix}{k}"
-        if isinstance(v, dict) and v:
-            out += _kv_lines(v, key + ".")
-        else:
-            out.append(f"{key}: {_fmt(v)}")
-    return out
+def s0_lines(row):
+    """The S0 lines of a stocks.json row: S0_FIELDS only, in their order; a field the row lacks prints as `absent`."""
+    return [f"{label}: {_fmt(row[k]) if k in row else 'absent'}" for k, label in S0_FIELDS]
 
 
 def _screener(repo, commit_full, ticker):
@@ -250,12 +303,10 @@ def _screener(repo, commit_full, ticker):
     if not raw_cik or not str(raw_cik).strip().isdigit():
         raise PacketRefused("no_cik", f"{ticker} has no CIK in {CIK_MAP_PATH} at {commit_full}")
     cik = str(raw_cik).strip().zfill(10)
-    lines = [f"stocks.json record ({STOCKS_PATH} at {commit_full}):"] + _kv_lines(rows[0])
-    lines += [f"factor_scores_dual_door.json profile ({FACTOR_PATH} at {commit_full}):"] + _kv_lines(profiles[ticker])
-    s0 = {"kind": "screener_row", "name": "screener_row", "title": "Screener row: stocks.json record and factor_scores_dual_door.json profile",
-          "source": {"git_commit": commit_full, "path": [STOCKS_PATH, FACTOR_PATH]}, "form": None, "period": None,
-          "accepted_raw": None, "effective_at": None,
-          "raw_sha256": [hashlib.sha256(blobs[STOCKS_PATH]).hexdigest(), hashlib.sha256(blobs[FACTOR_PATH]).hexdigest()],
+    lines = [f"stocks.json record ({STOCKS_PATH} at {commit_full}), identity and market fields only:"] + s0_lines(rows[0])
+    s0 = {"kind": "screener_row", "name": "screener_row", "title": "Screener row: identity and market fields of the stocks.json record",
+          "source": {"git_commit": commit_full, "path": STOCKS_PATH}, "form": None, "period": None,
+          "accepted_raw": None, "effective_at": None, "raw_sha256": hashlib.sha256(blobs[STOCKS_PATH]).hexdigest(),
           "text": canonical("\n".join(lines))}
     header = {"commit": commit_full, "stocks_blob_sha": shas[STOCKS_PATH], "factor_blob_sha": shas[FACTOR_PATH],
               "cik_map_blob_sha": shas[CIK_MAP_PATH]}
@@ -546,26 +597,83 @@ def _release(cik, row, fetch, notes):
                       raw, text)]
 
 
+def eight_k_body_lines(lines, items):
+    """The lines of an 8-K body from its first heading of an item the filing lists (`Item 1.01`, `ITEM 8.01.`, `Items 1.01 and 2.03`, a
+    table row `Item 8.01. | Other Events.`), or None when the body has no such heading: the cover page is never used."""
+    if not items:
+        return None
+    head = re.compile(r"^\s*(?i:items?)\s*(?:%s)(?!\d)" % "|".join(re.escape(i) for i in items))
+    start = next((n for n, l in enumerate(lines) if head.match(l)), None)
+    return None if start is None else lines[start:]
+
+
 def _other_8k(cik, row, fetch, notes):
+    """The other-8-K item (CROSS_CHECK_M 6.1b): the 8-K body from its first listed Item heading, then the EX-99.x exhibits in file order,
+    to OTHER_8K_CAP. No other exhibit is read: contracts (EX-1, EX-3, EX-4, EX-10) and everything else are never used."""
     url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
     raw = fetch(url)
     docs = _eight_k_docs(raw)
-    ex = _main_exhibit({"docs": docs}) if docs else None
-    if ex is None:
-        notes.append(f"8k_text_not_found: {row['accession']}")
-        return []
-    blocks = blocks_of(ex["raw"])
-    if not ex["type"].upper().startswith("EX-"):             # an 8-K body opens with its cover page: start at the item text
-        item_re = re.compile(r"Item\s+(%s)\b" % "|".join(re.escape(i) for i in OTHER_8K_ITEMS))
-        blocks = blocks[next((n for n, (k, c) in enumerate(blocks) if k == "p" and item_re.match(c)), 0):]
-    text = canonical(prefix_text("\n".join(c if k == "p" else "\n".join(c) for k, c in blocks), OTHER_8K_CAP))
-    if not text:
-        notes.append(f"8k_text_not_found: {row['accession']}")
-        return []
     its = _items_list(row["items"])
-    where = ex["type"] if ex["type"].upper().startswith("EX-") else f"{row['form']} body"
-    return [_evidence("other_8k", "other_8k", f"{row['form']} Item{'s' if len(its) != 1 else ''} {', '.join(its)} ({where})", row, url,
-                      raw, text)]
+    parts = []                                                  # (label, canonical text)
+    body = next((d for d in docs if d["type"].upper() in EIGHT_K_FORMS), None)
+    body_lines = eight_k_body_lines(doc_lines(body["raw"]), its) if body is not None else None
+    if body_lines is None:
+        notes.append(f"8k_item_heading_not_found: {row['accession']}")
+    elif canonical("\n".join(body_lines)):
+        parts.append((f"{body['type']} body", canonical("\n".join(body_lines))))
+    for d in docs:
+        if d["type"].upper().startswith("EX-99"):
+            t = canonical("\n".join(doc_lines(d["raw"])))
+            if t:
+                parts.append((d["type"], t))
+    if not parts:
+        notes.append(f"8k_text_not_found: {row['accession']}")
+        return []
+    full = "\n".join(t for _, t in parts)
+    text = canonical(prefix_text(full, OTHER_8K_CAP))
+    kept = len(full) if len(full) <= OTHER_8K_CAP else text.rfind("\n")    # a cut text ends "\n" + the OMIT marker
+    used, at = [], 0
+    for label, t in parts:                                      # the title names only the documents the kept text reaches
+        if at < kept:
+            used.append(label)
+        at += len(t) + 1
+    return [_evidence("other_8k", "other_8k", f"{row['form']} Item{'s' if len(its) != 1 else ''} {', '.join(its)} ({', '.join(used)})",
+                      row, url, raw, text)]
+
+
+def amendment_lines(lines):
+    """The lines of an amendment from its first Item heading, or None; from an EXPLANATORY NOTE heading instead when one comes before that
+    Item heading (the note says why the amendment was filed, e.g. only to add an auditor report's date: without it an amended Item 8 reads
+    like a restatement; audit 2026-10-29). A heading followed by under SHORT_MIN_CHARS characters before the next heading of another item
+    is a contents entry, not the heading, and is skipped; a heading with no later item heading runs to the end."""
+    for i, l in enumerate(lines):
+        m = _ANY_ITEM.match(l)
+        if not m:
+            continue
+        own = m.group("num").upper()
+        end = next((j for j in range(i + 1, len(lines)) if _is_boundary(lines[j], own)), len(lines))
+        if sum(len(x) + 1 for x in lines[i + 1:end]) >= SHORT_MIN_CHARS:
+            note = next((j for j in range(i) if _EXPLANATORY.match(lines[j])), None)
+            return lines[note if note is not None else i:]
+    return None
+
+
+_EXPLANATORY = re.compile(r"^\s*(?i:explanatory\s+note)\s*[.:]?\s*$")
+
+
+def _amendment(cik, row, fetch, notes):
+    """An amendment item (CROSS_CHECK_M 6.2a): the primary document from its first Item heading, at most AMENDMENT_CAP characters."""
+    if not row.get("primary_document"):
+        notes.append(f"amendment_text_not_found: {row['form']} {row['accession']}")
+        return []
+    url = f"{_base(cik, row['accession'])}/{row['primary_document']}"
+    raw = fetch(url)
+    body = amendment_lines(doc_lines(_decode(raw)))
+    text = canonical(prefix_text(canonical("\n".join(body)), AMENDMENT_CAP)) if body else ""
+    if not text:
+        notes.append(f"amendment_text_not_found: {row['form']} {row['accession']}")
+        return []
+    return [_evidence("amendment", "amendment", f"{row['form']} amendment, from its first Item heading", row, url, raw, text)]
 
 
 # ---- trimming, ids and the build ------------------------------------------------------------------------------------------------
@@ -603,16 +711,41 @@ def _assign_ids(items):
     return items
 
 
-def _core(ticker, T, commit_full, repo, fetch, verified_run_id):
-    """The packet of an already-verified commit. `fetch` is an _Inputs. Pure given the store, the repository and the arguments."""
+def builder_code():
+    """{file name: sha256 of its bytes with CRLF normalised to LF, ..., "exchange_calendars": version, "tzdata": version} (ruling 5.3)."""
+    out = {name: hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest() for name, path in BUILDER_FILES}
+    for dist in ("exchange_calendars", "tzdata"):
+        try:
+            out[dist] = importlib.metadata.version(dist)
+        except importlib.metadata.PackageNotFoundError:
+            out[dist] = None
+    return out
+
+
+def check_filings_window(rows, T):
+    """Refuses (T_before_filings_recent) a T older than the oldest row of filings.recent (CROSS_CHECK_M 2.3): the filings of such a T
+    are in filings.files, which v1 does not read. The oldest row is the one with the earliest readable acceptance (the policy reading)."""
+    times = [r["accepted"] for r in rows if r["accepted"] is not None]
+    if not times:
+        raise PacketRefused("T_before_filings_recent", "filings.recent has no row with a readable acceptance clock")
+    if T < min(times):
+        raise PacketRefused("T_before_filings_recent", f"T {_z(T)} is older than the oldest filings.recent row, accepted {_z(min(times))}")
+
+
+def _core(ticker, T, commit_full, repo, fetch, verified):
+    """The packet of an already-verified commit. `fetch` is an _Inputs; `verified` is the pinned verified row (pinned_row). Pure given the
+    store, the repository, the builder's code and the arguments."""
+    check_T_in_calendar(T)
+    check_run_time(verified, T)
     s0, sheader, cik = _screener(repo, commit_full, ticker)
     committed = datetime.fromisoformat(_git(repo, "show", "-s", "--format=%cI", commit_full).decode("ascii").strip())
     if committed.astimezone(timezone.utc) > T:
         raise PacketRefused("screener_commit_after_T", f"{commit_full} is dated {committed.isoformat()}, after T {_z(T)}")
-    sheader["verified_run_id"] = verified_run_id
+    sheader["verified_row"] = dict(verified)
     notes, excluded = [], []
     subs = json.loads(fetch(f"https://data.sec.gov/submissions/CIK{cik}.json"))
     rows = _filing_rows(subs)
+    check_filings_window(rows, T)
 
     items = [s0]
     periodic = _pick(rows, lambda r: r["form"] in PERIODIC_FORMS, "statements", T, excluded, notes)
@@ -632,8 +765,16 @@ def _core(ticker, T, commit_full, repo, fetch, verified_run_id):
         items += _sections(cik, quarterly[0], fetch, "quarterly_section", notes)
     else:
         notes.append("no_eligible_filing: quarterly (10-Q after the annual report in the recent submissions)")
+    amendments = _pick(rows, lambda r: r["form"] in AMENDMENT_FORMS and (after is None or r["accepted"] is None or r["accepted"] > after),
+                       "amendment", T, excluded, notes, limit=MAX_AMENDMENTS)
+    for r in amendments:
+        items += _amendment(cik, r, fetch, notes)
     release = _pick(rows, lambda r: r["form"] in EIGHT_K_FORMS and _has_item_202(r["items"]), "release", T, excluded, notes)
-    if release:
+    if release and release[0]["accepted"] < T - timedelta(days=RELEASE_MAX_DAYS):
+        notes.append(f"release_stale: {release[0]['accession']} accepted {release[0]['accepted_raw']}, more than {RELEASE_MAX_DAYS} days "
+                     f"before T")
+        release = []
+    elif release:
         items += _release(cik, release[0], fetch, notes)
     else:
         notes.append("no_eligible_filing: release (8-K Item 2.02 in the recent submissions)")
@@ -647,9 +788,9 @@ def _core(ticker, T, commit_full, repo, fetch, verified_run_id):
         items += _other_8k(cik, r, fetch, notes)
 
     items = _assign_ids(_trim(items, notes))
-    return {"contract": CONTRACT, "builder_version": BUILDER_VERSION, "ticker": ticker, "cik": cik, "decision_time_utc": _z(T),
-            "screener": sheader, "sec_policy": SEC_POLICY, "raw_inputs": list(fetch.used), "evidence": items, "annotations": notes,
-            "excluded": excluded}
+    return {"contract": CONTRACT, "builder_version": BUILDER_VERSION, "builder_code": builder_code(), "ticker": ticker, "cik": cik,
+            "decision_time_utc": _z(T), "screener": sheader, "sec_policy": SEC_POLICY, "raw_inputs": list(fetch.used), "evidence": items,
+            "annotations": notes, "excluded": excluded}
 
 
 def _check_ticker(ticker):
@@ -672,7 +813,7 @@ def build(ticker, T, screener_commit, *, online, verified_record, screener_repo_
     commit_full = _resolve_commit(repo, screener_commit)
     row = verified_row(verified_record, commit_full)
     fetch = _Inputs(lambda url: sec_store.get(url, online=online, root=store_root))
-    return _core(t, T, commit_full, repo, fetch, row.get("run_id"))
+    return _core(t, T, commit_full, repo, fetch, pinned_row(row))
 
 
 def save(packet, root=None):

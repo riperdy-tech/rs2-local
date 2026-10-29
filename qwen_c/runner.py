@@ -6,19 +6,37 @@ The model is called through ollama_raw.chat directly (config.json `depth_provide
 message (tasks.SYSTEM) and `think` passed as the pinned template expects (ollama_raw.think_kwargs).
 
 PER TASK (TASK_TIMEOUT_S per call; seed = the run's seed + the task index, 0-based):
-    a reply is parsed (parse_reply) and checked (contract.check_task) -> `ok`; a reply that does not parse or has the wrong shape gets
-    one retry at seed + RETRY_SEED_OFFSET with tasks.RETRY_LINE appended, then `malformed`;
+    PREFLIGHT (ruling 4.2): a rendered prompt whose characters / CHARS_PER_TOKEN + num_predict exceed num_ctx is not sent ->
+    `context_overflow` (this holds for a malformed-retry prompt too);
+    a reply is parsed (parse_reply) and checked (contract.check_task) -> `ok`; a reply that does not parse or has the wrong shape (an
+    empty reply, no claims and no unknowns, is one: ruling 4.1) gets one retry at seed + RETRY_SEED_OFFSET with tasks.RETRY_LINE
+    appended, then `malformed`; the cause names done_reason "length" (the reply was cut at num_predict; ruling 4.6);
     a timeout -> `timeout`, no retry;
-    HTTP 5xx or a connection error -> ops.wait_unloaded, then one retry (same prompt and seed), else `infra_error` with the cause;
+    HTTP 5xx, a connection error, or an HTTP 200 that carries "error" or an empty response with done not true (ruling 4.6) ->
+    ops.wait_unloaded, then one retry (same prompt and seed), else `infra_error` with the cause;
     when wait_unloaded does not confirm the model is unloaded there is no retry (its own contract: never load on top of it);
     an HTTP 4xx, a refusal of ollama_raw other than overflow, or an unreadable response -> `infra_error`, no retry;
-    ollama_raw's context_overflow -> `context_overflow`, no retry;
-    thesis_change with no prior run -> `not_applicable_no_prior`, not sent.
+    ollama_raw's context_overflow, or the POST-CHECK prompt_eval_count + eval_count >= num_ctx - 1 (or a reply without
+    prompt_eval_count, which cannot be checked) -> `context_overflow`, no retry;
+    thesis_change with no prior run -> `not_applicable_no_prior`, not sent; with a prior run whose records do not recompute ->
+    `infra_error`; with a prior run that has neither growth_thesis nor risks ok, or no supported claim in them to compare ->
+    `prior_unusable` (ruling 4.4), not sent. Only the prior's supported claims are points (ruling 3.4); a claim naming another point is
+    a shape error and the points no claim names are recorded as `points_not_addressed` (ruling 4.3).
 
 RUN STATUS: `complete` when every applicable task is `ok`; `failed` when none is; otherwise `analysis_incomplete` with
-`incomplete_tasks`. `run()` never raises once the run directory exists: an unexpected error finishes the run as `failed` with the cause.
-A precondition that fails before that (an unreadable or wrong packet, a bad option) raises RunRefused and writes nothing. A process
+`incomplete_tasks` (`prior_unusable` is applicable and not ok). analysis.json, the ledger line and the result carry `support_summary`
+{claims, supported, unsupported} over every stored claim (ruling 4.1), so a `complete` run whose claims are all unsupported is visible.
+`run()` never raises once the run directory exists: an unexpected error finishes the run as `failed` with the cause.
+A precondition that fails before that raises RunRefused and writes nothing: an unreadable or wrong packet, a bad option, another model
+resident on the Ollama server per /api/ps (`gpu_busy`) or /api/ps unreadable (`gpu_state_unreadable`) (ruling 6.3), or /api/show
+not giving the model's parameters (`model_show_failed`), which the manifest records as the sampling in force (ruling 6.4). A process
 crash leaves `status: "running"` and no `finished_at`; read_ledger reports it as `crashed`.
+
+THE LEDGER (ruling 4.5). find_prior reads read_ledger, so a finished run whose ledger line is missing (a crash between the manifest and
+the ledger) is still found. A torn LAST line of ledger.jsonl (a crashed append) is skipped by the readers and reported by read_ledger
+as a `torn_ledger_line` row; a line that does not parse anywhere else raises. While the last line is torn, a run does not append its
+line (that would bury the torn line mid-file): the manifest records `ledger_not_appended` and read_ledger lists the run from its
+directory.
 
 RECORDS under M3M_DIR (cache/m3m of this repository): runs/<run_id>/ with packet.json, manifest.json, prompts/<task>.txt (and
 <task>_retry.txt for a malformed retry), raw/<task>_<attempt>.json (the reply with its thinking, or the error), analysis.json and
@@ -56,14 +74,15 @@ from qwen_c import contract, tasks  # noqa: E402
 M3M_DIR = ROOT / "cache" / "m3m"
 MODEL = "rs2-analyst-deep-mtp5-v33"          # config.json depth_model at r26-harness 481d0cf: the Qwen v33 tag
 PACKET_CONTRACT = "m3m.packet.v1"
-NUM_CTX = 65536
+NUM_CTX = 98304                               # ruling 4.2: the value rs2 already runs on this card
+CHARS_PER_TOKEN = 2.5                         # ruling 4.2: the preflight's estimate
 NUM_PREDICT = 12288
 THINK = "medium"
 SEED_BASE = 1000
 RETRY_SEED_OFFSET = 50000
 TASK_TIMEOUT_S = 1800
 KIS_HALT_STATE = "not_resolvable_in_rs2"
-STATUSES = ("ok", "malformed", "timeout", "infra_error", "context_overflow", "not_applicable_no_prior")
+STATUSES = ("ok", "malformed", "timeout", "infra_error", "context_overflow", "not_applicable_no_prior", "prior_unusable")
 
 
 class RunRefused(Exception):
@@ -191,35 +210,100 @@ def call(body, url, timeout):
         return "infra_fatal", None, f"{type(e).__name__}: {e}"
 
 
+def _int(x):
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def reply_problem(resp, num_ctx):
+    """(kind, detail) for a reply that must not be read as the model's answer, else None. In order: an HTTP 200 carrying "error", or
+    an empty response with done not true, is infra_retry (ruling 4.6); prompt_eval_count + eval_count >= num_ctx - 1, or no
+    prompt_eval_count to check, is context_overflow (ruling 4.2: Ollama cuts the front of the prompt before evaluating it)."""
+    resp = resp or {}
+    if resp.get("error"):
+        return "infra_retry", f"HTTP 200 with an error: {str(resp['error'])[:2000]}"
+    msg = resp.get("message") or {}
+    if not msg.get("content") and not msg.get("thinking") and not msg.get("tool_calls") and resp.get("done") is not True:
+        return "infra_retry", f"HTTP 200 with an empty response and done {resp.get('done')!r}"
+    n, g = resp.get("prompt_eval_count"), resp.get("eval_count")
+    if not _int(n):
+        return "context_overflow", f"post-check: the reply has no prompt_eval_count ({n!r}), so a truncated prompt cannot be ruled out"
+    used = n + (g if _int(g) and g > 0 else 0)
+    if used >= num_ctx - 1:
+        return "context_overflow", (f"post-check: prompt_eval_count {n} + eval_count {g} = {used} >= num_ctx - 1 = {num_ctx - 1}: "
+                                    f"the front of the prompt may have been truncated")
+    return None
+
+
 # ---------------------------------------------------------------- the prior run (thesis_change)
 
-def _read_jsonl(path):
+def _read_jsonl(path, problems=None):
+    """The rows (objects) of a JSON-lines file. A LAST non-blank line that is not a JSON object (a torn append) is skipped and recorded
+    in `problems` as {"file", "line", "detail"}; such a line anywhere else raises ValueError."""
     rows = []
-    if Path(path).exists():
-        for line in Path(path).read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                rows.append(json.loads(line))
+    if not Path(path).exists():
+        return rows
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    last = max((i for i, s in enumerate(lines) if s.strip()), default=-1)
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                raise ValueError(f"line {i + 1} is a {type(row).__name__}, not an object")
+        except ValueError as e:
+            if i != last:
+                raise ValueError(f"{path}: line {i + 1} of {len(lines)} is torn or not an object: {e}") from e
+            if problems is not None:
+                problems.append({"file": str(path), "line": i + 1, "detail": f"torn last line skipped: {line[:200]!r}"})
+            continue
+        rows.append(row)
     return rows
 
 
+def _ledger_tail(path):
+    """"ok", "needs_newline" (the last line is whole but has no newline) or "torn" (the last line is not a JSON object)."""
+    p = Path(path)
+    data = p.read_bytes() if p.exists() else b""
+    if not data.strip():
+        return "ok"
+    tail = data.decode("utf-8", "replace").strip().splitlines()[-1]
+    try:
+        if not isinstance(json.loads(tail), dict):
+            return "torn"
+    except ValueError:
+        return "torn"
+    return "ok" if data.endswith(b"\n") else "needs_newline"
+
+
 def find_prior(root, ticker, T):
-    """(prior, problem). The prior run is the newest finished run (complete or analysis_incomplete) in the ledger for this ticker with a
-    decision time before T (the last line wins among equal times); an older run is never used in its place. prior is {run_id,
-    decision_time_utc, growth_thesis, risks, tasks_used, manifest_sha256, analysis_sha256} or None. problem is None or {"kind", "detail"}:
-    kind "unverifiable" when its records do not recompute or cannot be read (thesis_change becomes infra_error), "no_ok_tasks" when
-    neither its growth_thesis nor its risks is ok (thesis_change becomes not_applicable_no_prior)."""
+    """(prior, problem). The prior run is the newest finished run (complete or analysis_incomplete) in read_ledger (the ledger's lines,
+    then the finished runs whose line is missing) for this ticker with a decision time before T (the later row wins among equal
+    times); an older run is never used in its place. prior is {run_id, decision_time_utc, growth_thesis, risks, tasks_used,
+    tasks_missing, ledger_missing, manifest_sha256, analysis_sha256} or None. problem is None or {"kind", "detail"}: kind
+    "unverifiable" when its records do not recompute or cannot be read, or a run without a ledger line has no finished_at
+    (thesis_change becomes infra_error), "no_ok_tasks" when neither its growth_thesis nor its risks is ok (thesis_change becomes
+    prior_unusable)."""
     t = _parse_t(T)
-    rows = [(i, r) for i, r in enumerate(_read_jsonl(Path(root) / "ledger.jsonl"))
+    rows = [(i, r) for i, r in enumerate(read_ledger(root))
             if r.get("ticker") == ticker and r.get("status") in ("complete", "analysis_incomplete")
             and _parse_t(r.get("T")) is not None and t is not None and _parse_t(r.get("T")) < t]
     if not rows:
         return None, None
     _, r = max(rows, key=lambda x: (_parse_t(x[1]["T"]), x[0]))
     d = Path(root) / "runs" / r["run_id"]
+    missing_line = bool(r.get("ledger_missing"))
     try:
-        if sha256_file(d / "manifest.json") != r.get("manifest_sha256"):
+        man_bytes = (d / "manifest.json").read_bytes()
+        if missing_line:
+            man_sha = sha256_bytes(man_bytes)              # no ledger line to check it against: the manifest as found
+        elif sha256_bytes(man_bytes) != r.get("manifest_sha256"):
             return None, {"kind": "unverifiable", "detail": f"prior run {r['run_id']}: manifest.json does not match its ledger sha256"}
-        man = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+        else:
+            man_sha = r["manifest_sha256"]
+        man = json.loads(man_bytes.decode("utf-8"))
+        if missing_line and not man.get("finished_at"):
+            return None, {"kind": "unverifiable", "detail": f"prior run {r['run_id']}: no ledger line and no finished_at"}
         if sha256_file(d / "analysis.json") != man.get("analysis_sha256"):
             return None, {"kind": "unverifiable", "detail": f"prior run {r['run_id']}: analysis.json does not match its manifest sha256"}
         an = json.loads((d / "analysis.json").read_text(encoding="utf-8"))
@@ -229,7 +313,9 @@ def find_prior(root, ticker, T):
     if not used:
         return None, {"kind": "no_ok_tasks", "detail": f"prior run {r['run_id']}: neither growth_thesis nor risks is ok"}
     prior = {"run_id": r["run_id"], "decision_time_utc": an.get("decision_time_utc"), "tasks_used": used,
-             "manifest_sha256": r["manifest_sha256"], "analysis_sha256": man["analysis_sha256"]}
+             "tasks_missing": {k: (an.get("tasks") or {}).get(k, {}).get("status", "absent")
+                               for k in ("growth_thesis", "risks") if k not in used},
+             "ledger_missing": missing_line, "manifest_sha256": man_sha, "analysis_sha256": man["analysis_sha256"]}
     for k in ("growth_thesis", "risks"):
         prior[k] = an["tasks"][k]["claims"] if k in used else []
     return prior, None
@@ -264,6 +350,38 @@ def load_packet(packet_path):
     return packet, src
 
 
+# ---------------------------------------------------------------- the server preflights (rulings 6.3 and 6.4)
+
+def gpu_preflight(url):
+    """The model names /api/ps lists; raises RunRefused when any model other than MODEL is resident (`gpu_busy`) or the list cannot
+    be read (`gpu_state_unreadable`). MODEL itself may be resident."""
+    loaded = ops.ollama_loaded(url)
+    if loaded is None:
+        raise RunRefused("gpu_state_unreadable: /api/ps could not be read, so no other model can be ruled out")
+    other = [n for n in loaded if n not in (MODEL, MODEL + ":latest")]
+    if other:
+        raise RunRefused(f"gpu_busy: another model is loaded on the Ollama server: {', '.join(map(str, other))}")
+    return loaded
+
+
+def model_show(url):
+    """{parameters, details, modified_at, show_sha256} of MODEL from /api/show: the Modelfile's parameters (the sampling in force,
+    since the runner sets none). Raises RunRefused (`model_show_failed`) when it cannot be read or holds no parameters."""
+    req = urllib.request.Request(url.rsplit("/api/", 1)[0] + "/api/show", data=json.dumps({"model": MODEL}).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = r.read()
+        show = json.loads(data.decode("utf-8"))
+    except Exception as e:  # noqa: BLE001 - any failure is the same refusal, with its cause
+        raise RunRefused(f"model_show_failed: {type(e).__name__}: {e}") from e
+    params = show.get("parameters") if isinstance(show, dict) else None
+    if not isinstance(params, str) or not params.strip():
+        raise RunRefused("model_show_failed: /api/show gives no parameters, so the sampling in force cannot be recorded")
+    return {"parameters": params, "details": show.get("details"), "modified_at": show.get("modified_at"),
+            "show_sha256": sha256_bytes(data)}
+
+
 def _new_run_dir(root, ticker, T, packet_sha):
     runs = Path(root) / "runs"
     runs.mkdir(parents=True, exist_ok=True)
@@ -279,13 +397,14 @@ def _new_run_dir(root, ticker, T, packet_sha):
 
 # ---------------------------------------------------------------- one task
 
-def _run_task(task, idx, packet, prior, opts, url, run_dir, man_prompts):
-    """(analysis record, manifest record) of one task."""
+def _run_task(task, idx, packet, prior, opts, url, run_dir, man_prompts, point_ids=None):
+    """(analysis record, manifest record) of one task. `point_ids` are the earlier point ids of thesis_change."""
     seed0 = opts["seed"] + idx
     attempts, retry, seed = [], False, seed0
     retried_malformed = retried_infra = False
     t_task = time.monotonic()
     last_check = None
+    extra = (point_ids,) if task == "thesis_change" else ()
     while True:
         n = len(attempts) + 1
         msgs = tasks.messages(task, packet, prior, retry=retry)
@@ -295,19 +414,29 @@ def _run_task(task, idx, packet, prior, opts, url, run_dir, man_prompts):
             man_prompts[pname] = _write_json_text(run_dir / "prompts" / pname, prompt)
         body = {"model": MODEL, "stream": False, "think": opts["think"], "messages": msgs,
                 "options": {"num_ctx": opts["num_ctx"], "num_predict": opts["num_predict"], "seed": seed}}
-        t0 = time.monotonic()
-        with turn_log.logging_to(run_dir / "turns", task):
-            kind, resp, detail = call(body, url, TASK_TIMEOUT_S)
-        secs = round(time.monotonic() - t0, 3)
+        estimate = len(prompt) / CHARS_PER_TOKEN + opts["num_predict"]
+        if estimate > opts["num_ctx"]:
+            kind, resp, secs = "context_overflow", None, 0.0
+            detail = (f"preflight: {len(prompt)} prompt characters / {CHARS_PER_TOKEN} + num_predict {opts['num_predict']} = "
+                      f"{estimate:.0f} > num_ctx {opts['num_ctx']}: not sent")
+        else:
+            t0 = time.monotonic()
+            with turn_log.logging_to(run_dir / "turns", task):
+                kind, resp, detail = call(body, url, TASK_TIMEOUT_S)
+            secs = round(time.monotonic() - t0, 3)
+            if kind == "reply":
+                kind, detail = reply_problem(resp, opts["num_ctx"]) or (kind, detail)
         outcome = kind
         if kind == "reply":
             obj, perr = parse_reply(((resp or {}).get("message") or {}).get("content"))
-            last_check = contract.check_task(task, obj, packet) if perr is None else None
+            last_check = contract.check_task(task, obj, packet, *extra) if perr is None else None
             if last_check is not None and last_check["status"] == "ok":
                 outcome = "ok"
             else:
                 outcome = "malformed"
                 detail = perr or "; ".join(last_check["shape_errors"])
+                if (resp or {}).get("done_reason") == "length":
+                    detail += f"; done_reason is length: the reply was cut at num_predict {opts['num_predict']}"
         raw = {"task": task, "attempt": n, "seed": seed, "retry_line": retry, "prompt_file": f"prompts/{pname}",
                "outcome": outcome, "detail": detail, "seconds": secs, "response": resp}
         raw_name = f"{task}_{n}.json"
@@ -331,7 +460,8 @@ def _run_task(task, idx, packet, prior, opts, url, run_dir, man_prompts):
     status = {"ok": "ok", "malformed": "malformed", "timeout": "timeout", "context_overflow": "context_overflow"}.get(outcome, "infra_error")
     rec = {"status": status, "attempts": len(attempts)}
     if status == "ok":
-        rec.update({k: last_check[k] for k in ("claims", "unknowns", "dropped_fields", "support_counts")})
+        rec.update({k: last_check[k] for k in ("claims", "unknowns", "dropped_fields", "support_counts", "points_not_addressed")
+                    if k in last_check})
     else:
         rec.update({"cause": detail, "claims": [], "unknowns": []})
         if status == "malformed" and last_check is not None:
@@ -342,6 +472,8 @@ def _run_task(task, idx, packet, prior, opts, url, run_dir, man_prompts):
         mrec["cause"] = detail
     if rec.get("dropped_fields"):
         mrec["dropped_fields"] = rec["dropped_fields"]
+    if "points_not_addressed" in rec:
+        mrec["points_not_addressed"] = rec["points_not_addressed"]
     return rec, mrec
 
 
@@ -362,9 +494,12 @@ def _check_opts(num_ctx, num_predict, think, seed):
 
 
 def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predict=NUM_PREDICT, think=THINK, seed=SEED_BASE):
-    """One run over one packet. Returns {run_id, run_dir, status, incomplete_tasks, manifest_sha256}."""
+    """One run over one packet. Returns {run_id, run_dir, status, incomplete_tasks, support_summary, manifest_sha256,
+    ledger_appended}."""
     _check_opts(num_ctx, num_predict, think, seed)
     packet, src = load_packet(packet_path)
+    loaded = gpu_preflight(url)
+    show = model_show(url)
     root = Path(M3M_DIR)
     ticker, T = packet["ticker"], packet["decision_time_utc"]
     packet_sha = sha256_bytes(canonical_bytes(packet))
@@ -377,14 +512,17 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
         "builder_version": packet.get("builder_version"), "run_id": run_id, "ticker": ticker, "decision_time_utc": T,
         "packet": {"file": "packet.json", "source_path": str(packet_path), "file_sha256": sha256_bytes(src), "packet_sha256": packet_sha,
                    "file_is_canonical": src == canonical_bytes(packet)},
-        "model": {**llm_provider.ollama_serving(MODEL), "provider": "ollama_raw", "tag": MODEL},
+        "model": {**llm_provider.ollama_serving(MODEL), "provider": "ollama_raw", "tag": MODEL, "show": show},
+        "gpu_preflight": {"loaded": loaded},
         "template_sha256": ollama_raw.TEMPLATE_SHA256, "system_sha256": sha256_bytes(tasks.SYSTEM.encode("utf-8")),
         "options": {**opts, "seeds": {t: seed + i for i, t in enumerate(tasks.TASKS)}, "retry_seed_offset": RETRY_SEED_OFFSET,
-                    "task_timeout_s": TASK_TIMEOUT_S, "sampling": "the Modelfile's defaults (not overridden)",
+                    "task_timeout_s": TASK_TIMEOUT_S, "chars_per_token": CHARS_PER_TOKEN,
+                    "sampling": "the Modelfile's defaults (not overridden): model.show.parameters",
                     "differs_from_defaults": sorted(k for k in opts if opts[k] != defaults[k])},
         "qwen_c": {"git_commit": commit, "dirty": dirty}, "kis_halt": KIS_HALT_STATE,
         "started_at": now_utc(), "status": "running", "prompts": {}, "tasks": {},
     }
+    results = {}
     try:
         man["ollama_version"] = ollama_raw.ollama_version(url.rsplit("/api/", 1)[0])
         _write_bytes(run_dir / "packet.json", src)
@@ -392,22 +530,27 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
         if sha256_bytes(back) != sha256_bytes(src) or sha256_bytes(canonical_bytes(json.loads(back.decode("utf-8")))) != packet_sha:
             raise RuntimeError("packet.json copy does not recompute")
         prior, prior_problem = find_prior(root, ticker, T)
-        man["prior_run"] = ({k: prior[k] for k in ("run_id", "decision_time_utc", "tasks_used", "manifest_sha256", "analysis_sha256")}
-                            if prior else None)
+        point_ids = [p for p, _ in tasks.prior_points(prior)] if prior else []
+        if prior and not point_ids:                     # nothing to compare: the task is not sent and is not ok
+            prior_problem = {"kind": "no_supported_points",
+                             "detail": f"prior run {prior['run_id']}: no supported growth_thesis or risks claim to compare"}
+        man["prior_run"] = ({**{k: prior[k] for k in ("run_id", "decision_time_utc", "tasks_used", "tasks_missing", "ledger_missing",
+                                                      "manifest_sha256", "analysis_sha256")},
+                             "point_ids": point_ids, "points_left_out": tasks.prior_left_out(prior)} if prior else None)
         if prior_problem:
             man["prior_run_problem"] = prior_problem
         _write_json(run_dir / "manifest.json", man)
-        results = {}
         for idx, task in enumerate(tasks.TASKS):
-            if task == "thesis_change" and prior is None:
-                st = "infra_error" if prior_problem and prior_problem["kind"] == "unverifiable" else "not_applicable_no_prior"
+            if task == "thesis_change" and (prior is None or prior_problem):
+                st = {None: "not_applicable_no_prior", "unverifiable": "infra_error"}.get(
+                    prior_problem and prior_problem["kind"], "prior_unusable")
                 cause = prior_problem["detail"] if prior_problem else "no prior run for this ticker before T"
                 results[task] = ({"status": st, "attempts": 0, "cause": cause, "claims": [], "unknowns": []},
                                  {"status": st, "seed": seed + idx, "seconds": 0.0, "attempts": [], "cause": cause})
                 man["tasks"][task] = results[task][1]
                 continue
             try:
-                results[task] = _run_task(task, idx, packet, prior, opts, url, run_dir, man["prompts"])
+                results[task] = _run_task(task, idx, packet, prior, opts, url, run_dir, man["prompts"], point_ids)
             except Exception as e:  # noqa: BLE001 - a task's own failure is a status, never a raise past run()
                 cause = f"runner exception: {type(e).__name__}: {e}"
                 results[task] = ({"status": "infra_error", "attempts": 0, "cause": cause, "claims": [], "unknowns": []},
@@ -425,6 +568,7 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
         analysis = {
             "contract": contract.CONTRACT, "prompt_version": tasks.PROMPT_VERSION, "run_id": run_id, "ticker": ticker,
             "decision_time_utc": T, "packet_sha256": packet_sha, "status": status, "incomplete_tasks": not_ok,
+            "support_summary": support_summary(results),
             "note": "A claim whose support is not 'supported' is not a verified value; it stays visible with its reason.",
             "tasks": {t: results[t][0] for t in tasks.TASKS},
         }
@@ -434,29 +578,45 @@ def run(packet_path, *, url=llm_provider.OLLAMA_URL, num_ctx=NUM_CTX, num_predic
         status = man["status"] = "failed"
         man["cause"] = f"runner exception: {type(e).__name__}: {e}"
         man["incomplete_tasks"] = {t: man["tasks"].get(t, {}).get("status", "not_run") for t in tasks.TASKS}
+    summary = support_summary(results)
     turns = run_dir / "turns"
     man["turns"] = {p.relative_to(run_dir).as_posix(): sha256_file(p) for p in sorted(turns.glob("*.json"))} if turns.is_dir() else {}
+    ledger = root / "ledger.jsonl"
+    tail = _ledger_tail(ledger)
+    if tail == "torn":
+        man["ledger_not_appended"] = "the last line of ledger.jsonl is torn: appending would bury it mid-file; repair it by hand"
     man["finished_at"] = now_utc()
     man_sha = _write_json(run_dir / "manifest.json", man)
-    line = {"run_id": run_id, "ticker": ticker, "T": T, "packet_sha256": packet_sha, "status": status, "manifest_sha256": man_sha}
-    root.mkdir(parents=True, exist_ok=True)
-    with open(root / "ledger.jsonl", "a", encoding="utf-8") as f:
-        f.write(json.dumps(line, ensure_ascii=False) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
-    return {"run_id": run_id, "run_dir": str(run_dir), "status": status, "incomplete_tasks": man.get("incomplete_tasks", {}),
+    line = {"run_id": run_id, "ticker": ticker, "T": T, "packet_sha256": packet_sha, "status": status, "support_summary": summary,
             "manifest_sha256": man_sha}
+    if tail != "torn":
+        root.mkdir(parents=True, exist_ok=True)
+        with open(ledger, "a", encoding="utf-8") as f:
+            f.write(("\n" if tail == "needs_newline" else "") + json.dumps(line, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+    return {"run_id": run_id, "run_dir": str(run_dir), "status": status, "incomplete_tasks": man.get("incomplete_tasks", {}),
+            "support_summary": summary, "manifest_sha256": man_sha, "ledger_appended": tail != "torn"}
+
+
+def support_summary(results):
+    """{claims, supported, unsupported} over every stored claim of a run's task records (ruling 4.1)."""
+    claims = [c for rec, _ in results.values() for c in rec.get("claims") or []]
+    ok = sum(1 for c in claims if c.get("support") == contract.SUPPORTED)
+    return {"claims": len(claims), "supported": ok, "unsupported": len(claims) - ok}
 
 
 # ---------------------------------------------------------------- the ledger reader
 
 def read_ledger(root=None):
     """Every run: the ledger's lines, plus each run directory the ledger does not list, as `crashed` when its manifest is missing,
-    unreadable or still `running` with no `finished_at`, else with its manifest status and `ledger_missing: true`."""
+    unreadable or still `running` with no `finished_at`, else with its manifest status and `ledger_missing: true`. A torn last line
+    of the ledger is reported as a row {"run_id": None, "status": "torn_ledger_line", "line", "detail"} (ruling 4.5)."""
     root = Path(root or M3M_DIR)
-    rows = _read_jsonl(root / "ledger.jsonl")
+    problems = []
+    rows = _read_jsonl(root / "ledger.jsonl", problems)
     seen = {r.get("run_id") for r in rows}
-    out = list(rows)
+    out = list(rows) + [{"run_id": None, "status": "torn_ledger_line", "line": p["line"], "detail": p["detail"]} for p in problems]
     runs = root / "runs"
     for d in sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []:
         if d.name in seen:

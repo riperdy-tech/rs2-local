@@ -106,8 +106,9 @@
    "supported",
    "supported",
    "supported",
-   "supported"
-  ]
+   "number_not_found"
+  ],
+  "note": "ruling 1.1 (WO_M4): claim 7 lists a bare 310.5, and a bare figure matches only a bare figure, not $310.5 million"
  },
  {
   "name": "fabricated_quote",
@@ -304,9 +305,10 @@
   },
   "supports": [
    "number_not_listed",
-   "number_not_listed",
-   "number_not_listed"
-  ]
+   "number_not_found",
+   "number_not_found"
+  ],
+  "note": "WO_M4: claims 2 and 3 now fail first on number_not_found (a listed 2.5 billion has no currency, a listed 31.2 has no unit, and decorations must be equal); number_not_listed is still recorded for each"
  },
  {
   "name": "unknown_fact_id",
@@ -535,7 +537,10 @@
     }
    ],
    "unknowns": []
-  }
+  },
+  "point_ids": [
+   "G1"
+  ]
  },
  {
   "name": "thesis_change_ok",
@@ -562,6 +567,9 @@
   },
   "supports": [
    "supported"
+  ],
+  "point_ids": [
+   "G1"
   ]
  },
  {
@@ -662,8 +670,9 @@
   },
   "supports": [
    "supported",
-   "supported",
+   "number_not_found",
    "number_not_found"
-  ]
+  ],
+  "note": "ruling 1.1 (WO_M4): a bare 9.1 is not found in 9.1%"
  }
 ]

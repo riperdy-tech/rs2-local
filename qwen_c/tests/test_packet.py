@@ -1,6 +1,7 @@
 """packet: the input contract m3m.packet.v1 (SPEC §3, gate M-P4 negatives). Offline: a synthetic store and a throwaway git repository
 in tmp_path; the FilingSummary and the balance-sheet R report are trimmed real bytes of AMD's 10-Q 0000002488-26-000123."""
 import hashlib
+import importlib.metadata
 import json
 import os
 import subprocess
@@ -17,6 +18,7 @@ FIX = Path(__file__).resolve().parent / "fixtures"
 CIK = "0000000123"
 T = "2026-10-28T20:00:00Z"
 COMMIT_DATE = "2026-10-01T00:00:00+00:00"
+RUN_UPDATED = "2026-10-02T00:00:00Z"            # GitHub's end of the run that witnessed the commit (CROSS_CHECK_M 2.1)
 
 A10K = "0000000123-26-000010"
 AQ = "0000000123-26-000050"
@@ -99,8 +101,8 @@ def r_table(title, rows):
     return f"<html><body><table class=\"report\"><tr><th>{title}</th><th>Jun. 27, 2026</th></tr>{trs}</table></body></html>".encode()
 
 
-def submissions(extra=()):
-    rows = [  # newest first, as SEC lists them
+def submissions(extra=(), drop=()):
+    rows = [r for r in [  # newest first, as SEC lists them
         (ANEW, "8-K", "2026-10-28", "2026-10-28T12:00:00.000Z", "", "2.02,9.01", "anew.htm"),
         (A801, "8-K", "2026-10-20", "2026-10-20T14:00:00.000Z", "2026-10-20", "8.01,9.01", "e801.htm"),
         (A701, "8-K", "2026-10-01", "2026-10-01T14:00:00.000Z", "2026-10-01", "7.01,9.01", "e701.htm"),
@@ -109,7 +111,7 @@ def submissions(extra=()):
         (AQ, "10-Q", "2026-08-05", "2026-08-05T20:00:00.000Z", "2026-06-30", "", "tq-20260630.htm"),
         (AOLD, "8-K", "2026-05-01", "2026-05-01T14:00:00.000Z", "2026-05-01", "1.01", "old.htm"),
         (A10K, "10-K", "2026-02-20", "2026-02-20T21:00:00.000Z", "2025-12-31", "", "tk-20251231.htm"),
-    ] + list(extra)
+    ] + list(extra) if r[0] not in drop]
     keys = ("accessionNumber", "form", "filingDate", "acceptanceDateTime", "reportDate", "items", "primaryDocument")
     recent = {k: [r[i] for r in rows] for i, k in enumerate(keys)}
     return json.dumps({"cik": "123", "name": "Test Co", "filings": {"recent": recent, "files": []}}).encode()
@@ -150,8 +152,14 @@ def git(repo, *args, date=COMMIT_DATE):
 def make_repo(root, date=COMMIT_DATE):
     repo = Path(root)
     (repo / "public" / "data").mkdir(parents=True)
-    stocks = [{"symbol": "TEST", "name": "Test Co", "price": 12.5, "peRatio": 0, "metrics": {"netIncome": 0.0, "roic": 0.125, "dilution": 0,
-               "mScore": None, "quarterlyEps": [0.0, 0.1]}, "reasons": ["ok"]},
+    stocks = [{"symbol": "TEST", "name": "Test Co", "sector": "Industrials", "industry": "Widgets", "price": 12.5, "marketCap": 0,
+               "Last_Updated": "2026-09-30 16:47", "last_listed": "2026-09-30", "peRatio": 0,
+               "metrics": {"netIncome": 0.0, "roic": 0.125, "dilution": 0, "mScore": None, "quarterlyEps": [0.0, 0.1],
+                           "forwardEpsEstimate": 5.0875, "pegRatio": 1.6619115000000002},
+               "reverse": {"rev_mos": 85, "rev_band": "Watchlist", "rev_rank": 821,
+                           "rev_con": "G quality is shallow; v3.2 must verify capital and credit; PRICE_EXTENDED: current price 3.3x above 2yr low"},
+               "description": "Test Co owns 79 containerships and 38 dry bulk vessels.", "status": "Fail", "score": 70,
+               "reasons": ["ok"]},
               {"symbol": "NOCIK", "name": "No Cik Inc"}, {"symbol": "NOPROF", "name": "No Profile Inc"}, {"symbol": "MOV", "name": "Movado"}]
     factor = {"generated_at": "2026-09-30T00:00:00Z",
               "profiles": {"TEST": {"ticker": "TEST", "z_value": 0.0, "score_door1": 1.5, "nominated_doors": ["DOOR_1_COMPOUNDER"]},
@@ -170,8 +178,9 @@ def make_repo(root, date=COMMIT_DATE):
 def world(tmp_path):
     repo, commit = make_repo(tmp_path / "repo")
     store = make_store(tmp_path / "store")
-    record = [{"run_id": "r-fail", "verdict": "PASS", "pair": "FAIL", "output_commit": commit},
-              {"run_id": "r-ok", "verdict": "PASS", "pair": "PASS", "output_commit": commit}]
+    record = [{"run_id": "r-fail", "verdict": "PASS", "pair": "FAIL", "output_commit": commit, "run_updated_at": RUN_UPDATED},
+              {"run_id": "r-ok", "workflow": "Post-Close Price Refresh", "run_created_at": "2026-10-01T23:30:00Z", "run_updated_at": RUN_UPDATED,
+               "verdict": "PASS", "failed_checks": [], "output_commit": commit, "pair": "PASS", "pair_detail": {"stocks": 4}}]
     return {"repo": repo, "commit": commit, "store": store, "record": record, "tmp": tmp_path}
 
 
@@ -231,7 +240,10 @@ def test_full_build_order_kinds_and_sections(world):
     by = {e["fact_id"]: e for e in ev}
     assert pk["contract"] == "m3m.packet.v1" and pk["cik"] == CIK and pk["decision_time_utc"] == T
     assert pk["sec_policy"] == "sec_acceptance_next_full_xnys_session_late_after_1730_plus_one_v1"
-    assert pk["screener"]["commit"] == world["commit"] and pk["screener"]["verified_run_id"] == "r-ok"
+    assert pk["screener"]["commit"] == world["commit"]
+    assert pk["screener"]["verified_row"] == {"run_id": "r-ok", "verdict": "PASS", "pair": "PASS", "output_commit": world["commit"],
+                                              "run_updated_at": RUN_UPDATED}          # ruling 5.1: the row as found
+    assert pk["builder_version"] == "m3m.packet.builder.v3"
     assert pk["screener"]["stocks_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.STOCKS_PATH}")
     assert pk["screener"]["factor_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.FACTOR_PATH}")
     assert "Total assets | 84,464 | 76,926" in by["F1"]["text"]                       # the real R4 report, flattened
@@ -244,7 +256,9 @@ def test_full_build_order_kinds_and_sections(world):
     assert by["P4"]["text"].startswith("ITEM 2. MANAGEMENT'S DISCUSSION") and "QMDNA_START" in by["P4"]["text"]
     assert by["P5"]["source"]["accession"] == AREL and "RELEASE_START" in by["P5"]["text"]
     assert [by["P6"]["source"]["accession"], by["P7"]["source"]["accession"]] == [A801, A502]    # newest first; 7.01 and >120 d out
-    assert by["P6"]["text"].startswith("E801_TEXT") and by["P7"]["text"].startswith("Item 5.02")   # exhibit; 8-K body from its item
+    assert by["P6"]["text"].startswith("Item 8.01 Other Events.\nE801_TEXT")      # 8-K body from its item, then EX-99.1 (ruling 6.1b)
+    assert by["P7"]["text"].startswith("Item 5.02 Departure of Directors.\nE502_TEXT") and "FORM 8-K" not in by["P7"]["text"]
+    assert by["P6"]["title"] == "8-K Items 8.01, 9.01 (8-K body, EX-99.1)" and by["P7"]["title"] == "8-K Item 5.02 (8-K body)"
     assert by["P1"]["effective_at"] == "2026-02-24T14:30:00Z"            # Fri 21:00 ET (later reading) -> Mon, +1 for after 17:30 -> Tue
     assert by["P1"]["accepted_raw"] == "2026-02-20T21:00:00.000Z" and by["P1"]["period"] == "2025-12-31" and by["P1"]["form"] == "10-K"
     raw = documents()[f"{base(A10K)}/tk-20251231.htm"]
@@ -256,14 +270,30 @@ def test_full_build_order_kinds_and_sections(world):
                                "effective_at": "2026-10-29T13:30:00Z"}]
 
 
-def test_s0_prints_zero_as_zero_and_keeps_both_records(world):
-    s0 = build(world)["evidence"][0]
-    lines = s0["text"].split("\n")
-    for want in ("peRatio: 0", "metrics.netIncome: 0", "metrics.dilution: 0", "metrics.mScore: null", "metrics.roic: 0.125",
-                 "metrics.quarterlyEps: [0, 0.1]", "z_value: 0", "score_door1: 1.5", "nominated_doors: [DOOR_1_COMPOUNDER]"):
-        assert want in lines
-    assert s0["source"]["git_commit"] == world["commit"] and s0["source"]["path"] == [packet.STOCKS_PATH, packet.FACTOR_PATH]
+def test_s0_is_the_identity_and_market_whitelist_only(world):
+    # CROSS_CHECK_M 3.1: the reviewer's failing input is the screener's own opinions (reverse.*, doors, ranks, bands, scores, the rev_con
+    # narrative, forward consensus), placeholder zeros of derived metrics and the Yahoo description, all printed into S0
+    pk = build(world)
+    s0 = pk["evidence"][0]
+    assert s0["text"].split("\n") == [
+        f"stocks.json record ({packet.STOCKS_PATH} at {world['commit']}), identity and market fields only:",
+        "symbol: TEST", "name: Test Co", "sector: Industrials", "industry: Widgets", "country: absent", "price: 12.5", "marketCap: 0",
+        "price as-of (Last_Updated, zone not stated): 2026-09-30 16:47", "last_listed: 2026-09-30"]
+    for banned in ("rev_", "Watchlist", "G quality", "PRICE_EXTENDED", "nominated", "DOOR_1", "score", "status", "Fail", "peRatio",
+                   "netIncome", "forwardEps", "pegRatio", "roic", "containerships", "description", "z_value", "reasons"):
+        assert banned not in s0["text"]
+    assert s0["source"] == {"git_commit": world["commit"], "path": packet.STOCKS_PATH}
+    stocks_blob = subprocess.run(["git", "-C", str(world["repo"]), "show", f"HEAD:{packet.STOCKS_PATH}"], capture_output=True).stdout
+    assert s0["raw_sha256"] == hashlib.sha256(stocks_blob).hexdigest()
+    assert s0["title"] == "Screener row: identity and market fields of the stocks.json record"
+    assert pk["screener"]["factor_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.FACTOR_PATH}")  # pinned, for audit only
     assert "NOCIK" not in s0["text"]
+
+
+def test_s0_lines_print_zero_as_zero_null_as_null_and_a_missing_field_as_absent():
+    assert packet.s0_lines({"symbol": "X", "price": 0.0, "marketCap": None}) == [
+        "symbol: X", "name: absent", "sector: absent", "industry: absent", "country: absent", "price: 0", "marketCap: null",
+        "price as-of (Last_Updated, zone not stated): absent", "last_listed: absent"]
 
 
 def test_build_is_deterministic_and_saved_bytes_are_canonical(world):
@@ -335,14 +365,15 @@ def test_an_unverified_screener_commit_is_refused(world, rows):
 
 def test_a_ten_hex_prefix_on_a_pass_row_verifies_and_a_short_commit_resolves(world):
     c = world["commit"]
-    pk = build(world, commit=c[:12].upper(), record=[{"verdict": "PASS", "pair": "PASS", "output_commit": c[:10], "run_id": "x"}])
-    assert pk["screener"]["commit"] == c and pk["screener"]["verified_run_id"] == "x"
+    pk = build(world, commit=c[:12].upper(), record=[{"verdict": "PASS", "pair": "PASS", "output_commit": c[:10], "run_id": "x",
+                                                     "run_updated_at": RUN_UPDATED}])
+    assert pk["screener"]["commit"] == c and pk["screener"]["verified_row"]["run_id"] == "x"
 
 
 def test_a_record_read_from_a_file_path(world):
     p = world["tmp"] / "check.json"
     p.write_text(json.dumps(world["record"]), encoding="utf-8")
-    assert build(world, record=str(p))["screener"]["verified_run_id"] == "r-ok"
+    assert build(world, record=str(p))["screener"]["verified_row"]["run_id"] == "r-ok"
 
 
 @pytest.mark.parametrize("ticker,code", [("ZZZZ", "ticker_not_in_stocks"), ("NOCIK", "no_cik"),
@@ -354,8 +385,9 @@ def test_screener_refusals(world, ticker, code):
 
 
 def test_a_screener_commit_dated_after_T_is_refused(world):
+    record = [dict(world["record"][1], run_updated_at="2026-09-30T00:00:00Z")]     # the run-time check passes; the commit date does not
     with pytest.raises(packet.PacketRefused) as e:
-        build(world, T="2026-09-30T23:59:59Z")
+        build(world, T="2026-09-30T23:59:59Z", record=record)
     assert e.value.code == "screener_commit_after_T"
 
 
@@ -504,3 +536,263 @@ def test_a_short_last_section_after_a_contents_entry_is_kept():
     assert packet.find_section(toc + body, *rf) == (4, 6)
     assert packet.find_section(body, *rf) is None                                  # one heading only: it may be the contents entry
     assert packet.find_section(toc + ["Item 1A. Risk Factors", "None.", "Item 2. X"], *rf) is None   # under SHORT_MIN_CHARS
+
+
+# ---- CROSS_CHECK_M rulings (WO_M4, builder A2) -------------------------------------------------------------------------------------
+
+def with_docs(w, name, extra_rows=(), drop=(), docs_extra=None):
+    """A store of documents() plus extra submissions rows and documents, minus dropped rows."""
+    docs = documents()
+    docs[SUBS_URL] = submissions(extra=extra_rows, drop=drop)
+    docs.update(docs_extra or {})
+    return make_store(w["tmp"] / name, docs)
+
+
+# 2.1: the run-time check against GitHub's run_updated_at
+
+@pytest.mark.parametrize("value,code", [
+    ("<absent>", "verified_run_time_missing"), (None, "verified_run_time_missing"), ("", "verified_run_time_missing"),
+    ("2026-10-02T00:00:00", "verified_run_time_missing"),            # no zone: not readable as a time
+    ("not a time", "verified_run_time_missing"),
+    ("2026-10-28T20:00:01Z", "verified_run_after_T"),                 # one second after T
+])
+def test_a_verified_row_without_a_run_end_by_T_is_refused(world, value, code):
+    row = dict(world["record"][1])
+    if value == "<absent>":
+        row.pop("run_updated_at")
+    else:
+        row["run_updated_at"] = value
+    with pytest.raises(packet.PacketRefused) as e:
+        build(world, record=[row])
+    assert e.value.code == code
+
+
+def test_a_run_that_ended_exactly_at_T_is_accepted(world):
+    pk = build(world, record=[dict(world["record"][1], run_updated_at=T)])
+    assert pk["screener"]["verified_row"]["run_updated_at"] == T
+
+
+# 5.1: the verified row, as found, is pinned in the header (the reviewer's input: two records for one commit with other run ids)
+
+def test_the_real_check_new_runs_row_shape_is_pinned_and_other_runs_are_visible(world):
+    real = {"run_id": "40796224964", "workflow": "Post-Close Price Refresh", "runner": "github_hosted",
+            "run_created_at": "2026-10-01T00:46:21Z", "run_updated_at": "2026-10-01T01:13:38Z", "verdict": "PASS", "failed_checks": [],
+            "output_commit": world["commit"], "candidates": {"PIT_PROSPECTIVE": 160}, "momentum": ["PIT_VALID"], "input_issues": [],
+            "pair": "PASS", "pair_detail": {"stocks": 7012, "reverse": 7012, "exact_pairs": 7012}}
+    a = build(world, record=[real])
+    b = build(world, record=[dict(real, run_id="40799999999")])
+    assert a["screener"]["verified_row"] == {"run_id": "40796224964", "verdict": "PASS", "pair": "PASS", "output_commit": world["commit"],
+                                             "run_updated_at": "2026-10-01T01:13:38Z"}
+    assert b["screener"]["verified_row"]["run_id"] == "40799999999" and a["evidence"] == b["evidence"]
+    assert packet.packet_sha256(a) != packet.packet_sha256(b)
+
+
+# 2.3: T older than the oldest filings.recent row
+
+@pytest.fixture
+def early_world(tmp_path):
+    repo, commit = make_repo(tmp_path / "repo", date="2026-01-01T00:00:00+00:00")
+    record = [{"run_id": "r", "verdict": "PASS", "pair": "PASS", "output_commit": commit, "run_updated_at": "2026-01-02T00:00:00Z"}]
+    return {"repo": repo, "commit": commit, "store": make_store(tmp_path / "store"), "record": record, "tmp": tmp_path}
+
+
+def test_T_older_than_the_oldest_filings_recent_row_is_refused(early_world):
+    oldest = packet._z(packet.accepted_at("2026-02-20T21:00:00.000Z"))         # the 10-K, the oldest row: 2026-02-21T02:00:00Z
+    with pytest.raises(packet.PacketRefused) as e:
+        build(early_world, T="2026-02-21T01:59:59Z")
+    assert e.value.code == "T_before_filings_recent" and oldest in str(e.value)
+    pk = build(early_world, T=oldest)                                            # at the oldest row: built (nothing is effective yet)
+    assert [e["kind"] for e in pk["evidence"]] == ["screener_row"]
+    assert [(x["slot"], x["accession"]) for x in pk["excluded"]] == [("statements", A10K), ("annual", A10K)]
+
+
+def test_an_empty_filings_recent_is_refused(world):
+    store = with_docs(world, "empty", drop=(ANEW, A801, A701, A502, AREL, AQ, AOLD, A10K))
+    with pytest.raises(packet.PacketRefused) as e:
+        build(world, store=store)
+    assert e.value.code == "T_before_filings_recent"
+
+
+# 5.3: T outside the calendar, and the builder's code in the header
+
+@pytest.mark.parametrize("t", ["2004-12-31T23:59:59Z", "2005-01-03T14:29:59Z",
+                               "2031-12-30T23:00:00Z",          # 18:00 ET: its effective session is in 2032, past the calendar
+                               "2031-12-31T15:00:00Z", "2035-06-01T00:00:00Z"])
+def test_T_outside_the_calendar_is_refused(world, t):
+    with pytest.raises(packet.PacketRefused) as e:
+        build(world, T=t)
+    assert e.value.code == "T_outside_calendar"
+
+
+def test_the_calendar_bounds_that_are_inside():
+    for t in ("2005-01-03T14:30:00Z", "2031-12-30T15:00:00Z", "2026-10-29T03:00:00Z"):
+        packet.check_T_in_calendar(packet.parse_T(t))
+
+
+def test_builder_code_pins_the_source_files_and_the_calendar_libraries(world, tmp_path, monkeypatch):
+    bc = build(world)["builder_code"]
+    lf = lambda p: hashlib.sha256(Path(p).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+    assert bc == {"packet.py": lf(packet.__file__), "sec_primary.py": lf(sec_primary.__file__),
+                  "sec_guidance.py": lf(packet.sec_guidance.__file__),
+                  "exchange_calendars": importlib.metadata.version("exchange_calendars"), "tzdata": importlib.metadata.version("tzdata")}
+    crlf, lfile = tmp_path / "crlf.py", tmp_path / "lf.py"
+    crlf.write_bytes(b"a = 1\r\nb = 2\r\n")
+    lfile.write_bytes(b"a = 1\nb = 2\n")
+    monkeypatch.setattr(packet, "BUILDER_FILES", (("packet.py", crlf),))
+    one = packet.builder_code()["packet.py"]
+    monkeypatch.setattr(packet, "BUILDER_FILES", (("packet.py", lfile),))
+    assert packet.builder_code()["packet.py"] == one                            # a checkout's line ends do not change the pin
+    lfile.write_bytes(b"a = 1\nb = 3\n")
+    assert packet.builder_code()["packet.py"] != one                            # an edit does
+
+
+# 6.1b: the other-8-K text (the reviewer's input: ILMN 0000950157-26-000888, a credit agreement's cover in the slot of the 8-K body)
+
+AILMN = "0000000123-26-000075"
+ILMN_BODY = ("<p>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</p><p>FORM 8-K</p><p>Check the appropriate box below.</p>"
+             "<table><tr><td>Item 1.01.</td><td>Entry into a Material Definitive Agreement.</td></tr></table>"
+             "<p>On October 9, 2026, the Company entered into a credit agreement providing for a $750 million revolving facility maturing in "
+             "2031.</p><table><tr><td>Item 2.03.</td><td>Creation of a Direct Financial Obligation.</td></tr></table>"
+             "<p>The information set forth under Item 1.01 is incorporated herein by reference.</p>"
+             "<p>Item 9.01. Financial Statements and Exhibits.</p><p>10.1 Credit Agreement</p>")
+CONTRACTS = [("EX-10.1", "ex10-1.htm", "<p>CREDIT AGREEMENT TABLE OF CONTENTS Article I Definitions</p>"),
+             ("EX-9.01", "ex101cpdealer.htm", "<p>COMMERCIAL PAPER DEALER AGREEMENT [●]</p>"),
+             ("EX-4.2", "ex42.htm", "<p>INDENTURE SUPPLEMENT</p>"), ("EX-1.1", "ex11.htm", "<p>UNDERWRITING AGREEMENT</p>"),
+             ("EX-3.1", "ex31.htm", "<p>AMENDED BYLAWS</p>"), ("EX-5.1", "ex51.htm", "<p>LEGAL OPINION</p>")]
+ILMN_ROW = (AILMN, "8-K", "2026-10-10", "2026-10-10T14:00:00.000Z", "2026-10-09", "1.01,2.03,9.01", "form8-k.htm")
+
+
+def other(pk, acc):
+    return [e for e in pk["evidence"] if e["kind"] == "other_8k" and e["source"]["accession"] == acc]
+
+
+def test_other_8k_is_the_body_from_its_first_listed_item_and_never_a_contract(world):
+    txt = eightk_txt(AILMN, [("8-K", "form8-k.htm", ILMN_BODY)] + CONTRACTS)
+    pk = build(world, store=with_docs(world, "ilmn", extra_rows=[ILMN_ROW], docs_extra={f"{base(AILMN)}/{AILMN}.txt": txt}))
+    [e] = other(pk, AILMN)
+    assert e["text"].startswith("Item 1.01. | Entry into a Material Definitive Agreement.\nOn October 9, 2026")
+    assert "$750 million revolving facility" in e["text"] and "Item 2.03." in e["text"]
+    for banned in ("UNITED STATES", "Check the appropriate", "CREDIT AGREEMENT", "DEALER", "[●]", "INDENTURE", "UNDERWRITING", "BYLAWS",
+                   "LEGAL OPINION"):
+        assert banned not in e["text"]
+    assert e["title"] == "8-K Items 1.01, 2.03, 9.01 (8-K body)"
+
+
+def test_other_8k_body_then_ex99_and_the_title_names_only_what_the_cut_text_reaches(world):
+    ex99 = ("EX-99.1", "ex991.htm", "<p>EX99_TEXT the press release.</p>")
+    ex992 = ("EX-99.2", "ex992.htm", "<p>EX992_TEXT the presentation.</p>")
+    short = eightk_txt(AILMN, [("8-K", "form8-k.htm", ILMN_BODY), CONTRACTS[0], ex99, ex992])
+    pk = build(world, store=with_docs(world, "ex99", extra_rows=[ILMN_ROW], docs_extra={f"{base(AILMN)}/{AILMN}.txt": short}))
+    [e] = other(pk, AILMN)
+    assert e["text"].index("Item 1.01.") < e["text"].index("EX99_TEXT") < e["text"].index("EX992_TEXT")
+    assert e["title"] == "8-K Items 1.01, 2.03, 9.01 (8-K body, EX-99.1, EX-99.2)" and "CREDIT AGREEMENT" not in e["text"]
+    long_body = ILMN_BODY.replace("<p>Item 9.01.", "<p>" + filler("long", 5000) + "</p><p>Item 9.01.")
+    cut = eightk_txt(AILMN, [("8-K", "form8-k.htm", long_body), ex99])
+    pk = build(world, store=with_docs(world, "ex99cut", extra_rows=[ILMN_ROW], docs_extra={f"{base(AILMN)}/{AILMN}.txt": cut}))
+    [e] = other(pk, AILMN)
+    assert len(e["text"]) <= packet.OTHER_8K_CAP and sec_primary.OMIT_RE.search(e["text"]) and "EX99_TEXT" not in e["text"]
+    assert e["title"] == "8-K Items 1.01, 2.03, 9.01 (8-K body)"
+
+
+def test_other_8k_without_a_listed_item_heading_uses_no_cover_page(world):
+    cover_only = "<p>UNITED STATES</p><p>FORM 8-K</p><p>See the exhibit.</p>"
+    ex99 = ("EX-99.1", "ex991.htm", "<p>EX99_TEXT the press release.</p>")
+    txt = eightk_txt(AILMN, [("8-K", "form8-k.htm", cover_only), CONTRACTS[0], ex99])
+    pk = build(world, store=with_docs(world, "nohead", extra_rows=[ILMN_ROW], docs_extra={f"{base(AILMN)}/{AILMN}.txt": txt}))
+    [e] = other(pk, AILMN)
+    assert e["text"] == "EX99_TEXT the press release." and e["title"] == "8-K Items 1.01, 2.03, 9.01 (EX-99.1)"
+    assert f"8k_item_heading_not_found: {AILMN}" in pk["annotations"]
+    txt = eightk_txt(AILMN, [("8-K", "form8-k.htm", cover_only)] + CONTRACTS)
+    pk = build(world, store=with_docs(world, "nothing", extra_rows=[ILMN_ROW], docs_extra={f"{base(AILMN)}/{AILMN}.txt": txt}))
+    assert other(pk, AILMN) == [] and f"8k_text_not_found: {AILMN}" in pk["annotations"]
+
+
+def test_eight_k_body_lines_start_at_the_first_heading_of_a_listed_item():
+    lines = ["FORM 8-K", "The information in Item 7.01 is furnished.", "Item 7.01. Regulation FD Disclosure.", "Text.", "Item 8.01. Other"]
+    assert packet.eight_k_body_lines(lines, ["7.01", "8.01", "9.01"]) == lines[2:]      # ECPG 0001084961-26-000052: 7.01 is listed
+    assert packet.eight_k_body_lines(lines, ["8.01"]) == lines[4:]
+    assert packet.eight_k_body_lines(["ITEMS 1.01 AND 2.03. Entry"], ["2.03", "1.01"]) == ["ITEMS 1.01 AND 2.03. Entry"]
+    assert packet.eight_k_body_lines(["Item 1.011 x"], ["1.01"]) is None
+    assert packet.eight_k_body_lines(["Item 1.01 x"], []) is None
+
+
+# 6.2a: amendments
+
+AAM1 = "0000000123-26-000020"     # a 10-K/A after the annual report (HRTG 0001193125-26-115451: explanatory note, then Item 8)
+AAM2 = "0000000123-26-000058"     # a 10-Q/A with a contents table
+AAM3 = "0000000123-26-000005"     # a 10-K/A before the annual report: not used
+AAM4 = "0000000123-26-000040"     # a 10-Q/A with no Item heading
+AAMX = "0000000123-26-000079"     # a 10-K/A not yet effective at T
+
+
+def amend_html(kind):
+    if kind == "hrtg":
+        return ("<html><body><p>FORM 10-K/A</p><p>(Amendment No. 1)</p><p>Indicate by check mark pursuant to Item 405.</p>"
+                "<p>EXPLANATORY NOTE</p><p>This Amendment No. 1 restates the auditor's report.</p><p>PART II</p>"
+                "<p>Item 8. Financial Statements and Supplementary Data</p><p>AM1_START index of statements.</p>" + paras("am1", 6000)
+                + "<p>Item 15. Exhibits, Financial Statements Schedules</p><p>Listed.</p></body></html>").encode()
+    if kind == "toc":
+        return ("<html><body><table><tr><td>Item 1.</td><td>Financial Statements</td><td>3</td></tr>"
+                "<tr><td>Item 2.</td><td>Management's Discussion</td><td>10</td></tr></table>"
+                "<p>Item 1. Financial Statements</p><p>AM2_START restated quarter.</p>" + paras("am2", 600)
+                + "<p>Item 2. Management's Discussion</p><p>Restated.</p></body></html>").encode()
+    return b"<html><body><p>FORM 10-Q/A</p><p>This amendment furnishes a corrected cover page only.</p></body></html>"
+
+
+AMEND_ROWS = {AAM1: (AAM1, "10-K/A", "2026-03-19", "2026-03-19T16:00:42.000Z", "2025-12-31", "", "tka1.htm"),
+              AAM2: (AAM2, "10-Q/A", "2026-09-01", "2026-09-01T14:00:00.000Z", "2026-06-30", "", "tqa2.htm"),
+              AAM3: (AAM3, "10-K/A", "2026-01-10", "2026-01-10T14:00:00.000Z", "2024-12-31", "", "tka3.htm"),
+              AAM4: (AAM4, "10-Q/A", "2026-05-01", "2026-05-01T14:00:00.000Z", "2026-03-31", "", "tqa4.htm"),
+              AAMX: (AAMX, "10-K/A", "2026-10-28", "2026-10-28T13:00:00.000Z", "2025-12-31", "", "tkax.htm")}
+AMEND_DOCS = {f"{base(AAM1)}/tka1.htm": amend_html("hrtg"), f"{base(AAM2)}/tqa2.htm": amend_html("toc"),
+              f"{base(AAM3)}/tka3.htm": amend_html("hrtg"), f"{base(AAM4)}/tqa4.htm": amend_html("none")}
+
+
+def test_an_amendment_after_the_annual_report_is_an_item_from_its_first_item_heading(world):
+    store = with_docs(world, "am1", extra_rows=[AMEND_ROWS[AAM1], AMEND_ROWS[AAM3]], docs_extra=AMEND_DOCS)
+    pk = build(world, store=store)
+    kinds = [e["kind"] for e in pk["evidence"]]
+    assert kinds.index("quarterly_section") < kinds.index("amendment") < kinds.index("release")
+    [e] = [e for e in pk["evidence"] if e["kind"] == "amendment"]
+    assert e["source"] == {"accession": AAM1, "url": f"{base(AAM1)}/tka1.htm"} and e["form"] == "10-K/A" and e["name"] == "amendment"
+    assert e["text"].startswith("EXPLANATORY NOTE\n")                     # audit 2026-10-29: the note before the first Item heading
+    assert "Item 8. Financial Statements and Supplementary Data\nAM1_START" in e["text"]
+    assert "Item 405" not in e["text"]                                    # the cover before the note is not kept
+    assert len(e["text"]) <= packet.AMENDMENT_CAP and sec_primary.OMIT_RE.search(e["text"])
+    assert e["title"] == "10-K/A amendment, from its first Item heading"
+    assert f"{base(AAM3)}/tka3.htm" not in {r["url"] for r in pk["raw_inputs"]}      # before the annual report: not read
+
+
+def test_at_most_two_amendments_newest_first_and_a_contents_entry_is_skipped(world):
+    rows = [AMEND_ROWS[a] for a in (AAM1, AAM2, AAM4, AAMX)]
+    pk = build(world, store=with_docs(world, "am2", extra_rows=rows, docs_extra=AMEND_DOCS))
+    am = [e for e in pk["evidence"] if e["kind"] == "amendment"]
+    assert [e["source"]["accession"] for e in am] == [AAM2]                            # the two newest eligible are AAM2 and AAM4
+    assert am[0]["text"].startswith("Item 1. Financial Statements\nAM2_START")           # not the contents row
+    assert f"amendment_text_not_found: 10-Q/A {AAM4}" in pk["annotations"]             # AAM4 has no Item heading: annotated
+    assert f"{base(AAM1)}/tka1.htm" not in {r["url"] for r in pk["raw_inputs"]}      # the third newest is not read
+    assert {"slot": "amendment", "accession": AAMX, "form": "10-K/A", "accepted_raw": "2026-10-28T13:00:00.000Z",
+            "effective_at": "2026-10-29T13:30:00Z"} in pk["excluded"]                  # not yet effective: listed, not used
+
+
+def test_amendment_lines_rules():
+    long = filler("x", 200)
+    assert packet.amendment_lines(["Cover", "Item 1. | Business | 3", "Item 2. | Properties | 9", "Item 1. Business", long]) == [
+        "Item 1. Business", long]                                                         # contents rows skipped; runs to the end
+    assert packet.amendment_lines(["Item 15. Exhibits", "None.", "Item 16. Summary", "None."]) is None   # under SHORT_MIN_CHARS
+    assert packet.amendment_lines(["EXPLANATORY NOTE", long]) is None
+
+
+# 6.2c: the release staleness bound
+
+def test_a_release_accepted_more_than_120_days_before_T_is_not_used(world):
+    store = with_docs(world, "stale", drop=(ANEW,))
+    accepted = packet.accepted_at("2026-08-05T20:01:00.000Z")                          # the later reading: 2026-08-06T00:01:00Z
+    edge = packet._z(accepted + packet.timedelta(days=packet.RELEASE_MAX_DAYS))
+    pk = build(world, T=edge, store=store)
+    assert [e["source"]["accession"] for e in pk["evidence"] if e["kind"] == "release"] == [AREL]     # exactly 120 days: used
+    later = packet._z(accepted + packet.timedelta(days=packet.RELEASE_MAX_DAYS, seconds=1))
+    pk = build(world, T=later, store=store)
+    assert not [e for e in pk["evidence"] if e["kind"] == "release"]
+    assert f"release_stale: {AREL} accepted 2026-08-05T20:01:00.000Z, more than 120 days before T" in pk["annotations"]
+    assert not [a for a in pk["annotations"] if a.startswith("no_eligible_filing: release")]

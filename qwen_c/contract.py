@@ -10,7 +10,9 @@ and a claim is
      "mechanism"?: str | null, "horizon"?: str | null, "counter"?: str | null}
 plus, for `risks`, "risk_type" (RISK_TYPES); for `thesis_change`, "point" (the prior point's id) and "change_type" (CHANGE_TYPES); for
 `unresolved_questions`, "settled_by" (the document that would settle the question). A missing field, a wrong type, an unknown task id or
-a task id other than the one asked is a shape error; any shape error makes the task `malformed`.
+a task id other than the one asked is a shape error; so is an empty reply (no claims and no unknowns, ruling 4.1) and, for
+`thesis_change`, a `point` that is not one of the earlier point ids given (ruling 4.3; with none given, every point is unknown). Any
+shape error makes the task `malformed`. The earlier points no claim addresses are recorded as `points_not_addressed`.
 
 THE CHECKS, per claim, recorded beside it as `support` (the first failing check in the order below, else `supported`) and
 `support_failures` (every failure with its detail):
@@ -20,25 +22,45 @@ THE CHECKS, per claim, recorded beside it as `support` (the first failing check 
                        holds an omission marker, is never found
     number_not_found   an entry of `numbers` is not printed by a cited item under the NUMBER RULE (below); an entry with no number in it
                        is never found
-    number_not_listed  a number of the claim text (every number `figures_of` reads, decorated or not, except an all-digit ticker, and a bare
-                       year 1900-2100 that a cited item prints) is not listed in `numbers`. Every number counts, small ones too: "grew 12%" with 12% printed
-                       nowhere must never be `supported` (audit 2026-10-29)
+    number_not_listed  a number of the claim text (every number the claim-side reader reads, decorated or not, except an all-digit ticker,
+                       and a YEAR as defined below) is not listed in `numbers`. Every number counts, small ones too: "grew 12%" with 12%
+                       printed nowhere must never be `supported` (audit 2026-10-29)
 
 NORMALISATION of quotes (quote and item text alike): Unicode NFKC; the curly and low single quotes and the prime become ', the curly
 and low double quotes and the double prime become "; every run of whitespace becomes one space; leading and trailing space removed.
 Case, dashes and all other punctuation are kept.
 
-NUMBER RULE. Text is NFKC-normalised and "percent" / "per cent" after a number is read as %, then every number in it is read with sec_primary's figure reader (`item_figures`) as
-(value, currency, unit): thousands separators removed, value compared as an exact decimal (65 = 65.0), currency $ / C$ / A$ / euro /
-pound (US$ and USD are $), unit k / m / bn (thousand, million, billion and their short forms) or %. A sign or parentheses is not read
-(magnitudes are compared). A wanted figure (v, c, u) is matched by a printed figure (v2, c2, u2) when
-    - the wanted currency, if any, is the printed one (c2 == c); and
-    - either v2 == v and (the wanted figure has no unit or u2 == u),
-      or both u and u2 are scale words (k, m, bn) and v x scale(u) == v2 x scale(u2).
-So "1.2 billion" is found in "1,200 million" and in "$1.2 billion"; it is NOT found in a bare "1,200" (even under a table heading
-"$ in Millions": a scale stated only in a heading is not read), nor in "1.23 billion", "1.2%" or "1.2". "15.4%" is not found in a
-bare "15.4"; a bare "15.4" is found in "15.4%". "$1.2 billion" is not found in "1.2 billion" (the currency is not printed there).
-The same predicate decides whether a number of the claim text is listed in `numbers` (every number, not only sec_primary figure tokens).
+THE FIGURE READER is this module's own (ruling 1.1; sec_primary's reader is not used or edited). Every text, item and model text alike,
+first loses its omission markers ("[… 1,234 characters omitted …]", in either spelling of the ellipsis; ruling 1.4), is NFKC-normalised,
+and has "percent" / "per cent" after a number written as %. Every number is then read as (value, currency, unit):
+    value     thousands separators removed, compared as an exact decimal (65 = 65.0). A sign or parentheses is not read (magnitudes are
+              compared; ruling 1.6 is a NOTE: `supported` certifies presence, not meaning).
+    currency  $ (also US$ and USD), C$ / CAD, A$ / AUD, any other one to three capital letters glued to $ (HK$, S$, NT$, R$: each its own),
+              euro / EUR, pound / GBP, the signs yen, won and rupee (each its own), and the ISO codes CHF JPY CNY (RMB is CNY) SEK NOK DKK
+              KRW HKD SGD INR BRL MXN ZAR TWD ILS PLN CZK TRY (ruling 1.2; codes in capitals only, so the word "try" is not a currency).
+    unit      k (thousand, k), m (million, mn, mm, m), bn (billion, bn, b), tn (trillion, tn, and a capital T glued to the number, as in
+              "$10.6T"), % (and percent), x (x or the multiplication sign: a multiple), bp (bp, bps, basis point), pp (pp, ppt, percentage
+              point). A plural scale word is read as its singular (ruling 1.1). Any other word after a number is not a unit.
+    ranges    in "a-b", "a–b" and "a to b", a lower bound with no unit takes the upper bound's unit, and its currency when it has none
+              ("8-10%" is 8% and 10%; "$4.60-$4.64 billion" is $4.60bn and $4.64bn; ruling 1.3), in items and model text alike.
+Two readers differ only in what may stand before a number. The ITEM reader (cited item text) reads no number right after a letter, a
+digit, "," or ".". The CLAIM-SIDE reader (the claim text and the `numbers` entries, the model's own text) also reads a number after "."
+or "," that is not inside a number ("approx.99%", "est.$999 million"; ruling 1.2). Neither reads a number glued to letters (H100, Q3,
+FY26, F1). Reading more of the model's text can only add figures that must be found or listed, so it can only fail a claim.
+
+NUMBER RULE. A wanted figure (v, c, u) is matched by a printed figure (v2, c2, u2) when
+    - the currencies are equal (c2 == c: a figure with no currency matches only a figure with no currency); and
+    - the units are equal and v2 == v, or both u and u2 are scale units (k, m, bn, tn) and v x scale(u) == v2 x scale(u2).
+A bare figure (no currency, no unit) therefore matches only a bare figure (ruling 1.1). So "$1.2 billion" is found in "$1,200 million",
+"US$1.2 billion" and "$0.0012 trillion"; it is NOT found in "1.2 billion" or "€1.2 billion" (the currency differs), nor in a bare
+"1,200" (even under a table heading "$ in Millions": a scale stated only in a heading is not read), nor in "$1.23 billion". "15.4%" is
+not found in a bare "15.4", and a bare "15.4" is not found in "15.4%", "15.4x" or "$15.4". "$10.6 trillion" is not found in
+"$10.6 million". The same predicate decides whether a number of the claim text is listed in `numbers`.
+
+A YEAR of the claim text need not be listed (ruling 1.5) only when all hold: it is a bare token of exactly four digits with no comma and
+no decimal, 1900-2100; it is directly preceded (by spaces or one hyphen) by a year word: in, fiscal, FY, year, since, by, through, until,
+from, during, of, ended, ending, end, before, after, early, late, mid, a month's full name, Q1-Q4, H1, H2, quarter, half; and a cited
+item prints the same four digits as a bare token with no comma. "closed 2025 stores" and "2,025" are not years.
 
 An unsupported claim stays visible with its reason. Nothing downstream may read a claim whose `support` is not `supported` as a
 verified value (non-negotiable 3).
@@ -74,7 +96,10 @@ TASK_EXTRA = {
     "thesis_change": {"point": "str", "change_type": "change_type"},
     "unresolved_questions": {"settled_by": "str"},
 }
-SCALE = {"k": Decimal(10) ** 3, "m": Decimal(10) ** 6, "bn": Decimal(10) ** 9}
+SCALE = {"k": Decimal(10) ** 3, "m": Decimal(10) ** 6, "bn": Decimal(10) ** 9, "tn": Decimal(10) ** 12}
+YEAR_WORDS = ("in", "fiscal", "fy", "year", "since", "by", "through", "until", "from", "during", "of", "ended", "ending", "end",
+              "before", "after", "early", "late", "mid", "january", "february", "march", "april", "may", "june", "july", "august",
+              "september", "october", "november", "december", "q1", "q2", "q3", "q4", "h1", "h2", "quarter", "half")
 
 
 # ---------------------------------------------------------------- the shape
@@ -95,9 +120,10 @@ def _type_ok(kind, v):
     raise ValueError(kind)
 
 
-def validate(task_id, obj):
+def validate(task_id, obj, point_ids=None):
     """(kept, errors, dropped): the model's object restricted to the fields this contract owns (values unedited), the shape errors
-    (empty when the shape is right) and the paths of the fields dropped."""
+    (empty when the shape is right) and the paths of the fields dropped. `point_ids` are the earlier point ids a `thesis_change` reply
+    may name (None is no points)."""
     errors, dropped = [], []
     if task_id not in TASK_IDS:
         return None, [f"unknown task id {task_id!r}"], dropped
@@ -148,7 +174,12 @@ def validate(task_id, obj):
             for f in c:
                 if f not in spec and f not in CLAIM_OPTIONAL:
                     dropped.append(f"claims[{i}].{f}")
+            if task_id == "thesis_change" and "point" in kc and kc["point"] not in (point_ids or ()):
+                errors.append(f"claims[{i}].point {kc['point']!r} is not one of the earlier points "
+                              f"({', '.join(point_ids or ()) or 'none'})")
             kept_claims.append(kc)
+    if not errors and claims_in == [] and obj["unknowns"] == []:
+        errors.append("the reply has no claims and no unknowns")
     if errors:
         return None, errors, dropped
     return {"task": t, "claims": kept_claims, "unknowns": list(obj["unknowns"])}, [], dropped
@@ -175,16 +206,76 @@ def quote_found(quote, texts):
 # ---------------------------------------------------------------- numbers
 
 _PERCENT_WORD = re.compile(r"(\d)\s*(?:percent|per cent)\b", re.I)
+_OMIT_NFKC = re.compile(r"\[\.\.\. [\d,]+ characters omitted \.\.\.\]")       # sec_primary.OMIT_RE after NFKC wrote "…" as "..."
+
+_CUR = (r"(?:(?-i:[A-Z]{1,3})\$|[$€£¥₩₹]|(?-i:USD|EUR|GBP|CAD|AUD|CHF|JPY|CNY|RMB|SEK|NOK|DKK|KRW|HKD|SGD"
+        r"|INR|BRL|MXN|ZAR|TWD|ILS|PLN|CZK|TRY))\s?")
+_UNIT = (r"(?:\s?%|\s?(?:percentage[ -]points?|basis[ -]points?|trillions?|billions?|millions?|thousands?|ppts?|pp|bps|bp|tn|bn|mn|mm"
+         r"|[mkbx×])(?![A-Za-z0-9])|(?-i:T)(?![A-Za-z0-9]))")
+_BODY = r"(" + _CUR + r")?(\d[\d,]*(?:\.\d+)?)(" + _UNIT + r")?"
+_ITEM_RE = re.compile(r"(?<![A-Za-z0-9,.])" + _BODY, re.I)
+_CLAIM_RE = re.compile(r"(?<![A-Za-z0-9])(?<!\d[.,])" + _BODY, re.I)
+_RANGE_GAP = re.compile(r"\s?[-–]\s?|\s+to\s+", re.I)
+_CUR_CANON = {"US$": "$", "$": "$", "USD": "$", "CAD": "C$", "AUD": "A$", "€": "€", "EUR": "€", "£": "£",
+              "GBP": "£", "RMB": "CNY"}
+_UNIT_CANON = {"%": "%", "thousand": "k", "k": "k", "million": "m", "mn": "m", "mm": "m", "m": "m", "billion": "bn", "bn": "bn",
+               "b": "bn", "trillion": "tn", "tn": "tn", "t": "tn", "x": "x", "×": "x", "bp": "bp", "bps": "bp",
+               "basis point": "bp", "pp": "pp", "ppt": "pp", "percentage point": "pp"}
+_YEAR_BEFORE = re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(YEAR_WORDS) + r")(?:\s+|-)$", re.I)
 
 
 def norm_figure_text(text):
-    """NFKC, and the words "percent" / "per cent" right after a number written as %."""
-    return _PERCENT_WORD.sub(r"\1%", unicodedata.normalize("NFKC", text or ""))
+    """The text figures are read from: omission markers removed (ruling 1.4), NFKC, and "percent" / "per cent" after a number as %."""
+    s = unicodedata.normalize("NFKC", sec_primary.OMIT_RE.sub(" ", text or ""))
+    return _PERCENT_WORD.sub(r"\1%", _OMIT_NFKC.sub(" ", s))
 
 
-def figures_of(text):
-    """{(value Decimal, currency, unit)} printed by a text (sec_primary.item_figures over norm_figure_text)."""
-    return sec_primary.item_figures(norm_figure_text(text))
+def _unit_canon(s):
+    s = re.sub(r"[\s-]+", " ", (s or "").strip())
+    if s == "T":
+        return "tn"
+    s = s.lower()
+    if s.endswith("s") and s not in ("bps",):
+        s = s[:-1]                                      # a plural scale word is its singular: millions -> million, ppts -> ppt
+    return _UNIT_CANON[s] if s else ""
+
+
+def read_figures(text, claim_side=False):
+    """[(value Decimal, currency, unit, digits as printed, the text before the number)] of a text, in order (THE FIGURE READER)."""
+    s = norm_figure_text(text)
+    out = []
+    for m in (_CLAIM_RE if claim_side else _ITEM_RE).finditer(s):
+        core = m.group(2).rstrip(",")
+        try:
+            v = Decimal(core.replace(",", "")).normalize()
+        except InvalidOperation:
+            continue
+        cur = (m.group(1) or "").strip()
+        out.append([v, _CUR_CANON.get(cur, cur), _unit_canon(m.group(3)), core, s[:m.start(2)], m.start(), m.end()])
+    for i in range(len(out) - 2, -1, -1):              # a range's lower bound takes the upper bound's unit (and currency, if it has none)
+        lo, hi = out[i], out[i + 1]
+        if not lo[2] and hi[2] and _RANGE_GAP.fullmatch(s[lo[6]:hi[5]]):
+            lo[2] = hi[2]
+            lo[1] = lo[1] or hi[1]
+    return [tuple(f[:5]) for f in out]
+
+
+def figures_of(text, claim_side=False):
+    """{(value Decimal, currency, unit)} of a text: the item reader, or the claim-side reader for the model's own text."""
+    return {f[:3] for f in read_figures(text, claim_side)}
+
+
+def _year_of(f):
+    """The four digits of a figure that is a year by its own form (YEAR rule, less the cited-item condition), else None."""
+    v, c, u, core, before = f
+    if c or u or not re.fullmatch(r"\d{4}", core) or not 1900 <= v <= 2100 or not _YEAR_BEFORE.search(before):
+        return None
+    return core
+
+
+def printed_years(texts):
+    """The bare four-digit tokens with no comma that the item texts print."""
+    return {f[3] for t in texts for f in read_figures(t) if not f[1] and not f[2] and re.fullmatch(r"\d{4}", f[3])}
 
 
 def entry_text(x):
@@ -200,10 +291,10 @@ def entry_text(x):
 def fig_matches(want, have):
     v, c, u = want
     v2, c2, u2 = have
-    if c and c2 != c:
+    if c2 != c:
         return False
-    if v2 == v and (not u or u2 == u):
-        return True
+    if u2 == u:
+        return v2 == v
     return u in SCALE and u2 in SCALE and v * SCALE[u] == v2 * SCALE[u2]
 
 
@@ -232,7 +323,7 @@ def check_claim(claim, items, ticker=None):
     listed = set()
     for x in claim["numbers"]:
         s = entry_text(x)
-        figs = figures_of(s)
+        figs = figures_of(s, claim_side=True)
         listed |= figs
         if not figs:
             failures.append({"check": "number_not_found", "detail": f"{s!r}: no number in the entry"})
@@ -241,12 +332,16 @@ def check_claim(claim, items, ticker=None):
         if missing:
             failures.append({"check": "number_not_found", "detail": s})
     tk = Decimal(ticker).normalize() if ticker and str(ticker).isdigit() else None
-    for f in sorted(figures_of(claim["claim"]), key=str):
+    years = printed_years(cited)
+    must = set()
+    for f in read_figures(claim["claim"], claim_side=True):     # per occurrence: "in 2025" does not exempt "closed 2025 stores"
+        if (not f[1] and not f[2] and f[0] == tk) or (_year_of(f) is not None and _year_of(f) in years):
+            continue
+        must.add(f[:3])
+    for f in sorted(must, key=str):
         v, c, u = f
-        if not c and not u and (v == tk or (v == v.to_integral_value() and 1900 <= v <= 2100 and figure_found(f, cited_figs))):
-            continue                                    # a year is exempt only when a cited item prints it ("Cash was 2,034" is not)
         if not figure_found(f, listed):
-            failures.append({"check": "number_not_listed", "detail": f"{v}{u or ''} {c or ''}".strip()})
+            failures.append({"check": "number_not_listed", "detail": f"{c or ''}{format(v, 'f')}{u or ''}"})
     support = next((k for k in SUPPORT_ORDER if any(f["check"] == k for f in failures)), SUPPORTED)
     return {"support": support, "support_failures": failures}
 
@@ -256,10 +351,11 @@ def evidence_texts(packet):
     return {e["fact_id"]: e.get("text") or "" for e in packet.get("evidence") or []}
 
 
-def check_task(task_id, obj, packet):
+def check_task(task_id, obj, packet, point_ids=None):
     """The stored record of one task's reply: {"status": "ok" | "malformed", "shape_errors", "dropped_fields", "claims", "unknowns",
-    "support_counts"}. Each kept claim carries `support` and `support_failures` beside the model's own fields."""
-    kept, errors, dropped = validate(task_id, obj)
+    "support_counts"}, plus "points_not_addressed" for `thesis_change`. Each kept claim carries `support` and `support_failures` beside
+    the model's own fields. `point_ids` are the earlier point ids of a `thesis_change` task."""
+    kept, errors, dropped = validate(task_id, obj, point_ids)
     if errors:
         return {"status": "malformed", "shape_errors": errors, "dropped_fields": dropped, "claims": [], "unknowns": [],
                 "support_counts": {}}
@@ -269,5 +365,9 @@ def check_task(task_id, obj, packet):
         chk = check_claim(c, items, packet.get("ticker"))
         claims.append({**c, **chk})
         counts[chk["support"]] = counts.get(chk["support"], 0) + 1
-    return {"status": "ok", "shape_errors": [], "dropped_fields": dropped, "claims": claims, "unknowns": kept["unknowns"],
-            "support_counts": counts}
+    out = {"status": "ok", "shape_errors": [], "dropped_fields": dropped, "claims": claims, "unknowns": kept["unknowns"],
+           "support_counts": counts}
+    if task_id == "thesis_change":
+        named = {c["point"] for c in kept["claims"]}
+        out["points_not_addressed"] = [p for p in (point_ids or ()) if p not in named]
+    return out

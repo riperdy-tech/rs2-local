@@ -99,3 +99,32 @@ def test_cli_replays_every_packet_and_fails_on_any_difference(saved, monkeypatch
     out = [json.loads(l) for l in capsys.readouterr().out.strip().splitlines()]
     assert [o["identical"] for o in out] == [True, False]
     assert replay.main(["--dir", str(w["tmp"] / "empty")]) == 1
+
+
+def test_replay_reruns_the_run_time_check_on_the_pinned_verified_row(saved):
+    # CROSS_CHECK_M 2.1 / 5.1: the row is pinned in the header, and replay checks it against T again
+    w, pk, path = saved
+    pk["screener"]["verified_row"]["run_updated_at"] = "2026-10-28T20:00:01Z"
+    path.write_bytes(packet.canonical_bytes(pk))
+    with pytest.raises(packet.PacketRefused) as e:
+        rp(w, path)
+    assert e.value.code == "verified_run_after_T"
+
+
+def test_a_packet_without_a_pinned_verified_row_is_refused_on_replay(saved):
+    w, pk, path = saved
+    pk["screener"]["verified_run_id"] = pk["screener"].pop("verified_row")["run_id"]     # the m3m.packet.builder.v1 header
+    path.write_bytes(packet.canonical_bytes(pk))
+    with pytest.raises(packet.PacketRefused) as e:
+        rp(w, path)
+    assert e.value.code == "verified_run_time_missing"
+
+
+def test_a_changed_builder_source_is_not_identical_on_replay(saved, tmp_path, monkeypatch):
+    # CROSS_CHECK_M 5.3: the builder's code is part of what replay reproduces
+    w, pk, path = saved
+    other = tmp_path / "packet_edited.py"
+    other.write_bytes(packet.BUILDER_FILES[0][1].read_bytes() + b"# edited\n")
+    monkeypatch.setattr(packet, "BUILDER_FILES", (("packet.py", other),) + packet.BUILDER_FILES[1:])
+    res = rp(w, path)
+    assert res["identical"] is False and res["first_diff"]["path"] == "$.builder_code.packet.py"

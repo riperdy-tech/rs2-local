@@ -70,13 +70,17 @@ INSTRUCTIONS = {
 }
 
 THESIS_CHANGE_INSTRUCTION = (
-    "TASK thesis_change. An earlier analysis of this company, as of {prior_t}, made the points listed below. Compare each "
+    "TASK thesis_change. An earlier analysis of this company, as of {prior_t}, made the points listed below. {coverage}Compare each "
     "point with the evidence items that became effective after {prior_t}: {after_ids}. For each point give one claim with "
     "\"point\" set to its id and \"change_type\" set to one of: unchanged (the newer evidence leaves the point as it was), "
     "changed (the newer evidence alters it), unknown (the newer evidence does not address it), unsupported (the evidence does "
     "not support the point at all). Cite the items you rely on.\n"
     "EARLIER POINTS:\n{points}\n"
     "Reply in this shape:\n" + _shape("thesis_change", '"point": "G1", "change_type": "one of the four change types"'))
+# ruling 3.4: only earlier claims the code check found supported become points, and the count left out is stated
+LEFT_OUT_LINE = "Only its points that passed the code check are listed; {n} that did not pass it are left out. "
+# ruling 4.4: an earlier task that did not finish ok is named
+MISSING_LINE = "The earlier {task} task did not finish, so no points come from it. "
 
 RETRY_LINE = "Your last reply was not valid JSON for this shape; reply again."
 
@@ -98,18 +102,32 @@ def _source(src):
 
 
 def render_item(e):
-    head = (f"[{e['fact_id']}] kind: {_v(e.get('kind'))} | form: {_v(e.get('form'))} | period: {_v(e.get('period'))} | "
-            f"effective: {_v(e.get('effective_at'))} | source: {_source(e.get('source'))}")
+    head = (f"[{e['fact_id']}] kind: {_v(e.get('kind'))} | title: {_v(e.get('title'))} | form: {_v(e.get('form'))} | "
+            f"period: {_v(e.get('period'))} | effective: {_v(e.get('effective_at'))} | source: {_source(e.get('source'))}")
     return head + "\n" + (e.get("text") or "")
 
 
+# ruling 6.1a: the annotations of what was looked for and is missing are shown; no other annotation, and never `excluded`
+MISSING_KINDS = ("section_not_found", "statement_not_found", "statement_not_html", "no_eligible_filing", "release_stale",
+                 "release_exhibit_not_found", "amendment_text_not_found", "8k_text_not_found", "8k_item_heading_not_found",
+                 "trimmed_out")   # audit 2026-10-29: every "looked for and not in the packet" kind packet.py writes
+
+
+def not_in_packet(packet):
+    """The packet's annotations whose kind (the text before the first ":") is one of MISSING_KINDS, verbatim and in order."""
+    return [str(a) for a in packet.get("annotations") or [] if str(a).split(":", 1)[0].strip() in MISSING_KINDS]
+
+
 def render_packet(packet):
-    """The packet as the opening of the user message. Annotations and `excluded` are not shown: `excluded` names filings that became
-    effective after T."""
+    """The packet as the opening of the user message: the header, the NOT IN THIS PACKET list (not_in_packet), then the items.
+    `excluded` is never shown: it names filings that became effective after T."""
     ev = packet.get("evidence") or []
+    missing = not_in_packet(packet)
     lines = [f"DECISION TIME T: {_v(packet.get('decision_time_utc'))}",
              f"COMPANY: ticker {_v(packet.get('ticker'))}, SEC CIK {_v(packet.get('cik'))}",
-             f"EVIDENCE ITEMS: {len(ev)}", ""]
+             f"EVIDENCE ITEMS: {len(ev)}",
+             "NOT IN THIS PACKET (looked for in the filings and not found):" + ("" if missing else " none"),
+             *(f"- {a}" for a in missing), ""]
     return "\n".join(lines) + "\n" + "\n\n".join(render_item(e) for e in ev)
 
 
@@ -131,23 +149,36 @@ def effective_after(packet, prior_t):
     return out
 
 
+PRIOR_TASKS = (("G", "growth_thesis"), ("R", "risks"))
+
+
 def prior_points(prior):
-    """[(point id, claim dict)] of a prior run: G1.. from its growth_thesis claims, R1.. from its risks claims."""
+    """[(point id, claim dict)] of a prior run's claims whose support is `supported` (ruling 3.4): G<n> from its growth_thesis claims,
+    R<n> from its risks claims, where n is the claim's 1-based position in that stored task, so an id names one stored claim."""
     out = []
-    for prefix, task in (("G", "growth_thesis"), ("R", "risks")):
+    for prefix, task in PRIOR_TASKS:
         for i, c in enumerate(prior.get(task) or [], 1):
-            out.append((f"{prefix}{i}", c))
+            if c.get("support") == "supported":
+                out.append((f"{prefix}{i}", c))
     return out
 
 
+def prior_left_out(prior):
+    """The number of the prior run's growth_thesis and risks claims that are not points (their support is not `supported`)."""
+    return sum(1 for _, task in PRIOR_TASKS for c in prior.get(task) or [] if c.get("support") != "supported")
+
+
 def thesis_change_instruction(packet, prior):
-    """`prior` is {"decision_time_utc", "growth_thesis": [claims], "risks": [claims]} of the prior run (claims as stored, with support)."""
+    """`prior` is {"decision_time_utc", "tasks_used", "growth_thesis": [claims], "risks": [claims]} of the prior run (claims as stored,
+    with support). A task of PRIOR_TASKS not in `tasks_used` is named by MISSING_LINE."""
     pts = prior_points(prior)
     after = effective_after(packet, prior["decision_time_utc"])
+    coverage = "".join(MISSING_LINE.replace("{task}", t) for _, t in PRIOR_TASKS if t not in prior["tasks_used"])
+    coverage += LEFT_OUT_LINE.replace("{n}", str(prior_left_out(prior)))
     points = "\n".join(f"{pid}: {c.get('claim')} (cited {', '.join(c.get('fact_ids') or []) or 'nothing'}; code check: "
                        f"{c.get('support')})" for pid, c in pts) or "none"
     # str.replace, not str.format: the JSON shape holds braces; the model-written points go in last so nothing in them is replaced
-    return (THESIS_CHANGE_INSTRUCTION.replace("{prior_t}", str(prior["decision_time_utc"]))
+    return (THESIS_CHANGE_INSTRUCTION.replace("{prior_t}", str(prior["decision_time_utc"])).replace("{coverage}", coverage)
             .replace("{after_ids}", ", ".join(after) or "none").replace("{points}", points))
 
 

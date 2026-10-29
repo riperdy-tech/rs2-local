@@ -42,9 +42,15 @@ def completion(obj):
     return f"{THINKING}\n</think>\n\nHere it is.\n```json\n{json.dumps(obj)}\n```"
 
 
+SHOW = {"parameters": "temperature                    0.6\ntop_p                          0.95\ntop_k                          20",
+        "details": {"family": "qwen3"}, "modified_at": "2026-10-17T00:00:00Z"}
+
+
 class Stub(BaseHTTPRequestHandler):
     script = {}
     posts = []
+    loaded = []                       # what /api/ps lists; None answers 500
+    show = SHOW                       # what /api/show answers; None answers 404
     lock = threading.Lock()
 
     def log_message(self, *a):
@@ -62,10 +68,21 @@ class Stub(BaseHTTPRequestHandler):
             pass
 
     def do_GET(self):
+        if self.path.endswith("/api/ps"):
+            if Stub.loaded is None:
+                self._send(500, {"error": "ps failed"})
+            else:
+                self._send(200, {"models": [{"name": n, "model": n} for n in Stub.loaded]})
+            return
         self._send(200, {"version": "0.40.3"})
 
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.path.endswith("/api/show"):
+            with Stub.lock:
+                Stub.posts.append({"task": "_show", "req": req})
+            self._send(*((200, Stub.show) if Stub.show is not None else (404, {"error": "model not found"})))
+            return
         m = TASK_RE.search(req.get("prompt", ""))
         task = m.group(1) if m else None
         with Stub.lock:
@@ -98,13 +115,30 @@ class Stub(BaseHTTPRequestHandler):
         elif action == "overflow":
             self._send(200, {**ok, "prompt_eval_count": req["options"]["num_ctx"], "eval_count": 1,
                              "response": completion(valid_reply(task))})
+        elif action == "at_the_wall":                          # used == num_ctx - 1: ollama_raw's guard (> num_ctx) does not see it
+            self._send(200, {**ok, "prompt_eval_count": req["options"]["num_ctx"] - 2, "eval_count": 1,
+                             "response": completion(valid_reply(task))})
+        elif action == "no_counts":
+            self._send(200, {k: v for k, v in ok.items() if k != "prompt_eval_count"} | {"response": completion(valid_reply(task))})
+        elif action == "error_200":
+            self._send(200, {"model": req["model"], "error": "llama runner process has terminated", "response": "", "done": False})
+        elif action == "empty_200":
+            self._send(200, {"model": req["model"], "response": "", "done": False})
+        elif action == "cut_at_length":
+            self._send(200, {**ok, "done_reason": "length", "response": f"{THINKING}\n</think>\n\n```json\n{{\"task\": \"{task}\", "})
+        elif action == "empty_reply":
+            self._send(200, {**ok, "response": completion({"task": task, "claims": [], "unknowns": []})})
+        elif action == "fake_point":
+            r = valid_reply(task)
+            r["claims"][0]["point"] = "FAKE99"
+            self._send(200, {**ok, "response": completion(r)})
         else:
             raise AssertionError(action)
 
 
 @pytest.fixture
 def env(monkeypatch, tmp_path):
-    Stub.script, Stub.posts = {}, []
+    Stub.script, Stub.posts, Stub.loaded, Stub.show = {}, [], [], SHOW
     srv = ThreadingHTTPServer(("127.0.0.1", 0), Stub)
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -144,6 +178,10 @@ def posts_of(task):
     return [p["req"] for p in Stub.posts if p["task"] == task]
 
 
+def generate_posts():
+    return [p for p in Stub.posts if p["task"] != "_show"]
+
+
 SENT = [t for t in tasks.TASKS if t != "thesis_change"]
 
 
@@ -178,8 +216,14 @@ def test_a_clean_run_is_complete_and_every_record_recomputes(env):
     # analysis and manifest and ledger
     assert sha((d / "analysis.json").read_bytes()) == man["analysis_sha256"]
     (line,) = runner._read_jsonl(runner.M3M_DIR / "ledger.jsonl")
+    summary = {"claims": 12, "supported": 6, "unsupported": 6}            # ruling 4.1: six tasks sent, one good and one bad claim each
     assert line == {"run_id": res["run_id"], "ticker": "ACME", "T": "2026-10-29T13:00:00Z", "packet_sha256": man["packet"]["packet_sha256"],
-                    "status": "complete", "manifest_sha256": sha((d / "manifest.json").read_bytes())}
+                    "status": "complete", "support_summary": summary, "manifest_sha256": sha((d / "manifest.json").read_bytes())}
+    assert an["support_summary"] == res["support_summary"] == summary and res["ledger_appended"] is True
+    # rulings 6.3 and 6.4: the server preflights are recorded
+    assert man["gpu_preflight"] == {"loaded": []} and man["model"]["show"]["parameters"] == SHOW["parameters"]
+    assert man["model"]["show"]["details"] == {"family": "qwen3"} and len(man["model"]["show"]["show_sha256"]) == 64
+    assert posts_of("_show") == [{"model": runner.MODEL}]
     # the model serving record recomputes from the Ollama manifest file
     assert man["model"]["manifest_sha256"] == sha(env["model_manifest"].read_bytes())
     assert man["model"]["system_layer_digest"] == "sha256:" + "9" * 64 and man["model"]["tag"] == runner.MODEL
@@ -187,7 +231,7 @@ def test_a_clean_run_is_complete_and_every_record_recomputes(env):
     assert man["contract"] == "m3m.analysis.v1" and man["prompt_version"] == "m3m.prompt.v1" and man["builder_version"] == "fixture_b.1"
     assert man["ollama_version"] == "0.40.3" and man["kis_halt"] == "not_resolvable_in_rs2"
     assert man["qwen_c"] == {"git_commit": "a" * 40, "dirty": False}
-    assert man["options"]["num_ctx"] == 65536 and man["options"]["num_predict"] == 12288 and man["options"]["think"] == "medium"
+    assert man["options"]["num_ctx"] == 98304 and man["options"]["num_predict"] == 12288 and man["options"]["think"] == "medium"
     assert man["options"]["seeds"] == {t: 1000 + i for i, t in enumerate(tasks.TASKS)} and man["options"]["differs_from_defaults"] == []
     assert man["started_at"] and man["finished_at"] and man["status"] == "complete"
     assert man["tasks"]["thesis_change"]["status"] == "not_applicable_no_prior" and posts_of("thesis_change") == []
@@ -200,12 +244,12 @@ def test_the_requests_carry_the_fixed_options_our_system_and_think(env):
             continue
         (req,) = posts_of(t)
         assert req["raw"] is True and req["model"] == runner.MODEL
-        assert req["options"] == {"num_ctx": 65536, "num_predict": 12288, "seed": 1000 + i}      # sampling is the Modelfile's
+        assert req["options"] == {"num_ctx": 98304, "num_predict": 12288, "seed": 1000 + i}      # sampling is the Modelfile's
         msgs = tasks.messages(t, json.loads(env["packet"].read_text(encoding="utf-8")))
         assert req["prompt"] == ollama_raw.render_prompt(msgs, None, "medium")
         assert req["prompt"] != ollama_raw.render_prompt(msgs, None, "high") and tasks.SYSTEM in req["prompt"]
         assert "Reasoning effort is set to" not in req["prompt"]          # the pinned template prints no effort line for medium
-    first = [p["req"]["prompt"] for p in Stub.posts]
+    first = [p["req"]["prompt"] for p in generate_posts()]
     head = tasks.render_packet(json.loads(env["packet"].read_text(encoding="utf-8")))
     cut = [p.index(head) + len(head) for p in first]
     assert len({p[:c] for p, c in zip(first, cut)}) == 1          # the shared prefix: system and packet are identical for every task
@@ -328,11 +372,11 @@ def test_no_task_ok_is_failed_and_still_ledgered(env):
 def test_a_crash_mid_run_reads_as_crashed(env, monkeypatch):
     calls, real = [], contract.check_task
 
-    def boom(task, obj, packet):
+    def boom(task, obj, packet, *point_ids):
         calls.append(task)
         if len(calls) == 2:
             raise KeyboardInterrupt                                  # stands in for the process dying mid-run
-        return real(task, obj, packet)
+        return real(task, obj, packet, *point_ids)
 
     monkeypatch.setattr(contract, "check_task", boom)
     with pytest.raises(KeyboardInterrupt):
@@ -376,7 +420,7 @@ def test_the_cli(env, capsys):
     man = manifest(res)
     assert man["options"]["num_predict"] == 8192 and man["options"]["think"] == "low"
     assert man["options"]["differs_from_defaults"] == ["num_predict", "think"]
-    assert "Reasoning effort is set to low" in Stub.posts[0]["req"]["prompt"]
+    assert "Reasoning effort is set to low" in generate_posts()[0]["req"]["prompt"]
     bad = env["tmp"] / "bad.json"
     bad.write_text("{")
     assert runner.main([str(bad), "--url", env["url"]]) == 2
@@ -406,12 +450,39 @@ def test_thesis_change_is_sent_against_the_newest_prior_run(env):
     (req,) = posts_of("thesis_change")
     assert "as of 2026-05-01T13:00:00Z" in req["prompt"] and "effective after 2026-05-01T13:00:00Z: P2." in req["prompt"]
     assert "G1: Revenue rose to $1,200 million in 2025. (cited P1; code check: supported)" in req["prompt"]
-    assert "R2: Margin was 99.9%. (cited P1; code check: number_not_found)" in req["prompt"]
+    assert "R1: Revenue rose to $1,200 million in 2025. (cited P1; code check: supported)" in req["prompt"]
+    # ruling 3.4: the unsupported prior claims are not points, and their count is stated
+    assert "Margin was 99.9%" not in req["prompt"] and "G2:" not in req["prompt"] and "R2:" not in req["prompt"]
+    assert "2 that did not pass it are left out" in req["prompt"] and "did not finish" not in req["prompt"]
     man = manifest(late)
     assert man["prior_run"]["run_id"] == early["run_id"] and man["prior_run"]["tasks_used"] == ["growth_thesis", "risks"]
+    assert man["prior_run"]["point_ids"] == ["G1", "R1"] and man["prior_run"]["points_left_out"] == 2
+    assert man["prior_run"]["tasks_missing"] == {} and man["prior_run"]["ledger_missing"] is False
     assert man["tasks"]["thesis_change"]["seed"] == 1005
     tc = analysis(late)["tasks"]["thesis_change"]
     assert tc["status"] == "ok" and tc["claims"][0]["point"] == "G1" and tc["claims"][0]["change_type"] == "unchanged"
+    # ruling 4.3: both reply claims name G1, so R1 is recorded as not addressed (in the analysis and the manifest)
+    assert tc["points_not_addressed"] == ["R1"] and man["tasks"]["thesis_change"]["points_not_addressed"] == ["R1"]
+
+
+def test_a_thesis_change_claim_naming_a_point_that_is_not_listed_is_malformed(env):
+    runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "early.json"), url=env["url"])
+    Stub.script = {"thesis_change": ["fake_point", "fake_point"]}
+    late = run(env)
+    assert late["incomplete_tasks"] == {"thesis_change": "malformed"} and len(posts_of("thesis_change")) == 2
+    assert "claims[0].point 'FAKE99' is not one of the earlier points (G1, R1)" in analysis(late)["tasks"]["thesis_change"]["cause"]
+
+
+def test_a_prior_with_one_task_not_ok_names_it_in_the_instruction_and_the_manifest(env):
+    Stub.script = {"risks": ["no_json", "no_json"]}
+    early = runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "early.json"), url=env["url"])
+    assert early["status"] == "analysis_incomplete"
+    late = run(env)
+    (req,) = posts_of("thesis_change")
+    assert "The earlier risks task did not finish, so no points come from it. " in req["prompt"]
+    man = manifest(late)
+    assert man["prior_run"]["tasks_used"] == ["growth_thesis"] and man["prior_run"]["tasks_missing"] == {"risks": "malformed"}
+    assert man["prior_run"]["point_ids"] == ["G1"] and late["status"] == "complete"
 
 
 def test_a_run_at_the_same_t_is_not_a_prior(env):
@@ -429,13 +500,147 @@ def test_a_prior_whose_records_do_not_recompute_is_infra_error(env):
     assert posts_of("thesis_change") == []
 
 
-def test_a_prior_without_ok_growth_or_risks_is_not_applicable(env):
+def test_a_prior_without_ok_growth_or_risks_is_prior_unusable(env):
+    # ruling 4.4 (the reply's failing input): the run is analysis_incomplete, not complete
     Stub.script = {"growth_thesis": ["no_json", "no_json"], "risks": ["no_json", "no_json"]}
     early = runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "early.json"), url=env["url"])
     assert early["status"] == "analysis_incomplete"
     late = run(env)
     tc = manifest(late)["tasks"]["thesis_change"]
-    assert tc["status"] == "not_applicable_no_prior" and "neither growth_thesis nor risks is ok" in tc["cause"]
+    assert tc["status"] == "prior_unusable" and "neither growth_thesis nor risks is ok" in tc["cause"]
+    assert late["status"] == "analysis_incomplete" and late["incomplete_tasks"] == {"thesis_change": "prior_unusable"}
+    assert posts_of("thesis_change") == [] and "prior_unusable" in runner.STATUSES
+
+
+def test_a_prior_with_no_supported_claim_is_prior_unusable(env, monkeypatch):
+    real = contract.check_claim
+    monkeypatch.setattr(contract, "check_claim", lambda c, items, ticker=None: {**real(c, items, ticker), "support": "number_not_found"})
+    runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "early.json"), url=env["url"])
+    monkeypatch.setattr(contract, "check_claim", real)
+    late = run(env)
+    tc = manifest(late)["tasks"]["thesis_change"]
+    assert tc["status"] == "prior_unusable" and "no supported growth_thesis or risks claim" in tc["cause"]
+    assert manifest(late)["prior_run"]["point_ids"] == [] and manifest(late)["prior_run"]["points_left_out"] == 4
+    assert late["status"] == "analysis_incomplete" and posts_of("thesis_change") == []
+
+
+def test_a_finished_run_missing_from_the_ledger_is_still_the_prior(env):
+    # ruling 4.5 A: a crash between manifest.json and the ledger append must not let an older run be used
+    runner.run(_packet_at(env, "2026-04-01T13:00:00Z", "older.json"), url=env["url"])
+    newer = runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "newer.json"), url=env["url"])
+    ledger = runner.M3M_DIR / "ledger.jsonl"
+    lines = ledger.read_text(encoding="utf-8").splitlines(keepends=True)
+    ledger.write_text(lines[0], encoding="utf-8")              # the newer run's line never landed
+    rows = runner.read_ledger()
+    assert [r.get("ledger_missing", False) for r in rows] == [False, True] and rows[1]["status"] == "complete"
+    late = run(env)
+    man = manifest(late)
+    assert man["prior_run"]["run_id"] == newer["run_id"] and man["prior_run"]["ledger_missing"] is True
+    assert man["prior_run"]["manifest_sha256"] == sha((Path(newer["run_dir"]) / "manifest.json").read_bytes())
+    assert "as of 2026-05-01T13:00:00Z" in posts_of("thesis_change")[-1]["prompt"]               # the late run's (newer's own is first)
+
+
+def test_a_torn_last_ledger_line_is_skipped_and_reported_and_not_appended_after(env):
+    # ruling 4.5 B
+    early = runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "early.json"), url=env["url"])
+    ledger = runner.M3M_DIR / "ledger.jsonl"
+    with open(ledger, "a", encoding="utf-8") as f:
+        f.write('{"run_id": "ACME_2026')
+    rows = runner.read_ledger()
+    assert rows[0]["run_id"] == early["run_id"] and rows[1]["status"] == "torn_ledger_line" and rows[1]["line"] == 2
+    before = ledger.read_bytes()
+    late = run(env)
+    assert late["status"] == "complete" and late["ledger_appended"] is False and ledger.read_bytes() == before
+    assert "torn" in manifest(late)["ledger_not_appended"]
+    assert manifest(late)["prior_run"]["run_id"] == early["run_id"]                # the prior is still found
+    assert [r["run_id"] for r in runner.read_ledger() if r.get("ledger_missing")] == [late["run_id"]]
+
+
+def test_a_torn_middle_ledger_line_still_raises(env):
+    early = runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "early.json"), url=env["url"])
+    ledger = runner.M3M_DIR / "ledger.jsonl"
+    good = ledger.read_text(encoding="utf-8")
+    ledger.write_text('{"run_id": "torn\n' + good, encoding="utf-8")
+    with pytest.raises(ValueError, match="line 1 of 2 is torn"):
+        runner.read_ledger()
+    late = run(env)
+    assert late["status"] == "failed" and "line 1 of 2 is torn" in manifest(late)["cause"]
+
+
+def test_a_whole_last_line_without_a_newline_gets_one_before_the_append(env):
+    runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "early.json"), url=env["url"])
+    ledger = runner.M3M_DIR / "ledger.jsonl"
+    ledger.write_bytes(ledger.read_bytes().rstrip(b"\n"))
+    late = run(env)
+    assert late["ledger_appended"] is True and len(runner._read_jsonl(ledger)) == 2 and ledger.read_bytes().endswith(b"\n")
+
+
+# ---------------------------------------------------------------- WO_M4: the reply, the context window and the server
+
+def test_an_empty_reply_is_malformed_and_retried(env):
+    Stub.script = {"business_model": ["empty_reply", "empty_reply"], "risks": ["empty_reply"]}
+    res = run(env)
+    assert res["incomplete_tasks"] == {"business_model": "malformed"} and len(posts_of("risks")) == 2
+    assert "the reply has no claims and no unknowns" in analysis(res)["tasks"]["business_model"]["cause"]
+
+
+@pytest.mark.parametrize("action,detail", [("error_200", "HTTP 200 with an error: llama runner"),
+                                           ("empty_200", "HTTP 200 with an empty response and done False")])
+def test_an_http_200_error_or_empty_response_is_an_infra_retry(env, action, detail):
+    Stub.script = {"business_model": [action]}
+    res = run(env)
+    assert res["status"] == "complete" and env["unloads"] == [(env["url"], runner.MODEL)] and len(posts_of("business_model")) == 2
+    att = manifest(res)["tasks"]["business_model"]["attempts"]
+    assert att[0]["outcome"] == "infra_retry" and detail in att[0]["detail"]
+    Stub.script = {"business_model": [action, action]}
+    res = run(env)
+    assert res["incomplete_tasks"] == {"business_model": "infra_error"} and detail in analysis(res)["tasks"]["business_model"]["cause"]
+
+
+def test_a_reply_cut_at_num_predict_names_done_reason_length(env):
+    Stub.script = {"risks": ["cut_at_length", "cut_at_length"]}
+    res = run(env)
+    assert res["incomplete_tasks"] == {"risks": "malformed"}
+    assert "done_reason is length: the reply was cut at num_predict 12288" in analysis(res)["tasks"]["risks"]["cause"]
+
+
+def test_the_post_check_catches_a_reply_at_the_context_wall(env):
+    Stub.script = {"risks": ["at_the_wall"], "growth_thesis": ["no_counts"]}
+    res = run(env)
+    assert res["incomplete_tasks"] == {"risks": "context_overflow", "growth_thesis": "context_overflow"}
+    assert len(posts_of("risks")) == 1 and len(posts_of("growth_thesis")) == 1
+    an = analysis(res)["tasks"]
+    assert "post-check: prompt_eval_count 98302 + eval_count 1 = 98303 >= num_ctx - 1 = 98303" in an["risks"]["cause"]
+    assert "no prompt_eval_count" in an["growth_thesis"]["cause"]
+
+
+def test_the_preflight_refuses_a_prompt_that_cannot_fit(env):
+    res = run(env, num_ctx=12288 + 500)              # the rendered prompt is over 1,250 characters, so no task fits
+    assert set(res["incomplete_tasks"]) == set(SENT) and res["status"] == "failed"
+    assert [p for p in generate_posts()] == []
+    rec = manifest(res)["tasks"]["business_model"]
+    assert rec["status"] == "context_overflow" and rec["cause"].startswith("preflight: ") and rec["cause"].endswith("not sent")
+    assert rec["attempts"][0]["seconds"] == 0.0 and manifest(res)["options"]["chars_per_token"] == 2.5
+
+
+def test_another_resident_model_refuses_the_run_and_writes_nothing(env):
+    Stub.loaded = ["rs2-research:latest", runner.MODEL + ":latest"]
+    with pytest.raises(runner.RunRefused, match=r"^gpu_busy: another model is loaded on the Ollama server: rs2-research:latest$"):
+        run(env)
+    Stub.loaded = None
+    with pytest.raises(runner.RunRefused, match="^gpu_state_unreadable"):
+        run(env)
+    assert not runner.M3M_DIR.exists() and generate_posts() == []
+    Stub.loaded = [runner.MODEL + ":latest"]                                     # our own model may be resident
+    assert run(env)["status"] == "complete"
+
+
+@pytest.mark.parametrize("show", [None, {"details": {}}, {"parameters": "  "}])
+def test_no_model_parameters_refuses_the_run(env, show):
+    Stub.show = show
+    with pytest.raises(runner.RunRefused, match="^model_show_failed"):
+        run(env)
+    assert not runner.M3M_DIR.exists() and generate_posts() == []
 
 
 # ---------------------------------------------------------------- the parser

@@ -5,7 +5,8 @@ pinned, nothing else) and the screener git blobs at its commit, and compares the
 rebuild asks for that the packet did not pin raises NotInStore; stored bytes that no longer hash to their name raise StoreCorrupt.
 
 The verified-record check is a build-time precondition: replay re-runs every other refusal (excluded ticker, ticker and CIK in the
-screener blobs, commit dated after T) and carries the packet's `verified_run_id` through unchanged.
+screener blobs, commit dated after T, and the run-time check of the packet's pinned `verified_row` against T) and carries that row
+through unchanged.
 
 CLI: `python -m qwen_c.replay [--dir cache/m3m/packets]` replays every packet there, prints one JSON line each, and exits 0 only when
 there is at least one packet and every one is identical.
@@ -69,7 +70,7 @@ def replay(packet_path, *, store_root=None, screener_repo_path=None):
     ticker = packet._check_ticker(pk["ticker"])
     repo = Path(screener_repo_path) if screener_repo_path is not None else packet.screener_repo()
     rebuilt = packet._core(ticker, packet.parse_T(pk["decision_time_utc"]), pk["screener"]["commit"], repo, packet._Inputs(get),
-                           pk["screener"].get("verified_run_id"))
+                           pk["screener"].get("verified_row"))
     new = packet.canonical_bytes(rebuilt)
     identical = new == stored
     diff = None
