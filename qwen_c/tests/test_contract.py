@@ -137,6 +137,8 @@ def test_null_optional_fields_are_allowed_and_kept():
     ("Revenue grew 12%", ["12%"], "supported"),
     ("It has 3 segments", [], "number_not_listed"),
     ("In fiscal 2025 revenue was 1,234 (table in millions)", ["1,234"], "supported"),   # a bare year need not be listed
+    ("Cash was 2,034 (table in millions)", [], "number_not_listed"),      # audit 2026-10-29: a year-like amount is not exempt
+    ("In fiscal 2031 revenue was 1,234", ["1,234"], "number_not_listed"),  # a year no cited item prints is not exempt
 ])
 def test_every_claim_number_is_listed_and_found(claim, numbers, want):
     item = "Total revenue $ 1,234 in fiscal 2025, up 12% across 3 segments"

@@ -20,8 +20,8 @@ THE CHECKS, per claim, recorded beside it as `support` (the first failing check 
                        holds an omission marker, is never found
     number_not_found   an entry of `numbers` is not printed by a cited item under the NUMBER RULE (below); an entry with no number in it
                        is never found
-    number_not_listed  a number of the claim text (every number `figures_of` reads, decorated or not, except a bare year 1900-2100 and
-                       an all-digit ticker) is not listed in `numbers`. Every number counts, small ones too: "grew 12%" with 12% printed
+    number_not_listed  a number of the claim text (every number `figures_of` reads, decorated or not, except an all-digit ticker, and a bare
+                       year 1900-2100 that a cited item prints) is not listed in `numbers`. Every number counts, small ones too: "grew 12%" with 12% printed
                        nowhere must never be `supported` (audit 2026-10-29)
 
 NORMALISATION of quotes (quote and item text alike): Unicode NFKC; the curly and low single quotes and the prime become ', the curly
@@ -243,8 +243,8 @@ def check_claim(claim, items, ticker=None):
     tk = Decimal(ticker).normalize() if ticker and str(ticker).isdigit() else None
     for f in sorted(figures_of(claim["claim"]), key=str):
         v, c, u = f
-        if not c and not u and (v == tk or (v == v.to_integral_value() and 1900 <= v <= 2100)):
-            continue
+        if not c and not u and (v == tk or (v == v.to_integral_value() and 1900 <= v <= 2100 and figure_found(f, cited_figs))):
+            continue                                    # a year is exempt only when a cited item prints it ("Cash was 2,034" is not)
         if not figure_found(f, listed):
             failures.append({"check": "number_not_listed", "detail": f"{v}{u or ''} {c or ''}".strip()})
     support = next((k for k in SUPPORT_ORDER if any(f["check"] == k for f in failures)), SUPPORTED)
