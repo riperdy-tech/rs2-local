@@ -1,0 +1,118 @@
+{
+  "prereg": "m3o.v1.3",
+  "written_utc": "2026-10-29T13:30:00Z",
+  "spec": "SPEC_m3o_integration.md",
+  "disclosure": "Written during the 3N DEV run, before any 3N score. Seen: the A0 10-27 mark (RR_L7); 157 DEV other-class/control material_events claims during S4/S5 adjudication; partial scorer output used only for validation. No rule was fitted to any of it.",
+  "authority": "paper_only",
+  "arms": {
+    "F": "A0 research_now, equal weight, next-session adjusted-open fill (m3l_forward/forward_ledger.py unchanged); the paper book of record",
+    "FB": "F minus B1-restricted new entries; shadow measurement series",
+    "FQ": "F minus (B1 or Q1)-restricted new entries; analysis_pending / analysis_incomplete slots held as cash; shadow measurement series"
+  },
+  "rules": {
+    "B1": {
+      "patterns": "PREREG_m3n.json baseline_B, sha256 eafda74379c4c7bf1009fc86ff4a72e768b5f54bc83521e580cd1d227889070c, via scratch/rev23/m3n/baseline_b.py unchanged",
+      "classes": [
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8"
+      ],
+      "item_window_days_before_T": 180,
+      "item_time": "SEC acceptance (accepted_at) of the item's filing",
+      "name": "deterministic text rule (3N baseline B); never called verified"
+    },
+    "Q1": {
+      "task": "material_events",
+      "event_types": {
+        "C1": "bankruptcy_or_restructuring",
+        "C2": "going_concern_doubt",
+        "C3": "restatement_or_non_reliance",
+        "C4": "delisting_notice",
+        "C5": "acquisition_of_the_company",
+        "C6": "contract_loss",
+        "C7": "guidance_withdrawal",
+        "C8": "debt_default_or_acceleration"
+      },
+      "support_required": "supported",
+      "status": {
+        "announced_pending": "acts",
+        "occurred": "acts only when occurred_on is verified and within 180 days before T",
+        "occurred_on_verified": "parses as a date (Month D, YYYY | Mon. D, YYYY | D Month YYYY | YYYY-MM-DD) and the same (year, month, day) is printed in at least one cited item",
+        "undated": "missing or unparseable occurred_on: escalation, does not act",
+        "date_unsupported": "date printed in no cited item: escalation, does not act",
+        "escalation": "logged and queued for 3P reanalysis; no change to any series (SPEC_factor_led_v2 section 4)"
+      },
+      "other_tasks_act": false,
+      "unsupported_critical_claim": "logged, does not act"
+    },
+    "A1S": {
+      "complete": "material_events task status ok",
+      "analysis_pending": "no completed run at the fill open: slot held as cash in FQ, entered at the first session open after completion unless Q1-restricted",
+      "analysis_incomplete": "both runner attempts failed or the task is malformed: slot held as cash in FQ until the next formation",
+      "factor_only_fill_in_FQ": "never",
+      "partial_analysis": "material_events ok but run status not complete: eligible, flagged partial_analysis"
+    },
+    "E1": {
+      "restricted_not_held": "new_entry_restricted; weight redistributed equally over the arm's entered names",
+      "restricted_held": "pending_reunderwriting flag; held at equal weight; no paper sale",
+      "exit": "only when the name leaves A0's book",
+      "expiry": "next formation, where the restriction is re-derived",
+      "zero_is_a_value": true
+    }
+  },
+  "decision_time": "witnessed updated_at of the decision run forward_ledger.py selects (last verified scoring run before the fill session open)",
+  "analysis": {
+    "model": "rs2-analyst-deep-mtp5-v33",
+    "prompt": "m3m.prompt.v3",
+    "contract": "m3m.analysis.v2 (with the designator exemption, rs2-local 626e086)",
+    "tasks": "all seven SPEC_m3m tasks plus material_events",
+    "seed_base": 1000,
+    "runs_per_name": 1,
+    "builder": "v7 (rs2-local review-2026-10/m3n-v6 4bc9425; AUDIT_N6 addendum); one version per formation",
+    "regime": "verified (contemporaneous formations); archival_sec_acceptance_v1 (retrospective 2026-09-30, amendment_3)"
+  },
+  "labels": {
+    "FQ_FB_before_3N_close": "shadow_pre_3N_close",
+    "FQ_FB_after_3N_close": "paper_post_3N, from the next formation on; no row is relabelled",
+    "formation_2026_09_30": "retrospective"
+  },
+  "measures": {
+    "costs_bp_round_trip": [
+      0,
+      20,
+      60
+    ],
+    "turnover": "one-way, 0.5 * sum(abs(target - drifted pre-trade weight)), including forced exits",
+    "factor_adjusted": "not_estimable until 12 monthly observations",
+    "event_response": "per restriction: restricted name return over the restriction period vs the arm book; per later-found critical event on a book name: whether and when B1/Q1 restricted it",
+    "operations": "analyses per formation, completion rate, T-to-completion latency, pending and incomplete counts, GPU hours"
+  },
+  "excluded_tickers": {
+    "tickers": [
+      "SENEA",
+      "SENEB",
+      "MOV",
+      "MG"
+    ],
+    "rule": "operator exclusion: never analysed by Qwen; in FB and FQ the action is operator_excluded and the weight is redistributed like a restriction; F keeps them as published and is also reported without them (as RR_L7)"
+  },
+  "amended_utc": "2026-10-29T14:10:00Z",
+  "amendment": "CROSS_CHECK_O_RULINGS.md (Claude, no outside AI): F-A1 removed (PROTOCOL section 4); Q1 occurred_on verified against cited items, undated/date_unsupported escalate; FQ_decisions_only analysis series; contemporaneous series start 2026-10-30 from cash; F is the paper book of record; code revisions on every line; B1 named a text rule. Before any formation analysis.",
+  "analysis_series": {
+    "FQ_decisions_only": "FB plus Q1 restrictions, pending/incomplete names filled as in FB; not an arm"
+  },
+  "series_start": {
+    "contemporaneous": "2026-10-30 formation, from cash (every name a new entry)",
+    "retrospective_2026-09-30": "separate one-period series, never a predecessor book"
+  },
+  "records": {
+    "every_line": "engine version and sha256, input sha256s; Qwen-derived lines also the qwen_c git commit (manifest) and builder_code (packet)"
+  },
+  "amendment_2": "2026-10-29 ~14:45Z, before any formation analysis: builder is v7 (rs2-local 4bc9425, going-concern notes outside TOTAL_CAP) because the CROSS_CHECK_O 6a regression test failed on v6 (event 8-Ks of PTHS and EONR pushed out); v7 passes it (m3n/n7/regression_v7.json). No action rule changed.",
+  "amendment_3": "2026-10-29 ~14:45Z+, before any formation analysis: the retrospective 2026-09-30 formation uses regime archival_sec_acceptance_v1 (frame = last stocks.json commit at or before T on the pinned ref; CIK from that commit cik_map), because its output commit b9497ef fails the publication pair check (missing embedded Reverse record for NNOX; pre-3094 fix), so the verified regime refuses it. Packets never read reverse_scores.json. Its runs use their own worktree/ledger root (wt-m3o-retro) so they are never a prior for contemporaneous runs. Contemporaneous formations keep regime verified."
+}

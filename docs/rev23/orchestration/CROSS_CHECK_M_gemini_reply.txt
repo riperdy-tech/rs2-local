@@ -1,0 +1,156 @@
+Below is the outside-reviewer audit of `qwen_c/` at commit `42640f8`, plus the five built packets under `wt-m3m/cache/m3m/packets/*.json`.
+
+---
+
+### 1. False `supported`
+
+Yes — a claim can come out `supported` while its figure, scale, unit, sign, or context is absent from (or contradicted by) the cited items.
+
+1. **Unrecognised unit/scale suffixes collapse to `u = ""`, which acts as a wildcard against any printed unit (`10^6x`–`10^12x` errors pass).**
+   - **Where:** [`_UNIT`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/sec_primary.py#L1074-L1077) matches only `%|(?:million|billion|thousand|bn|mn|mm|m|k|b)\b` with no trailing token check; [`fig_matches`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L200-L207) returns `True` when `v2 == v and (not u or u2 == u)` (`line 205`), and [`check_claim`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L226) allows `quotes: []`.
+   - **Unmatched suffixes:** `trillion` / `tn` / `t`, plural `millions` / `billions` / `thousands`, multiples (`15.4x`), `bps`, and `ppt` (all of `T` and `ppt` appear in real packet [`MA_20261029T013151Z.json`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/cache/m3m/packets/MA_20261029T013151Z.json#L1), e.g. `"$10.6T"` in `P1`).
+   - **Failing input A (trillion vs. million):**
+     - `items = {"F1": "Cash was $10.6 million."}` -> `cited_figs = {(Decimal('10.6'), '$', 'm')}`.
+     - `claim = {"claim": "Cash was $10.6 trillion.", "fact_ids": ["F1"], "quotes": [], "numbers": ["$10.6 trillion"], "confidence_basis": "F1"}`.
+     - [`figures_of`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L185-L187) parses `"$10.6 trillion"` as `(Decimal('10.6'), '$', '')`; `not u` matches `(Decimal('10.6'), '$', 'm')` -> **`supported`**.
+   - **Failing input B (plural scale / `x` / `bps` matching `%`):**
+     - `items = {"P1": "Operating margin was 12.5%."}`
+     - `claim = {"claim": "Debt is 12.5 billions (12.5x EBITDA).", "fact_ids": ["P1"], "quotes": [], "numbers": ["12.5 billions", "12.5x"], "confidence_basis": "P1"}` -> both parse as `(Decimal('12.5'), '', '')`, matching `(Decimal('12.5'), '', '%')` -> **`supported`**.
+   - **Reverse failure in real `MA` packet:** `MA` `P1` prints `"$10.6T"`, which `figures_of` reads as `(Decimal('10.6'), '$', '')`. A false claim `"Diluted EPS was $10.60"` (`numbers: ["$10.60"]` -> `Decimal('10.60').normalize() == Decimal('10.6')` at [`item_figures`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/sec_primary.py#L1130)) comes out **`supported`**, while `"GDV was $10,600 billion"` fails `number_not_found`.
+
+2. **Lookbehind `(?<![A-Za-z0-9,.])` blinds `figures_of` to dot-, comma-, or unlisted-currency-prefixed numbers (`number_not_listed` bypassed completely).**
+   - **Where:** [`_NUM_RE`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/sec_primary.py#L1073-L1075) and [`check_claim`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L244).
+   - **Failing input A (dot before digit):**
+     - `items = {"F1": "Revenue increased."}`
+     - `claim = {"claim": "Revenue grew approx.99%.", "fact_ids": ["F1"], "quotes": [], "numbers": [], "confidence_basis": "F1"}`.
+     - Preceding `.` (at first `9`) and `9` (at second `9`) are both in `[A-Za-z0-9,.]`, so `figures_of(claim["claim"])` returns `set()` -> **`supported`**.
+   - **Failing input B (unlisted currency code without space):**
+     - `"Debt is CHF990m (JPY50bn)."` (`CHF`, `JPY`, `RMB`, `SEK`, `KRW` are not in `_CUR` at [`sec_primary.py:1073`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/sec_primary.py#L1073)) -> `figures_of` returns `set()` -> **`supported`** with `numbers: []`.
+   - **Failing input C (dot before `$` strips currency):**
+     - In `"est.$999 million"`, `.` blocks `$` from starting a match, so `_NUM_RE` starts at `9` (preceded by `$`, which is not in `[A-Za-z0-9,.]`), parsing `(Decimal('999'), '', 'm')` with currency stripped; `numbers: ["est.$999 million"]` then matches `"€999 million"` in the item (`not c` at [`contract.py:203`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L203)).
+
+3. **Hyphenated ranges drop the unit on the lower bound.**
+   - **Where:** [`_NUM_RE`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/sec_primary.py#L1075), [`check_claim`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L235-L241).
+   - **Failing input:** `items = {"P1": "Operates in 8 countries with a 10% tax rate."}` Claim: `{"claim": "Guidance is 8-10% revenue growth.", "fact_ids": ["P1"], "quotes": [], "numbers": ["8-10%"], "confidence_basis": "P1"}`. `figures_of("8-10%")` yields `{(Decimal('8'), '', ''), (Decimal('10'), '', '%')}` — both match `cited_figs` -> **`supported`**. (Conversely, in real [`ILMN_20261029T013151Z.json`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/cache/m3m/packets/ILMN_20261029T013151Z.json#L1) `P1`, `"$4.60-$4.64 billion"` parses `4.60` with `u == ''`, so a faithful claim `"Low-end revenue guidance is $4.60 billion"` fails `number_not_found`.)
+
+4. **Truncation markers (`[… N characters omitted …]`) are rejected in `quote_found` but still parsed as evidence numbers in `figures_of`.**
+   - **Where:** [`quote_found`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L170) rejects `sec_primary.OMIT_RE`, and [`SYSTEM`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L17) says omission markers are not evidence, but [`figures_of`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L185-L187) does not strip `OMIT_RE` before calling `item_figures`.
+   - **Failing input (real `MA` `P1`):** `MA` `P1` ends with `"[… 65,074 characters omitted …]"`. Claim `{"claim": "Mastercard has 65,074 employees.", "fact_ids": ["P1"], "quotes": [], "numbers": ["65,074"], "confidence_basis": "P1"}` matches `(Decimal('65074'), '', '')` from the omission marker -> **`supported`**.
+
+5. **Year exemption (1900–2100) exempts non-year counts (including comma-formatted `"1,950"`–`"2,100"`) whenever a cited item prints that integer — or even `"$2,025 million"`.**
+   - **Where:** [`check_claim`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L246-L247) checks `figure_found((Decimal('2025'), '', ''), cited_figs)`. Because commas are stripped in [`item_figures`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/sec_primary.py#L1126) and `not c`/`not u` are wildcards in [`fig_matches`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L203-L206), `(2025, '', '')` matches `"in 2025"`, `"$2,025 million"`, or `"2,025%"`.
+   - **Failing input:** `items = {"P1": "In 2025, demand softened."}`, `claim = {"claim": "The company closed 2,025 stores.", "fact_ids": ["P1"], "quotes": [], "numbers": [], "confidence_basis": "P1"}` -> **`supported`**.
+
+6. **Sign/parentheses blindness + optional `quotes: []` + word numerals allow inverted or unquoted claims.**
+   - **Where:** [`contract.py:33-34`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L33-L34), [`contract.py:70`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L70), [`contract.py:226-231`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L226-L231).
+   - **Failing input A (loss inverted to profit on real `CMRE` `F2`):** `CMRE` `F2` prints `"Net Loss from discontinued operations | (27,547)"`. Claim `{"claim": "Discontinued operations earned +27,547 profit (table in thousands).", "fact_ids": ["F2"], "quotes": [], "numbers": ["27,547"], "confidence_basis": "F2"}` -> **`supported`**.
+   - **Failing input B (word numbers):** `{"claim": "Net debt tripled to nine billion dollars.", "fact_ids": ["F1"], "quotes": [], "numbers": [], "confidence_basis": "F1"}` -> zero digits read by `figures_of` -> **`supported`**.
+
+---
+
+### 2. Look-ahead
+
+Going sub-point by sub-point through the five mechanisms named in the prompt:
+
+1. **Screener commit check (`S0`) — YES, real T+ / excluded-filing leakage path (`packet.py:609-611`).**
+   - **Asymmetric dissemination policy between `S0` and SEC items:** SEC items require `effective_at(accepted_at(raw)) <= T` ([`packet.py:326`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L326)), holding after-close / `>= 17:30 ET` filings back by 1–2 NYSE sessions. [`_core`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L609-L611) checks **only** `git show -s --format=%cI commit_full <= T` on `S0`, with zero session delay and zero check on payload timestamps (`Last_Updated`, `last_listed`, `generated_at`, `fct_momentum_state.price_asof`).
+   - **Concrete failing input (visible in real `HRTG` window):** `HRTG` filed its Q3 2026 8-K (`0001193125-26-436203`) at `2026-10-28T20:25:14.000Z`; `packet.py` excludes it until `effective_at = 2026-10-30T13:30:00Z` ([`HRTG_20261029T013151Z.json`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/cache/m3m/packets/HRTG_20261029T013151Z.json#L1)). Even in commit `92592e21`, `HRTG` `S0` already carries `Last_Updated: 2026-10-28 16:47` (20:47Z if EDT — 22 minutes after that 8-K), and for **any** `T` on Oct 29 (e.g. `T = "2026-10-29T18:00:00Z"`), an Oct 29 screener commit satisfies `committed <= T` while injecting Yahoo Finance post-Q3-release `price`, `epsTtm`, `quarterlyEps`, `ocf`, and `revenueGrowth` into `S0` a full day before `SEC_POLICY` admits the Q3 8-K.
+   - **Mutable `%cI` without payload-asof check:** Git `%cI` is a mutable committer-clock claim ([`packet.py:609`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L609)). If `T = "2026-10-28T14:00:00Z"` (10:00 EDT intraday) is paired with any commit whose `%cI <= T` (clock skew or amended/cherry-picked commit) carrying `fct_momentum_state.price_asof: "2026-10-28"` (16:00 EDT close), T+ closing prices enter `S0` unchecked.
+
+2. **Submissions JSON fetched after `T` (`packet.py:614-615`, `291-311`, `328-330`):**
+   - **No T+ text enters `evidence`:** [`_core`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L614-L615) reads only `subs["filings"]["recent"]` (ignoring mutable top-level `name`/`sic`/`formerNames`), and `_pick` gates every chosen item on `r["effective"] <= T`.
+   - **Post-`T` filing leaks into `packet["excluded"]` under Eastern-wall `Z` mislabeling:** [`_pick`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L328-L330) appends to `excluded` when `r["earliest"] <= T`, where [`_accepted_earliest`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L112-L117) takes `min(as_utc, as_eastern_wall)`. **Failing input:** A filing accepted at `2026-10-29 10:00 EDT` (`14:00Z`) whose SEC clock is Eastern-mislabeled `"2026-10-29T10:00:00.000Z"` has `earliest = 10:00Z`. Building at `T = "2026-10-29T11:00:00Z"` from a submissions JSON fetched later that afternoon records that **future (`T + 3h`) filing** in `packet["excluded"]` (not rendered to Qwen, [`tasks.py:107`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L107), but leaked into `packet.json`).
+   - **Rolling-1,000 truncation on historical `T`:** [`_filing_rows`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L293) reads only `filings.recent` (~1,000 rows) and ignores `filings.files`. Fetching `CIK*.json` in late 2026 for a historical `T` (e.g. `2025-10` per `SPEC_factor_led_v2.md`) drops older `T`-eligible filings for frequent filers, making historical packets depend on post-`T` filing volume.
+
+3. **`_pick` (`packet.py:314-331`), `accepted_at` / `effective_at` (`packet.py:99-130`), and statements from "the latest periodic filing" (`packet.py:618-620`):**
+   - Verified sound against T+ leakage: `accepted_at` takes `max(as_utc, as_eastern_wall)` (conservative), unreadable clocks become `None` and are skipped (`lines 306-307, 321`), and `FilingSummary.xml` / `R*.htm` are fetched under the immutable accession URL of `periodic[0]` (`effective <= T`).
+
+---
+
+### 3. Prompt contamination
+
+`packet["excluded"]` and `packet["annotations"]` are confirmed **not** rendered ([`render_packet`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L106-L113) prints only header lines and `packet["evidence"]`). However, there are three real contamination vectors:
+
+1. **SEVERE — `S0` dumps the screener's own valuation signals, margin-of-safety, nomination doors, forward consensus, and risk opinions straight into the user prompt across all 5 real packets.**
+   - **Where:** [`_screener`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L253-L259) serializes the **entire unfiltered** `stocks.json` row and `factor_scores_dual_door.json` profile into `S0`, and [`render_packet`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L113) sends all of `S0` to the model. Meanwhile `test_tasks.py`'s banned-word check runs only on `tasks.py` constants, never on rendered prompts.
+   - **Concrete contamination in [`HRTG_20261029T013151Z.json`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/cache/m3m/packets/HRTG_20261029T013151Z.json#L1) (and `MA`, `ILMN`, `CMRE`, `ECPG`):**
+     - Valuation & verdicts: `reverse.rev_mos: 85`, `reverse.rev_band: Watchlist` (`Reject` in `ECPG`, `High` in `MA`), `reverse.rev_pro: FCF yield 16.2% percentile valuation signal +`, `discount_rate_pct: 10.48688`, `z_exp_gap`, `z_value`.
+     - Doors & ranks: `nominated_doors: [DOOR_1_COMPOUNDER, GLOBAL_WILDCARD, DOUBLE_DOOR_CHAMPION]`, `best_pctl: 98.9`, `reverse.rev_rank: 821`, `status: Fail`, `score: 70`.
+     - Pre-baked risk narrative in `reverse.rev_con` (which Qwen can quote verbatim citing `["S0"]` and get **`supported`**!): `"G quality is shallow; v3.2 must verify capital and credit; ... PRICE_EXTENDED: current price 3.3x above 2yr low (mean-reversion risk)"` (and in `ILMN`: `"CROWDED_LONG: institutional ownership 107.4% > 98.0% (exit-crowding risk)"`).
+     - Wall Street forward consensus: `metrics.forwardEpsEstimate: 5.0875`, `metrics.pegRatio: 1.6619115000000002`.
+
+2. **`S0` prints placeholder zeros (`0`) and stale/false Yahoo blurbs as citable peer facts (`packet.py:202-211, 253`).**
+   - In **all 5 real packets**, `S0` prints `peRatio: 0`, `metrics.netIncome: 0`, `metrics.operatingCashFlow: 0`, `metrics.consecutiveGrowth: 0`, `fct_momentum_state.high_52w_proxy: 0`. A model citing `["S0"]` for `"Net income is 0"` gets `supported`.
+   - In [`CMRE_20261029T013151Z.json`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/cache/m3m/packets/CMRE_20261029T013151Z.json#L1), `S0` `description` claims CMRE owns `"79 containerships and 38 dry bulk vessels"`, directly contradicting `CMRE` `P1` (20-F Item 4: CMRE spun off its dry bulk fleet into Costamare Bulkers on May 6, 2025), while `S0` is rendered with `form: not stated | period: not stated | effective: not stated` ([`tasks.py:101-102`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L101-L102), contradicting [`SYSTEM`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L17): *"Each item states its form, its period and the time it became public"*).
+
+3. **Prompt invitations to outside knowledge / prior-run contamination in `tasks.py`:**
+   - [`_CLAIM_FIELDS`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L33) asks `"confidence_basis": "stated in the cited item, or inferred, and from what"`, inviting inference beyond explicit text.
+   - [`INSTRUCTIONS["unresolved_questions"]`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L66-L69) asks `"settled_by"` to name external unfiled documents/exhibits not in the packet.
+   - [`thesis_change_instruction`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L143-L151) injects **all** prior claims (`prior_points`), including prior claims with `support != "supported"` (hallucinated or training-memory-contaminated claims from an earlier run), straight back into the prompt.
+
+---
+
+### 4. Silent bypass
+
+Yes — six concrete paths produce `status: "ok"` / `status: "complete"` (exit code `0`) on empty, truncated, or skipped work:
+
+1. **Empty `claims: []` across all tasks passes as `status: "ok"` and run `status: "complete"`.**
+   - **Where:** [`validate`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L124-L154) and [`run`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L417-L420).
+   - **Failing input:** Model replies `{"task": "<id>", "claims": [], "unknowns": []}` on every task -> `check_task` returns `status: "ok"`, `run()` writes `status: "complete"`, and `main()` exits `0` ([`runner.py:491`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L491)) with zero claims and zero unknowns. (Likewise, a run with 100% unsupported claims records `status: "complete"` in `ledger.jsonl` at [`runner.py:441`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L441) with no claim or support counts.)
+
+2. **`context_overflow_guard` (`used > ctx`) can miss silent Ollama front-truncation.**
+   - **Where:** [`context_overflow_guard`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/tools/audit_202608/ollama_raw.py#L178-L182) checks strict `prompt_eval_count + eval_count > num_ctx` (`65536`).
+   - **Failing input:** When a prompt exceeds `num_ctx`, Ollama truncates the **front** of the prompt *before* evaluation so `prompt_eval_count < num_ctx` (as documented in `config.json:58`, Ollama's context wall lands at `num_ctx - 1 = 65535`, never `> 65536`, and if Ollama reserves generation headroom or the model finishes JSON in e.g. `1,500` tokens after prompt truncation to `62,000`, `used = 63,500 <= 65,536`). `SYSTEM` and `[S0]`/`[F1]` at the front of the prompt are silently cut while the task finishes `status: "ok"`.
+
+3. **`thesis_change` never checks that prior point IDs (`G1..`, `R1..`) are covered or even real.**
+   - **Where:** [`TASK_EXTRA["thesis_change"]`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L74), [`validate`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L98-L154), [`_run_task`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L305). `check_task` does not even take `prior`.
+   - **Failing input:** Prior run has `G1..G4` and `R1..R5`. Model returns `{"task": "thesis_change", "claims": [{"point": "FAKE99", "change_type": "unchanged", ...}], "unknowns": []}` (or `claims: []`, skipping all 9 prior points) -> `status: "ok"`, run **`"complete"`**.
+
+4. **Broken `analysis_incomplete` prior run silently downgrades `thesis_change` to `not_applicable_no_prior` -> run `"complete"`.**
+   - **Where:** [`find_prior`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L228-L235) and [`run`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L402-L420).
+   - **Failing input:** At `T1`, `business_model` succeeds (`analysis_incomplete` in ledger) while `growth_thesis` and `risks` both `timeout`. At `T2`, `find_prior` returns `None, {"kind": "no_ok_tasks", ...}`; line `403` sets `thesis_change` to `"not_applicable_no_prior"` (not `infra_error`), line `417` drops it from `applicable`, and the `T2` run finishes **`status: "complete"`**. Even if only `risks` timed out at `T1`, line `234` sets `prior["risks"] = []` and `T2` finishes **`"complete"`** with zero prior risks checked.
+
+5. **Crash between `manifest.json` write and `ledger.jsonl` append hides the run from `find_prior`, and a torn `ledger.jsonl` line crashes both `find_prior` and `read_ledger`.**
+   - **Where:** [`run`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L440-L446), [`find_prior`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L212), [`_read_jsonl`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L196-L202), [`read_ledger`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L457-L474).
+   - **Failing input A:** Process dies after line `440` (`manifest.json` written with `status: "complete"`) before line `444` (`ledger.jsonl` append). `read_ledger` reports `status: "complete", ledger_missing: True`, while `find_prior` reads only `ledger.jsonl` (not `read_ledger`) and silently ignores that completed prior run!
+   - **Failing input B:** Partial/torn final line in `ledger.jsonl` -> `_read_jsonl` raises raw `JSONDecodeError` (unlike [`sec_store._receipts`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/sec_store.py#L77-L80)), crashing `read_ledger()` and forcing every subsequent `run()` into `status: "failed"`.
+
+6. **HTTP-200 Ollama runner errors are misclassified as `malformed` instead of `infra_error`.**
+   - **Where:** [`to_chat_shape`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/tools/audit_202608/ollama_raw.py#L158-L169) and [`_run_task`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L303-L322). If `/api/generate` returns HTTP 200 with `{"error": "..."}` or an [`ops.infra_error`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/ops.py#L169-L181) string and empty `response`, `runner.py` never checks `resp.get("error")`, `resp.get("done")`, or `ops.infra_error` — treating an engine crash as `malformed` and firing a malformed retry *without* `ops.wait_unloaded`.
+
+---
+
+### 5. Determinism
+
+1. **`verified_record` is not pinned by hash in `packet.json`, breaking `build(..., online=False)` determinism and bypassed in `replay.py`.**
+   - **Where:** [`verified_row`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L187-L199), [`build`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L670-L675), [`replay`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/replay.py#L71-L72).
+   - **Failing input:** Two `check_new_runs` files (or re-ordered rows) both contain `PASS`/`pair: PASS` entries for `commit_full` with `run_id = "40796224964"` vs `"40799999999"`. Calling `packet.build(ticker, T, commit, online=False, verified_record=...)` over the exact same `store_root` and `screener_commit` emits different `screener.verified_run_id` and different `packet_sha256` (contradicting [`packet.py:5-6`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L5-L6)). Conversely, `replay.py:72` trusts `pk["screener"].get("verified_run_id")` verbatim without checking any verified record.
+
+2. **`packet.build(..., online=False)` is NOT pinned over an append-only store (`sec_store.latest_receipt`).**
+   - **Where:** [`sec_store.get`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/sec_store.py#L168-L173) vs [`packet.build`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L674).
+   - **Failing input:** Build `MA` at `T1` online; build `MA` at `T2` online (appending a newer `CIK0001141391.json` receipt); re-run `packet.build("MA", T1, commit1, online=False, ...)`. It reads the `T2` submissions receipt rather than `T1`'s receipt, changing `packet_sha256` whenever `recent` or `excluded` changed between `T1` and `T2`.
+
+3. **Unpinned library / tzdata / upstream-parser versions and hard calendar bounds.**
+   - [`_calendar()`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L92-L96) properly fixes `start="2005-01-01", end="2031-12-31"` and `ZoneInfo("America/New_York")` ignores OS locale, and `S0` dict order is fixed by the pinned git blobs. However, `packet.json` does not record `exchange_calendars` version (ad-hoc NYSE closures), `tzdata` version, or `sec_primary.py` hash (`BUILDER_VERSION = "m3m.packet.builder.v1"` at [`packet.py:50`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L50) does not change if `sec_primary.blocks_of`/`select_text` is edited). Any `T` outside `2005..2031` raises an uncaught `exchange_calendars` exception instead of `PacketRefused`.
+
+---
+
+### 6. Anything else that would make the first GPU run wasted or misleading
+
+1. **1 of the 5 real M-LIVE packets (`ILMN`) has ZERO Business, Risk Factors, or MD&A sections — and its `other_8k` items extracted legal boilerplate/TOCs instead of the 8-K disclosures.**
+   - In [`ILMN_20261029T013151Z.json`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/cache/m3m/packets/ILMN_20261029T013151Z.json#L1), all 5 10-K/10-Q narrative sections failed (`section_not_found`, cross-reference-index 10-K/10-Q layout), and [`annotations`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L107) is hidden from the model so Qwen is not even told those sections failed to extract.
+   - Worse, [`_other_8k`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L553) calls `sec_primary._main_exhibit`, which prefers `EX-10.1`/`EX-4.2`/`EX-1.1` over the 8-K Item narrative! As a result:
+     - `ILMN` `P4` (`0000950157-26-000888`, Items 1.01/2.03 new credit facility) dropped the 2-page 8-K summary (which states the facility dollar size, maturity, and covenant) and kept the first 4,000 chars of the 411,760-char Credit Agreement (`EX-10.1`) — **pure cover page + Table of Contents with zero dollar figures (`[… 407,760 characters omitted …]`)**.
+     - `ILMN` `P2` (`0001110803-26-000195`, Commercial Paper program) kept an unexecuted `[●]` form template instead of the 8-K body stating the program size.
+     - Additionally, [`render_item`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/tasks.py#L100-L103) omits both `e["name"]` and `e["title"]`, so the model never even sees `"8-K Items 1.01, 1.02, 2.03"`!
+
+2. **Amendments & restatements (`10-K/A`, `10-Q/A`, `20-F/A`) and foreign interim `6-K`s are invisible (`packet.py:72-73, 452, 635`).**
+   - [`PERIODIC_FORMS`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L72-L73) and `ANNUAL_FORMS` exclude `/A`. Although `"restatement"` is a core `risk_type` ([`contract.py:63`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/contract.py#L63)), a company that restates via `10-K/A` or `10-Q/A` will have its **superseded, pre-restatement numbers** fed to Qwen as current truth.
+   - Real packet [`CMRE_20261029T013151Z.json`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/cache/m3m/packets/CMRE_20261029T013151Z.json#L1) (a 20-F FPI) files Q1/Q2/Q3 earnings and interim financials on **Form 6-K**, which `packet.py` ignores completely — leaving `CMRE` with 8-month-stale FY2025 statements against Oct 2026 `S0` TTM metrics. `40-F` filers ([`packet.py:452`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L452)) extract 0/3 sections because AIF/MD&A live in `EX-99.*`.
+   - [`release`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/packet.py#L635) has **no staleness cutoff** (unlike `quarterly` at line 629 and `other_8k` at line 640): if an issuer's latest 10-K/10-Q had no Item 2.02 8-K, `release[0]` pulls an arbitrary older quarter's (or multi-year-old) 8-K release.
+
+3. **GPU VRAM collision & `ops.wait_unloaded` blind spot when another model holds the 3090 (`runner.py:325`, `ops.py:128, 141-142`).**
+   - `runner.py` checks neither `cache/DEPTH_PAUSED`, nor `ops.job_heartbeat`, nor free VRAM at startup. If `rs2-research` or `llama-server` is resident when `runner.py` starts, Ollama 500s on OOM, and [`ops.wait_unloaded(url, MODEL)`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L325) sends `keep_alive: 0` **only** for `rs2-analyst-deep-mtp5-v33` — never unloading the other resident model, timing out after 180s per task (`free_vram < 20000`), and failing the whole run after burning ~21 minutes of timeouts.
+
+4. **Sampling parameters are unpinned & stochastic (`temperature` from `v33` Modelfile) vs. M-LIVE repeatability and verbatim-quote checks (`runner.py:296-297, 383`).**
+   - [`_run_task`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/qwen_c/runner.py#L296-L297) passes only `num_ctx`, `num_predict`, and `seed`, inheriting `rs2-analyst-deep-mtp5-v33`'s sampling defaults (built for Rev-26 creative multi-sample DCF consensus, not deterministic extraction) without recording the Modelfile's actual `temperature`/`top_p` values in `manifest.json` (`line 383`; and if `~/.ollama/models` is unreadable, [`ollama_serving`](file:///C:/Users/riper/stocks/stocks-workspace/scratch/rev23/wt-m3m/llm_provider.py#L505-L518) silently writes `manifest_sha256: None`). Non-zero temperature + `mtp5` speculative decoding risks failing the `SPEC §7` same-seed repeatability gate whenever KV-prefix cache state differs, and `NUM_PREDICT = 12288` with `think = "medium"` (`runner.py:60-61`) risks `<think>` + multi-quote JSON hitting the token ceiling and burning a second 12,288-token retry without surfacing `done_reason == "length"` in `cause`.

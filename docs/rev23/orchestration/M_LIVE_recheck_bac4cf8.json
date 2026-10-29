@@ -1,0 +1,1193 @@
+{
+ "CMRE_20261029T022848Z_7d1b09a280f3_1": {
+  "old": {
+   "supported": 23,
+   "quote_not_found": 6,
+   "number_not_found": 8,
+   "number_not_listed": 17
+  },
+  "new": {
+   "supported": 33,
+   "quote_not_found": 6,
+   "number_not_found": 4,
+   "number_not_listed": 11
+  },
+  "changed": [
+   {
+    "task": "business_model",
+    "claim": "Costamare's fleet is chartered to ten different charterers, and charter coverage declines from 98.2% of days in 2026 to 15.1% in 2032–2036, meaning a growing share of future revenue will depend on re-chartering at prevailing market rates.",
+    "numbers": [
+     "98.2%",
+     "86.6%",
+     "71.6%",
+     "48.9%",
+     "32.1%",
+     "18.9%",
+     "15.1%"
+    ],
+    "fact_ids": [
+     "P3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Total current assets of continuing operations of $690,668 (table in thousands) exceeded total current liabilities of continuing operations of $398,568 (table in thousands) at 31 Dec 2025, a working-capital surplus of roughly $292,100 (table in thousands).",
+    "numbers": [
+     "$690,668",
+     "$398,568"
+    ],
+    "fact_ids": [
+     "F1"
+    ],
+    "old": "number_not_found",
+    "new": "number_not_listed",
+    "new_failures": [
+     {
+      "check": "number_not_listed",
+      "detail": "$292100"
+     }
+    ]
+   },
+   {
+    "task": "financial_health",
+    "claim": "Net cash provided by operating activities from continuing operations was $536,867 (table in thousands) in FY2025, exceeding net income from continuing operations of $396,547 (table in thousands) by approximately $140,320 (table in thousands), with depreciation of $129,538 (table in thousands) as the principal non-cash add-back.",
+    "numbers": [
+     "$536,867",
+     "$396,547",
+     "$129,538"
+    ],
+    "fact_ids": [
+     "F3",
+     "F2"
+    ],
+    "old": "number_not_found",
+    "new": "number_not_listed",
+    "new_failures": [
+     {
+      "check": "number_not_listed",
+      "detail": "$140320"
+     }
+    ]
+   },
+   {
+    "task": "financial_health",
+    "claim": "The current portion of long-term debt due within 12 months was $268,131 (table in thousands) at 31 Dec 2025, which is less than half of the $536,867 (table in thousands) annual operating cash flow from continuing operations and well covered by the $519,847 (table in thousands) cash balance.",
+    "numbers": [
+     "$268,131",
+     "$536,867",
+     "$519,847"
+    ],
+    "fact_ids": [
+     "F1",
+     "F3"
+    ],
+    "old": "number_not_found",
+    "new": "number_not_listed",
+    "new_failures": [
+     {
+      "check": "number_not_listed",
+      "detail": "12"
+     }
+    ]
+   },
+   {
+    "task": "financial_health",
+    "claim": "As of 24 Feb 2026, the fleet of 79 containerships (including 10 under construction) carried approximately $3.6 billion of contracted revenue under fixed-term charters with an average TEU-weighted remaining duration of 4.4 years, providing high-visibility future cash flows.",
+    "numbers": [
+     "79",
+     "551,000",
+     "10",
+     "$3.6 billion",
+     "4.4 years"
+    ],
+    "fact_ids": [
+     "P1",
+     "P3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Future capital outlays include 10 newbuild containerships (each 3,100 TEU) with deliveries from Q2 2027 to Q4 2028, and a Neptune leasing investment commitment of $247.8 million of which $182.2 million had been invested as of 24 Feb 2026, creating ongoing financing needs beyond the near-term debt maturity.",
+    "numbers": [
+     "10",
+     "3,100",
+     "$247.8 million",
+     "$182.2 million",
+     "39.0%",
+     "78.1%"
+    ],
+    "fact_ids": [
+     "P1",
+     "P3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Dividends paid to shareholders were $79,287 (table in thousands) in FY2025, representing approximately 14.8% of the $536,867 (table in thousands) operating cash flow from continuing operations, leaving substantial residual cash for debt service and investment.",
+    "numbers": [
+     "$79,287",
+     "$536,867"
+    ],
+    "fact_ids": [
+     "F3"
+    ],
+    "old": "number_not_found",
+    "new": "number_not_listed",
+    "new_failures": [
+     {
+      "check": "number_not_listed",
+      "detail": "14.8%"
+     }
+    ]
+   },
+   {
+    "task": "competitive_position",
+    "claim": "Fleet utilization excluding scheduled dry-dockings was 99.0%, 99.8% and 99.6% in 2023, 2024 and 2025 respectively.",
+    "numbers": [
+     "99.0%",
+     "99.8%",
+     "99.6%"
+    ],
+    "fact_ids": [
+     "P1",
+     "P3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "competitive_position",
+    "claim": "Net cash from operating activities of continuing operations was $536,867 thousand in 2025, and net income from continuing operations was $396,547 thousand.",
+    "numbers": [
+     "536,867",
+     "396,547"
+    ],
+    "fact_ids": [
+     "F2",
+     "F3",
+     "P3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "competitive_position",
+    "claim": "Contracted coverage of fleet days declines from 98.2% in 2026 to 15.1% in 2032–2036, meaning a growing share of the fleet will be uncontracted in later years.",
+    "numbers": [
+     "98.2%",
+     "86.6%",
+     "71.6%",
+     "48.9%",
+     "32.1%",
+     "18.9%",
+     "15.1%"
+    ],
+    "fact_ids": [
+     "P3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "growth_thesis",
+    "claim": "The Neptune sale-and-leaseback business is a growing income stream: income from investments in leaseback vessels rose from $8,915 thousand in 2023 to $23,947 thousand in 2024 to $31,226 thousand in 2025, with $182.2 million invested as of February 24, 2026 against a $247.8 million commitment.",
+    "numbers": [
+     "$ 31,226",
+     "$ 23,947",
+     "$ 8,915",
+     "$182.2 million",
+     "39.0%",
+     "78.1%",
+     "$247.8 million",
+     "52"
+    ],
+    "fact_ids": [
+     "F2",
+     "P1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "growth_thesis",
+    "claim": "Global seaborne container trade provides a structural demand tailwind: trade grew at a CAGR of 2.7% per annum from 175.3 million TEU in 2016 to 223.4 million TEU in 2025, and Clarksons Research estimates further growth to 229.0 million TEU in 2026.",
+    "numbers": [
+     "2.7%",
+     "175.3 million TEU",
+     "223.4 million TEU",
+     "229.0 million TEU"
+    ],
+    "fact_ids": [
+     "P2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "risks",
+    "claim": "Contracted charter coverage for the fleet drops from 98.2% of days in 2026 to 15.1% in 2032-2036, exposing the company to re-chartering at market rates when the containership orderbook is at its highest level since 2011.",
+    "numbers": [
+     "98.2%",
+     "15.1%",
+     "33.9%",
+     "65.5%",
+     "12,000 TEU"
+    ],
+    "fact_ids": [
+     "P3",
+     "P2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "unresolved_questions",
+    "claim": "Costamare contributed $100,000 thousand in cash to the spun-off Costamare Bulkers entities in 2025; what are the ongoing financial, tax, or operational obligations between the two companies under the Separation and Distribution Agreement?",
+    "numbers": [
+     "(100,000)",
+     "1",
+     "5"
+    ],
+    "fact_ids": [
+     "P1",
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   }
+  ]
+ },
+ "ECPG_20261029T022848Z_23dd254928be_1": {
+  "old": {
+   "supported": 42,
+   "number_not_listed": 14,
+   "number_not_found": 4,
+   "quote_not_found": 3
+  },
+  "new": {
+   "supported": 51,
+   "number_not_found": 4,
+   "number_not_listed": 5,
+   "quote_not_found": 3
+  },
+  "changed": [
+   {
+    "task": "business_model",
+    "claim": "Cost of legal collections, which includes court costs and contingent fees to external attorneys, was $96,599 (table in thousands) in Q2 2026, up from $79,649 (table in thousands) in Q2 2025, making it the fastest-growing operating expense line.",
+    "numbers": [
+     "96,599",
+     "79,649"
+    ],
+    "fact_ids": [
+     "F2",
+     "P3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "business_model",
+    "claim": "In Q2 2026, the company repurchased approximately $27 million of common stock, and for the six months ended June 30, 2026, total repurchase and retirement of common stock was $47,029 (table in thousands), reducing basic shares outstanding from 23,507 (table in thousands) in Q2 2025 to 21,554 (table in thousands) in Q2 2026.",
+    "numbers": [
+     "$27 million",
+     "47,029",
+     "23,507",
+     "21,554"
+    ],
+    "fact_ids": [
+     "P6",
+     "F3",
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Total borrowings stood at $4,179,515 (table in thousands) against total stockholders' equity of $1,078,717 (table in thousands) as of June 30, 2026, indicating a highly leveraged capital structure.",
+    "numbers": [
+     "4,179,515",
+     "1,078,717"
+    ],
+    "fact_ids": [
+     "F1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Net income for the six months ended June 30, 2026 was $150,242 (table in thousands), up from $105,517 (table in thousands) in the prior-year period.",
+    "numbers": [
+     "$ 150,242",
+     "$ 105,517"
+    ],
+    "fact_ids": [
+     "F2",
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Net cash provided by operating activities was only $52,946 (table in thousands) for the six months ended June 30, 2026, well below net income of $150,242 (table in thousands), because 'Changes in recoveries' of $(133,855) (table in thousands) is a non-cash revenue component.",
+    "numbers": [
+     "52,946",
+     "150,242",
+     "(133,855)"
+    ],
+    "fact_ids": [
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Purchases of receivable portfolios, net of put-backs, consumed $(800,301) (table in thousands) while collections applied to receivable portfolios contributed $665,017 (table in thousands), resulting in net cash used in investing activities of $(130,650) (table in thousands) for the six months ended June 30, 2026.",
+    "numbers": [
+     "(800,301)",
+     "665,017",
+     "(130,650)"
+    ],
+    "fact_ids": [
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Cash paid for interest was $148,719 (table in thousands) for the six months ended June 30, 2026, up from $133,830 (table in thousands) in the prior-year period, reflecting the higher average debt balance before the May refinancing took effect.",
+    "numbers": [
+     "148,719",
+     "133,830"
+    ],
+    "fact_ids": [
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "The company repurchased and retired $47,029 (table in thousands) of common stock during the six months ended June 30, 2026, compared with $25,215 (table in thousands) in the prior-year period, reducing shares outstanding from 21,688 to 21,209 (in thousands).",
+    "numbers": [
+     "(47,029)",
+     "(25,215)",
+     "21,209",
+     "21,688"
+    ],
+    "fact_ids": [
+     "F3",
+     "F1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "risks",
+    "claim": "Encore carries substantial leverage with borrowings of $4,179,515 thousand against equity of $1,078,717 thousand, and its business model depends on continuous access to capital markets to fund portfolio purchases.",
+    "numbers": [
+     "4,179,515",
+     "4,001,293",
+     "1,078,717",
+     "976,750",
+     "$1 billion",
+     "$30.5 million",
+     "$15 million"
+    ],
+    "fact_ids": [
+     "F1",
+     "P6",
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   }
+  ]
+ },
+ "HRTG_20261029T022848Z_b8784fd354e2_1": {
+  "old": {
+   "supported": 28,
+   "number_not_listed": 20,
+   "number_not_found": 6,
+   "quote_not_found": 5
+  },
+  "new": {
+   "supported": 38,
+   "number_not_found": 6,
+   "number_not_listed": 10,
+   "quote_not_found": 5
+  },
+  "changed": [
+   {
+    "task": "business_model",
+    "claim": "For the six months ended June 30, 2026, total revenue was $426,854 (table in thousands), of which net premiums earned of $400,817 (table in thousands) was the dominant component, followed by net investment income of $20,462 (table in thousands) and other revenue of $5,596 (table in thousands).",
+    "numbers": [
+     "426,854",
+     "400,817",
+     "20,462",
+     "5,596"
+    ],
+    "fact_ids": [
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "business_model",
+    "claim": "Losses and loss adjustment expenses are the largest operating cost, at $152,654 (table in thousands) for the six months ended June 30, 2026, followed by policy acquisition costs of $90,845 (table in thousands) and general and administrative expenses of $48,687 (table in thousands).",
+    "numbers": [
+     "152,654",
+     "90,845",
+     "48,687"
+    ],
+    "fact_ids": [
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "business_model",
+    "claim": "Heritage's balance sheet is dominated by fixed-maturity securities and cash, which together with restricted cash generated net investment income of $20,462 (table in thousands) in H1 2026.",
+    "numbers": [
+     "801,910",
+     "587,597",
+     "20,462"
+    ],
+    "fact_ids": [
+     "F1",
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Cash and cash equivalents were $587,597 (table in thousands) and restricted cash was $13,782 (table in thousands) at June 30, 2026, giving total liquid resources of $601,379 (table in thousands) against total assets of $2,452,436 (table in thousands).",
+    "numbers": [
+     "587,597",
+     "13,782",
+     "601,379",
+     "2,452,436"
+    ],
+    "fact_ids": [
+     "F1",
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Net cash provided by operating activities was $166,553 (table in thousands) for the six months ended June 30, 2026, a 277% increase over $44,129 (table in thousands) in the same prior-year period.",
+    "numbers": [
+     "166,553",
+     "44,129",
+     "166.5 million",
+     "277%"
+    ],
+    "fact_ids": [
+     "F3",
+     "P7"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "The company's interest expense, net was $3,468 (table in thousands) for the six months ended June 30, 2026, down from $4,306 (table in thousands) in the prior-year period, consistent with the declining debt balance.",
+    "numbers": [
+     "3,468",
+     "4,306",
+     "2,926",
+     "3,940"
+    ],
+    "fact_ids": [
+     "F2",
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Net cash used in investing activities was $96,880 (table in thousands) for the six months ended June 30, 2026, driven by fixed maturity securities purchases of $161,453 (table in thousands) that exceeded sales, maturities and paydowns of $66,772 (table in thousands).",
+    "numbers": [
+     "96,880",
+     "161,453",
+     "66,772"
+    ],
+    "fact_ids": [
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Net cash used in financing activities was $40,875 (table in thousands) for the six months ended June 30, 2026, including $24,590 (table in thousands) for treasury stock purchases, while the company's quarterly dividend remains suspended.",
+    "numbers": [
+     "40,875",
+     "24,590"
+    ],
+    "fact_ids": [
+     "F3",
+     "P7"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "The company's total comprehensive income for the six months ended June 30, 2026 was $93,303 (table in thousands), below net income of $98,194 (table in thousands) due to a net unrealized investment loss of $(6,438) (table in thousands) partially offset by a tax benefit of $1,526 (table in thousands).",
+    "numbers": [
+     "93,303",
+     "98,194",
+     "6,438",
+     "1,526"
+    ],
+    "fact_ids": [
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "unresolved_questions",
+    "claim": "The composition, acquisition origin, useful lives, and impairment-testing results for the $27,147 (thousands) of net intangible assets reported on the balance sheet at June 30, 2026.",
+    "numbers": [
+     "27,147"
+    ],
+    "fact_ids": [
+     "P2",
+     "F1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   }
+  ]
+ },
+ "ILMN_20261029T022848Z_970f56b83d4c_1": {
+  "old": {
+   "supported": 28,
+   "number_not_listed": 19,
+   "number_not_found": 4,
+   "quote_not_found": 1
+  },
+  "new": {
+   "supported": 40,
+   "number_not_found": 4,
+   "number_not_listed": 7,
+   "quote_not_found": 1
+  },
+  "changed": [
+   {
+    "task": "business_model",
+    "claim": "For Q2 2026, product revenue was $982 (table in millions) and service and other revenue was $177 (table in millions), for total revenue of $1,159 (table in millions).",
+    "numbers": [
+     "$ 1,159",
+     "982",
+     "177"
+    ],
+    "fact_ids": [
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "business_model",
+    "claim": "For Q2 2026, GAAP gross profit was $770 (table in millions), with cost of product revenue of $291 (table in millions), cost of service revenue of $80 (table in millions), and amortization of acquired intangible assets of $18 (table in millions).",
+    "numbers": [
+     "770",
+     "291",
+     "80",
+     "18"
+    ],
+    "fact_ids": [
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "business_model",
+    "claim": "For Q2 2026, research and development expense was $252 (table in millions) and selling, general and administrative expense was $273 (table in millions), producing operating income of $245 (table in millions) and a GAAP operating margin of 21.1%.",
+    "numbers": [
+     "252",
+     "273",
+     "245",
+     "21.1%"
+    ],
+    "fact_ids": [
+     "F2",
+     "P1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "business_model",
+    "claim": "In H1 2026, Illumina paid $417 (table in millions) for acquisitions and intangible assets, net of cash acquired, reflecting the SomaLogic transaction.",
+    "numbers": [
+     "(417)"
+    ],
+    "fact_ids": [
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "The 500 (table in millions) of 4.650% notes maturing September 9, 2026 were refinanced on August 17, 2026 with a $300,000,000 issuance of 4.950% notes due 2029 plus cash on hand.",
+    "numbers": [
+     "500",
+     "$300,000,000",
+     "4.950%",
+     "$500 million",
+     "4.650%"
+    ],
+    "fact_ids": [
+     "P3",
+     "F1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "competitive_position",
+    "claim": "Q2 2026 revenue was $1,159 million, up 9.5% year-over-year, with ROW organic revenue growth of 8.1% excluding currency, acquisitions, and China.",
+    "numbers": [
+     "$1.16 billion",
+     "9.5%",
+     "8.1%",
+     "1,159"
+    ],
+    "fact_ids": [
+     "F2",
+     "P1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "competitive_position",
+    "claim": "Illumina spent $417 million on acquisitions and intangible assets in H1 2026 (primarily the SomaLogic Business), reducing cash from $1,418 million to $1,040 million.",
+    "numbers": [
+     "(417)",
+     "(7)",
+     "1,418",
+     "1,040",
+     "934"
+    ],
+    "fact_ids": [
+     "F1",
+     "F3",
+     "P1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "competitive_position",
+    "claim": "Net income declined year-over-year to $340 million for H1 2026 from $366 million in H1 2025, despite higher revenue, partly due to a $133 million gain on investments in the prior year period.",
+    "numbers": [
+     "340",
+     "366",
+     "16",
+     "(133)"
+    ],
+    "fact_ids": [
+     "F2",
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "growth_thesis",
+    "claim": "Demand for NovaSeq X and sequencing-intensive clinical applications is the primary revenue growth driver, with Q2 2026 total revenue of $1,159 (table in millions) up 9.5% year-over-year.",
+    "numbers": [
+     "1,159",
+     "9.5%"
+    ],
+    "fact_ids": [
+     "P1",
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "growth_thesis",
+    "claim": "Multiomics expansion through the SomaLogic proteomics business is a new growth vector, with H1 2026 acquisition and intangible-asset spending of $417 (table in millions) versus $7 in the prior-year period.",
+    "numbers": [
+     "417",
+     "7"
+    ],
+    "fact_ids": [
+     "F3",
+     "P1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "risks",
+    "claim": "Cash and cash equivalents fell by $378 (table in millions) in the first half of 2026, driven by $417 (table in millions) of acquisition spending and $370 (table in millions) of share repurchases, reducing the cash cushion to $1,040 (table in millions).",
+    "numbers": [
+     "378",
+     "417",
+     "370",
+     "1,040",
+     "500"
+    ],
+    "fact_ids": [
+     "F3",
+     "F1",
+     "P3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "risks",
+    "claim": "GAAP net income declined year-over-year in both Q2 ($207 vs. $235, table in millions) and the first half ($340 vs. $366, table in millions) despite revenue growth, driven by lower other income and a higher tax provision.",
+    "numbers": [
+     "207",
+     "235",
+     "340",
+     "366"
+    ],
+    "fact_ids": [
+     "F2",
+     "P1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   }
+  ]
+ },
+ "MA_20261029T022848Z_87008c0d70a7_1": {
+  "old": {
+   "supported": 39,
+   "number_not_listed": 16,
+   "number_not_found": 7,
+   "quote_not_found": 4
+  },
+  "new": {
+   "supported": 50,
+   "number_not_listed": 8,
+   "number_not_found": 4,
+   "quote_not_found": 4
+  },
+  "changed": [
+   {
+    "task": "business_model",
+    "claim": "In the six months ended June 30, 2026, Mastercard returned $8.9 billion to shareholders through share repurchases (17.6 million shares) and $1.5 billion in dividends, while generating $6.8 billion in operating cash flow and issuing $5.0 billion in new debt.",
+    "numbers": [
+     "17.6 million",
+     "$8.9 billion",
+     "$1.5 billion",
+     "$5.0 billion",
+     "$6.8 billion"
+    ],
+    "fact_ids": [
+     "P4",
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "At June 30, 2026, Mastercard held $11,291 million in cash and cash equivalents against total current liabilities of $25,004 million, with total current assets of $26,522 million (table in millions).",
+    "numbers": [
+     "11,291",
+     "25,004",
+     "26,522"
+    ],
+    "fact_ids": [
+     "F1"
+    ],
+    "old": "number_not_found",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "For the six months ended June 30, 2026, net cash provided by operating activities was $6,772 million (table in millions).",
+    "numbers": [
+     "6,772"
+    ],
+    "fact_ids": [
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "At June 30, 2026, Mastercard carried short-term debt of $2,459 million and long-term debt of $22,184 million (table in millions).",
+    "numbers": [
+     "2,459",
+     "22,184"
+    ],
+    "fact_ids": [
+     "F1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Total equity was only $5,606 million at June 30, 2026, because cumulative share repurchases had built Class A treasury stock at cost to $(92,226) million (table in millions).",
+    "numbers": [
+     "5,606",
+     "(92,226)"
+    ],
+    "fact_ids": [
+     "F1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "In H1 2026, net income of $8,270 million exceeded operating cash flow of $6,772 million, with the gap driven primarily by a $3,835 million increase in prepaid expenses and a $745 million increase in settlement assets (table in millions).",
+    "numbers": [
+     "8,270",
+     "6,772",
+     "(3,835)",
+     "(745)"
+    ],
+    "fact_ids": [
+     "F2",
+     "F3"
+    ],
+    "old": "number_not_found",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "In H1 2026, Mastercard repurchased $8,933 million of treasury stock and paid $1,548 million in dividends, while recording no debt repayments (table in millions).",
+    "numbers": [
+     "(8,933)",
+     "(1,548)",
+     "0"
+    ],
+    "fact_ids": [
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "In June 2026, Mastercard completed a debt offering for an aggregate principal amount of $5.0 billion and had $0.7 billion in commercial paper outstanding at June 30, 2026.",
+    "numbers": [
+     "$5.0 billion",
+     "$0.7 billion"
+    ],
+    "fact_ids": [
+     "P4"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "For the full year ended December 31, 2025, Mastercard generated net cash flows from operations of $17.6 billion and repurchased 21.1 million shares for $11.7 billion while paying $2.8 billion in dividends.",
+    "numbers": [
+     "$17.6 billion",
+     "21.1 million",
+     "$11.7 billion",
+     "$2.8 billion"
+    ],
+    "fact_ids": [
+     "P3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "growth_thesis",
+    "claim": "Gross dollar volume grew 8% on a local currency basis in Q2 2026, with domestic assessments up 8% in 2025, reflecting continued secular cash displacement and expanding acceptance.",
+    "numbers": [
+     "8%",
+     "$11,029",
+     "10.6T",
+     "9%"
+    ],
+    "fact_ids": [
+     "P6",
+     "P3",
+     "P1"
+    ],
+    "old": "number_not_found",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "risks",
+    "claim": "Total debt increased materially in H1 2026, with short-term debt rising from $749 million to $2,459 million and long-term debt from $18,251 million to $22,184 million, including a new $5.0 billion debt offering in June 2026, increasing interest expense.",
+    "numbers": [
+     "2,459",
+     "749",
+     "22,184",
+     "18,251",
+     "$5.0 billion",
+     "$0.7 billion"
+    ],
+    "fact_ids": [
+     "F1",
+     "F3",
+     "P4"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   }
+  ]
+ },
+ "MA_20261029T022848Z_87008c0d70a7_2": {
+  "old": {
+   "supported": 29,
+   "number_not_listed": 17,
+   "number_not_found": 2,
+   "quote_not_found": 6
+  },
+  "new": {
+   "supported": 35,
+   "number_not_listed": 11,
+   "number_not_found": 2,
+   "quote_not_found": 6
+  },
+  "changed": [
+   {
+    "task": "business_model",
+    "claim": "In Q2 2026, net revenue grew 14% (12% currency-neutral) to $9,277 million, with operating margin of 60.2%, driven by growth in both payment network and value-added services and solutions.",
+    "numbers": [
+     "9,277",
+     "8,133",
+     "14%",
+     "12%",
+     "60.2%"
+    ],
+    "fact_ids": [
+     "F2",
+     "P4"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Mastercard generated $6,772 million of net cash from operating activities in the six months ended June 30, 2026, down from $6,983 million in the same period a year earlier.",
+    "numbers": [
+     "6,772",
+     "6,983"
+    ],
+    "fact_ids": [
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Operating cash flow of $6,772 million was below net income of $8,270 million in H1 2026, with the gap driven primarily by a $3,835 million increase in prepaid expenses and a $745 million increase in settlement assets.",
+    "numbers": [
+     "6,772",
+     "8,270",
+     "(3,835)",
+     "(745)"
+    ],
+    "fact_ids": [
+     "F3",
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "The low equity base is driven by $92,226 million of accumulated treasury stock from share repurchases, of which $8,933 million was repurchased in H1 2026 alone, alongside $1,548 million in dividends paid.",
+    "numbers": [
+     "(92,226)",
+     "(8,933)",
+     "(1,548)"
+    ],
+    "fact_ids": [
+     "F1",
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Mastercard completed a $5.0 billion debt offering in June 2026 and had $0.7 billion of commercial paper outstanding at June 30, 2026, while recording $5,596 million of net debt proceeds and zero debt repayments in H1 2026.",
+    "numbers": [
+     "$5.0 billion",
+     "$0.7 billion",
+     "5,596",
+     "0"
+    ],
+    "fact_ids": [
+     "P4",
+     "F3"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "competitive_position",
+    "claim": "At June 30, 2026, total liabilities of 52,085 (table in millions) stood against total equity of 5,606 (table in millions), reflecting a capital structure dominated by debt.",
+    "numbers": [
+     "52,085 (table in millions)",
+     "5,606 (table in millions)"
+    ],
+    "fact_ids": [
+     "F1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   }
+  ]
+ },
+ "MA_20261029T022848Z_87008c0d70a7_3": {
+  "old": {
+   "supported": 26,
+   "number_not_listed": 16,
+   "number_not_found": 4,
+   "quote_not_found": 5
+  },
+  "new": {
+   "supported": 29,
+   "number_not_listed": 13,
+   "number_not_found": 4,
+   "quote_not_found": 5
+  },
+  "changed": [
+   {
+    "task": "financial_health",
+    "claim": "Net income of $8,270 (table in millions) exceeded operating cash flow of $6,772 (table in millions) in H1 2026, with the gap driven primarily by a $3,835 (table in millions) increase in prepaid expenses and a $745 (table in millions) increase in settlement assets.",
+    "numbers": [
+     "8,270",
+     "6,772",
+     "3,835",
+     "745"
+    ],
+    "fact_ids": [
+     "F3",
+     "F2"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "Total debt comprised short-term debt of $2,459 (table in millions) and long-term debt of $22,184 (table in millions) at June 30, 2026, against total equity of only $5,606 (table in millions), indicating a highly leveraged balance sheet.",
+    "numbers": [
+     "2,459",
+     "22,184",
+     "5,606"
+    ],
+    "fact_ids": [
+     "F1"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   },
+   {
+    "task": "financial_health",
+    "claim": "In H1 2026 the company repurchased treasury stock for $8,933 (table in millions) and paid dividends of $1,548 (table in millions), exceeding its $6,772 (table in millions) operating cash flow, with the difference funded largely by $5,596 (table in millions) of new debt proceeds.",
+    "numbers": [
+     "8,933",
+     "1,548",
+     "6,772",
+     "5,596",
+     "8.9 billion",
+     "1.5 billion"
+    ],
+    "fact_ids": [
+     "F3",
+     "P4"
+    ],
+    "old": "number_not_listed",
+    "new": "supported",
+    "new_failures": []
+   }
+  ]
+ }
+}
