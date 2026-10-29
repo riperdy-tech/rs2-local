@@ -246,7 +246,7 @@ def test_full_build_order_kinds_and_sections(world):
     assert pk["screener"]["commit"] == world["commit"]
     assert pk["screener"]["verified_row"] == {"run_id": "r-ok", "verdict": "PASS", "pair": "PASS", "output_commit": world["commit"],
                                               "run_updated_at": RUN_UPDATED}          # ruling 5.1: the row as found
-    assert pk["builder_version"] == "m3m.packet.builder.v5" and pk["regime"] == "verified" and "cik_source" not in pk
+    assert pk["builder_version"] == "m3m.packet.builder.v6" and pk["regime"] == "verified" and "cik_source" not in pk
     assert pk["screener"]["stocks_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.STOCKS_PATH}")
     assert pk["screener"]["factor_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.FACTOR_PATH}")
     assert "Total assets | 84,464 | 76,926" in by["F1"]["text"]                       # the real R4 report, flattened
@@ -693,7 +693,7 @@ def test_other_8k_body_then_ex99_and_the_title_names_only_what_the_cut_text_reac
     assert e["text"].index("Item 1.01.") < e["text"].index("EX99_TEXT") < e["text"].index("EX992_TEXT")
     assert e["title"] == "8-K Items 1.01, 2.03, 9.01 (8-K body, EX-99.1, EX-99.2)" and "CREDIT AGREEMENT" not in e["text"]
     long_body = ILMN_BODY.replace("<p>Item 9.01.", "<p>" + filler("long", 5000) + "</p><p>Item 9.01.")
-    cut = eightk_txt(AILMN, [("8-K", "form8-k.htm", long_body), ex99])
+    cut = eightk_txt(AILMN, [("8-K", "form8-k.htm", long_body), ("EX-99.1", "ex991.htm", "<p>EX99_TEXT " + filler("exh", 400) + "</p>")])
     pk = build(world, store=with_docs(world, "ex99cut", extra_rows=[ILMN_ROW], docs_extra={f"{base(AILMN)}/{AILMN}.txt": cut}))
     [e] = other(pk, AILMN)
     assert len(e["text"]) <= packet.OTHER_8K_CAP and sec_primary.OMIT_RE.search(e["text"]) and "EX99_TEXT" not in e["text"]
@@ -840,7 +840,7 @@ def store_402(w, name, docs, extra_rows=(), extra_docs=None):
 
 
 def test_builder_v5_constants():
-    assert packet.BUILDER_VERSION == "m3m.packet.builder.v5" and "7.01" in packet.OTHER_8K_ITEMS and "2.02" not in packet.OTHER_8K_ITEMS
+    assert "7.01" in packet.OTHER_8K_ITEMS and "2.02" not in packet.OTHER_8K_ITEMS
 
 
 def test_a_release_slot_eight_k_with_no_ex99_still_yields_its_item_4_02_text(world):
@@ -848,7 +848,8 @@ def test_a_release_slot_eight_k_with_no_ex99_still_yields_its_item_4_02_text(wor
     assert not [e for e in pk["evidence"] if e["kind"] == "release"]                    # the release exhibit is not found, unchanged
     assert f"release_exhibit_not_found: {A402}" in pk["annotations"]
     [e] = other(pk, A402)
-    assert "NONRELIANCE_TEXT" in e["text"] and e["text"].startswith("Item 2.02 Results of Operations") and "FORM 8-K" not in e["text"]
+    assert "NONRELIANCE_TEXT" in e["text"] and e["text"].startswith("Item 4.02 Non-Reliance") and "FORM 8-K" not in e["text"]
+    assert "Results of Operations" not in e["text"]                       # v6: the Item 2.02 segment is not an OTHER_8K_ITEMS item's
     assert e["title"] == "8-K Items 2.02, 4.02, 9.01 (8-K body)"
     assert [x["source"]["accession"] for x in pk["evidence"] if x["kind"] == "other_8k"][:2] == [A801, A402]    # newest first, among the others
 
@@ -943,7 +944,7 @@ def test_an_archival_packet_needs_no_verified_record_and_records_the_regime(worl
     pk = build_a(world)
     v = build(world)
     sh = pk["screener"]
-    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v5"
+    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v6"
     assert pk["cik_source"] == "cik_map" and pk["cik"] == CIK
     assert sh["regime"] == ARCH and sh["screener_commit_verified"] is False and sh["verified_row"] is None
     assert sh["commit_time_utc"] == "2026-10-01T00:00:00Z" and sh["commit"] == world["commit"]
@@ -1066,3 +1067,223 @@ def test_effective_at_before_the_calendar():
     got = packet.effective_at(datetime(2004, 12, 29, 15, 0, tzinfo=timezone.utc))
     assert got == cal.first_session_open.to_pydatetime().astimezone(timezone.utc)
     assert got < packet.effective_at(datetime(2025, 12, 22, 15, 0, tzinfo=timezone.utc))
+
+
+# ---- WO_N6: builder v6 ------------------------------------------------------------------------------------------------------------
+# the going-concern note (the notes to the financial statements are outside every section) and the 8-K body shared across its listed items
+
+TENK_URL = f"{base(A10K)}/tk-20251231.htm"
+TENQ_URL = f"{base(AQ)}/tq-20260630.htm"
+ITEM8 = b"<p>Item 8. Financial Statements</p><p>See the statements.</p>"
+GC_PARAS = ("<p>Item 8. Financial Statements</p><p>See the statements.</p>"
+            "<p>Note 1. Organization</p><p>NOTE_BEFORE the company was formed in 2001.</p>"
+            "<p>Going Concern</p><p>GC_NOTE_TEXT The Company has incurred recurring losses, and these conditions raise substantial doubt about "
+            "the Company's ability to continue as a going concern.</p>"
+            "<p>NOTE_AFTER management plans to raise capital.</p><p>Note 2. Leases</p><p>The company leases offices.</p>")
+
+
+def tenk_gc_html():
+    """tenk_html() with a going-concern note after Item 8 and a going-concern risk-factor paragraph that the packet shows in P2."""
+    html = tenk_html().replace(ITEM8, GC_PARAS.encode("cp1252"))
+    html = html.replace(b"<p>RISK_TAIL the last risk.</p>", b"<p>RISK_TAIL the last risk.</p><p>RISK_GC_MENTION a going concern risk.</p>")
+    assert html.count(b"going concern") == 2 and b"RISK_GC_MENTION" in html
+    return html
+
+
+def tenq_gc_html():
+    """tenq_html() with a going-concern note in Part I Item 1, before the MD&A the packet shows."""
+    marker = b"<p>ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS"
+    html = tenq_html().replace(marker, b"<p>QGC_BEFORE the notes begin.</p><p>QGC_NOTE substantial doubt exists about the Company's ability "
+                                       b"to continue as a going concern.</p><p>QGC_AFTER management's plans.</p>" + marker)
+    assert b"QGC_NOTE" in html
+    return html
+
+
+def gc_items(pk):
+    return [e for e in pk["evidence"] if e["kind"] == "gc_note"]
+
+
+def gc_store(w, name, tenk=None, tenq=None):
+    extra = {}
+    if tenk is not None:
+        extra[TENK_URL] = tenk
+    if tenq is not None:
+        extra[TENQ_URL] = tenq
+    return with_docs(w, name, docs_extra=extra)
+
+
+def test_builder_v6_constants():
+    assert packet.BUILDER_VERSION == "m3m.packet.builder.v6" and packet.GC_CAP == 6_000 and packet.OTHER_8K_CAP == 4_000
+
+
+def test_the_going_concern_note_follows_the_sections_of_its_filing_with_a_paragraph_each_side(world):
+    pk = build(world, store=gc_store(world, "gc10k", tenk=tenk_gc_html()))
+    assert [(e["fact_id"], e["kind"]) for e in pk["evidence"]][4:10] == [
+        ("P1", "annual_section"), ("P2", "annual_section"), ("P3", "annual_section"), ("P4", "gc_note"), ("P5", "quarterly_section"),
+        ("P6", "release")]
+    [g] = gc_items(pk)
+    assert g["name"] == "gc_note" and g["title"] == "10-K going concern and liquidity passages" and g["source"]["accession"] == A10K
+    assert g["source"]["url"] == TENK_URL and g["form"] == "10-K" and g["period"] == "2025-12-31"
+    assert g["raw_sha256"] == hashlib.sha256(tenk_gc_html()).hexdigest()
+    lines = g["text"].split("\n")
+    i = next(n for n, l in enumerate(lines) if "GC_NOTE_TEXT" in l)
+    assert lines[i - 1] == "Going Concern" and "NOTE_AFTER" in lines[i + 1]                  # the paragraph before and the one after
+    assert "RISK_GC_MENTION" in next(e for e in pk["evidence"] if e["name"] == "risk_factors")["text"]
+    assert "RISK_GC_MENTION" not in g["text"]                                              # a line the packet already shows is not repeated
+    assert f"gc_text_not_found: {AQ}" in pk["annotations"] and f"gc_text_not_found: {A10K}" not in pk["annotations"]
+
+
+def test_a_ten_k_with_no_going_concern_paragraph_has_no_note_and_says_so(world):
+    pk = build(world)
+    assert gc_items(pk) == []
+    assert f"gc_text_not_found: {A10K}" in pk["annotations"] and f"gc_text_not_found: {AQ}" in pk["annotations"]
+    assert [e["fact_id"] for e in pk["evidence"]] == ["S0", "F1", "F2", "F3", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"]
+
+
+def test_the_ten_q_has_its_own_going_concern_note_after_its_sections(world):
+    pk = build(world, store=gc_store(world, "gcq", tenk=tenk_gc_html(), tenq=tenq_gc_html()))
+    assert [(e["kind"], e["source"].get("accession")) for e in pk["evidence"]][6:11] == [
+        ("annual_section", A10K), ("gc_note", A10K), ("quarterly_section", AQ), ("gc_note", AQ), ("release", AREL)]
+    q = gc_items(pk)[1]
+    assert q["title"] == "10-Q going concern and liquidity passages"
+    assert all(s in q["text"] for s in ("QGC_NOTE", "QGC_BEFORE", "QGC_AFTER"))
+    assert not [a for a in pk["annotations"] if a.startswith("gc_text_not_found")]
+
+
+def test_gc_passages_merge_overlaps_keep_document_order_mark_gaps_and_skip_shown_lines():
+    L = [f"line {n}" for n in range(30)]
+    L[5] = "the going concern assumption"
+    L[7] = "SUBSTANTIAL  DOUBT exists"                                                     # line 6 is shared by the two windows: one passage
+    L[20] = "also a Going Concern matter"
+    text, found, kept = packet.gc_passages(L)
+    assert (found, kept) == (2, 2)
+    assert text.split("\n") == L[4:9] + [sec_primary.OMIT.format(n=sum(len(x) + 1 for x in L[9:19]))] + L[19:22]
+    assert packet.gc_passages(L, shown={L[20]})[0] == "\n".join(L[4:9]) and packet.gc_passages(L, shown={L[5]})[1:] == (2, 2)
+    assert packet.gc_passages(L, shown={L[5], L[7]})[0] == "\n".join(L[19:22])
+    assert packet.gc_passages(["a", "going concern", "b"])[0] == "a\ngoing concern\nb"      # the document edges
+    assert packet.gc_passages(["going concern"]) == ("going concern", 1, 1)
+    assert packet.gc_passages(["nothing here", "concern", "going on"]) == ("", 0, 0)
+
+
+def test_over_gc_cap_passages_with_substantial_doubt_go_first_then_the_later_ones_and_the_text_stays_in_document_order():
+    big = "x" * 1_000
+    L = []
+    for n in range(8):                                                                    # eight passages of about 1,000 characters
+        L += ["filler a", f"{big} {'substantial doubt' if n in (2, 5) else 'going concern'} {n}", "filler b", "gap 1", "gap 2"]
+    text, found, kept = packet.gc_passages(L, cap=3_500)
+    assert found == 8 and kept == 3
+    assert [int(l.rsplit(" ", 1)[1]) for l in text.split("\n") if l.startswith("x")] == [2, 5, 7]       # both `substantial doubt`, then the latest other
+    assert len(sec_primary.OMIT_RE.findall(text)) == 2                                    # a marker over each of the two gaps
+    assert packet.gc_passages(L, cap=100_000)[1:] == (8, 8)                               # under the cap, every passage
+    one = packet.gc_passages(["a", big * 5 + " going concern", "b"], cap=500)
+    assert one[1:] == (1, 1) and one[0].startswith("a\nxxx")                              # a lone passage over the cap is kept (the caller cuts it)
+
+
+def test_the_going_concern_note_is_capped_and_omitted_passages_are_annotated(world):
+    para = "<p>{} " + "pad " * 250 + "going concern.</p>"
+    notes = "".join(para.format(f"PASSAGE_{n}") + "<p>gap</p>" * 3 for n in range(12))
+    tenk = tenk_html().replace(ITEM8, notes.encode())
+    pk = build(world, store=gc_store(world, "gccap", tenk=tenk))
+    [g] = gc_items(pk)
+    assert len(g["text"]) <= packet.GC_CAP and g["text"].count("PASSAGE_") < 12 and "PASSAGE_11" in g["text"]
+    [a] = [a for a in pk["annotations"] if a.startswith("gc_passages_omitted")]
+    assert a.startswith(f"gc_passages_omitted: {A10K} kept ") and a.endswith(f" of 12 (over {packet.GC_CAP} characters)")
+
+
+def test_size_cap_trimming_order_with_going_concern_notes_present(world, monkeypatch):
+    store = gc_store(world, "gctrim", tenk=tenk_gc_html(), tenq=tenq_gc_html())
+    full = build(world, store=store)
+    by = {(e["kind"], e["source"].get("accession")): e for e in full["evidence"] if e["kind"] != "other_8k"}
+    total = sum(len(e["text"]) for e in full["evidence"])
+    gone = (sum(len(e["text"]) for e in full["evidence"] if e["kind"] == "other_8k") + len(by["release", AREL]["text"])
+            + len(by["gc_note", AQ]["text"]))
+    monkeypatch.setattr(packet, "TOTAL_CAP", total - gone - 50)           # the 8-Ks, the release and the 10-Q's note go; the 10-Q's sections are cut by 50
+    pk = build(world, store=store)
+    assert [a.split(" (")[0].rsplit(" to ", 1)[0] for a in pk["annotations"] if a.startswith("trimmed")] == [
+        f"trimmed_out: other_8k other_8k {A502}", f"trimmed_out: other_8k other_8k {A701}", f"trimmed_out: other_8k other_8k {A801}",
+        f"trimmed_out: release earnings_release {AREL}", f"trimmed_out: gc_note gc_note {AQ}", f"trimmed: quarterly_section quarterly_mdna {AQ}"]
+    assert [e["fact_id"] for e in pk["evidence"]] == ["S0", "F1", "F2", "F3", "P1", "P2", "P3", "P4", "P5"]
+    assert [e["kind"] for e in pk["evidence"]][7:] == ["gc_note", "quarterly_section"]          # the annual note is still here
+
+    q = len(by["quarterly_section", AQ]["text"])
+    monkeypatch.setattr(packet, "TOTAL_CAP", total - gone - q - 30)       # now the 10-Q's sections go too, and then the annual note (under MIN_TRIMMED)
+    pk = build(world, store=store)
+    assert [a.split(" (")[0].rsplit(" to ", 1)[0] for a in pk["annotations"] if a.startswith("trimmed")][-2:] == [
+        f"trimmed_out: quarterly_section quarterly_mdna {AQ}", f"trimmed_out: gc_note gc_note {A10K}"]
+    assert [e["text"] for e in pk["evidence"]] == [e["text"] for e in full["evidence"][:7]]        # the statements and the annual sections are whole
+    assert len(by["gc_note", A10K]["text"]) < packet.MIN_TRIMMED + 30                                  # which is why the note is dropped, not cut
+
+
+# 8-K body shared across its listed items
+
+A204 = "0000000123-26-000081"           # C8-1053-QVCGA 0001104659-26-044521: Items 1.01, 1.03, 2.04, 7.01, 9.01; a long 1.01 first
+ROW_204 = (A204, "8-K", "2026-10-14", "2026-10-14T14:00:00.000Z", "2026-10-13", "1.01,1.03,2.04,7.01,9.01", "f204.htm")
+DEFAULT_SENTENCE = "The filing of the Chapter 11 Cases described above in Item 1.03 constitutes an event of default that accelerated the Company's obligations."
+BODY_204 = ("<p>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</p><p>FORM 8-K</p>"
+            "<p>Item 1.01 Entry into a Material Definitive Agreement.</p><p>Restructuring Support Agreement</p>" + paras("rsa", 6000, 600) +
+            "<p>Item 1.03 Bankruptcy or Receivership.</p><p>BK_TEXT The Company commenced the Chapter 11 Cases.</p>"
+            "<p>Item 2.04 Triggering Events that Accelerate or Increase a Direct Financial Obligation.</p>"
+            f"<p>DEFAULT_TEXT {DEFAULT_SENTENCE}</p>"
+            "<p>Item 7.01 Regulation FD Disclosure.</p><p>FD_TEXT Commencement of the Solicitation.</p>"
+            "<p>Item 9.01 Financial Statements and Exhibits.</p><p>EXHIBIT_LIST 99.1 Press release.</p>")
+
+
+def row_204(items):
+    return (A204, "8-K", "2026-10-14", "2026-10-14T14:00:00.000Z", "2026-10-13", items, "f204.htm")
+
+
+def store_204(w, name, body=BODY_204, exhibits=(), items="1.01,1.03,2.04,7.01,9.01"):
+    return with_docs(w, name, extra_rows=[row_204(items)],
+                     docs_extra={f"{base(A204)}/{A204}.txt": eightk_txt(A204, [("8-K", "f204.htm", body), *exhibits])})
+
+
+def test_a_long_item_1_01_no_longer_cuts_off_the_item_2_04_after_it(world):
+    pk = build(world, store=store_204(world, "i204"))
+    [e] = other(pk, A204)
+    assert DEFAULT_SENTENCE in e["text"] and len(e["text"]) <= packet.OTHER_8K_CAP
+    for marker in ("Item 1.01", "Item 1.03", "BK_TEXT", "Item 2.04", "Item 7.01", "FD_TEXT"):       # every listed item has its own segment
+        assert marker in e["text"]
+    assert "rsa-0 sentence 0" in e["text"] and sec_primary.OMIT_RE.search(e["text"])             # the long one is cut, and marked
+    assert "EXHIBIT_LIST" not in e["text"] and "FORM 8-K" not in e["text"]                       # Item 9.01 is no OTHER_8K_ITEMS item
+    assert e["title"] == "8-K Items 1.01, 1.03, 2.04, 7.01, 9.01 (8-K body)"
+    body = packet.eight_k_body_lines(packet.doc_lines(BODY_204), ["1.01", "1.03", "2.04", "7.01", "9.01"])      # the v5 text: from 1.01 to the cap
+    v5 = packet.canonical(sec_primary.prefix_text(packet.canonical("\n".join(body)), packet.OTHER_8K_CAP))
+    assert DEFAULT_SENTENCE not in v5                                                             # v5 lost it
+
+
+def test_space_a_short_segment_leaves_unused_passes_to_the_long_one_and_the_exhibits_fill_the_rest(world):
+    body = ("<p>Item 1.01 Entry.</p><p>SHORT_ONE the agreement.</p><p>Item 8.01 Other Events.</p>" + paras("lg", 9000, 900) +
+            "<p>Item 9.01 Exhibits.</p><p>list</p>")
+    pk = build(world, store=store_204(world, "share2", body=body, items="1.01,8.01,9.01"))
+    [e] = other(pk, A204)
+    assert "SHORT_ONE the agreement." in e["text"]
+    assert packet.OTHER_8K_CAP - 60 < len(e["text"]) <= packet.OTHER_8K_CAP                       # the long item got all but the short one's size
+    ex = ("EX-99.1", "ex991.htm", "<p>EX99_TEXT the press release.</p>")
+    short = "<p>Item 1.01 Entry.</p><p>SHORT_ONE the agreement.</p><p>Item 8.01 Other Events.</p><p>SHORT_TWO.</p><p>Item 9.01 Exhibits.</p>"
+    pk = build(world, store=store_204(world, "share3", body=short, exhibits=[ex], items="1.01,8.01,9.01"))
+    [e] = other(pk, A204)
+    assert e["text"].index("SHORT_TWO") < e["text"].index("EX99_TEXT") and e["title"] == "8-K Items 1.01, 8.01, 9.01 (8-K body, EX-99.1)"
+    assert "Item 9.01" not in e["text"]
+
+
+def test_a_body_with_no_heading_of_a_qualifying_item_is_read_from_its_first_listed_heading_as_before(world):
+    body = "<p>FORM 8-K</p><p>Item 9.01 Financial Statements and Exhibits.</p><p>FALLBACK_TEXT the notice.</p>"
+    pk = build(world, store=store_204(world, "fb", body=body, items="8.01,9.01"))
+    [e] = other(pk, A204)
+    assert e["text"] == "Item 9.01 Financial Statements and Exhibits.\nFALLBACK_TEXT the notice." and "FORM 8-K" not in e["text"]
+
+
+def test_eight_k_item_segments_split_at_each_listed_heading_and_read_a_combined_heading():
+    lines = ["FORM 8-K", "Item 1.01 | Entry", "text a", "Items 2.03 and 2.04. Obligations", "text b", "Item 5.07 Votes", "text c", "Item 9.01 Exhibits", "d"]
+    segs = packet.eight_k_item_segments(lines, ["1.01", "2.03", "2.04", "9.01"])
+    assert segs == [(["1.01"], lines[1:3]), (["2.03", "2.04"], lines[3:7]), (["9.01"], lines[7:])]      # 5.07 is not listed: no heading of its own
+    assert packet.eight_k_item_segments(lines, []) == [] and packet.eight_k_item_segments(["FORM 8-K"], ["1.01"]) == []
+    assert packet.eight_k_item_segments(["Item 1.011 x"], ["1.01"]) == []
+
+
+def test_share_gives_the_short_texts_what_they_need_and_the_long_ones_equal_parts_of_the_rest():
+    out = packet._share(["a" * 100, "b" * 5_000, "c" * 5_000], 4_000)
+    assert out[0] == "a" * 100 and abs(len(out[1]) - len(out[2])) <= 1
+    assert 3_900 < sum(len(t) for t in out) + 2 <= 4_000
+    assert all(sec_primary.OMIT_RE.search(t) for t in out[1:]) and not sec_primary.OMIT_RE.search(out[0])
+    assert packet._share(["x" * 10, "y" * 20], 4_000) == ["x" * 10, "y" * 20] and packet._share(["z" * 9_000], 4_000)[0].startswith("zzz")

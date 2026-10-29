@@ -16,19 +16,36 @@ EVIDENCE, in this fixed order (ids S0, then F1..., then P1..., sequential within
                         is pinned in the header for audit only
   F  statement          balance sheet, income statement, cash flows: FilingSummary R reports of the latest eligible 10-Q/10-K/20-F/40-F
   P  annual_section     Business, Risk Factors, MD&A of the latest eligible 10-K / 20-F / 40-F
+  P  gc_note            that annual report's going-concern passages (v6), right after its sections
   P  quarterly_section  MD&A and Part II Item 1A of the latest eligible 10-Q accepted after that annual report
+  P  gc_note            that 10-Q's going-concern passages (v6), right after its sections
   P  amendment          up to MAX_AMENDMENTS eligible 10-K/A, 10-Q/A, 20-F/A, 40-F/A accepted after that annual report, newest first:
                         the primary document from its first Item heading, at most AMENDMENT_CAP characters
   P  release            the latest eligible 8-K Item 2.02 release: every EX-99.x exhibit of the filing (EX-99, EX-99.1, EX-99.2, ... in
                         exhibit order) read together to RELEASE_CAP (sec_primary.select_text rules); one accepted more than
                         RELEASE_MAX_DAYS before T is not used and is annotated release_stale
-  P  other_8k           eligible 8-Ks of the OTHER_8K_DAYS before T with a listed item, newest first, at most MAX_OTHER_8K: the 8-K body
-                        from its first Item heading of an item the filing lists, then its EX-99.x exhibits, to OTHER_8K_CAP. Contracts
-                        and other exhibits (EX-1, EX-3, EX-4, EX-10, ...) are never used. The 8-K chosen for the release slot is one of
-                        these too when it lists an item of OTHER_8K_ITEMS (an Item 4.02 beside its Item 2.02), release exhibit or none
+  P  other_8k           eligible 8-Ks of the OTHER_8K_DAYS before T with a listed item, newest first, at most MAX_OTHER_8K: the 8-K body,
+                        one segment (its Item heading to the next Item heading) for each listed item of OTHER_8K_ITEMS, the segments
+                        sharing OTHER_8K_CAP evenly (v6), then its EX-99.x exhibits in what remains. Contracts and other exhibits
+                        (EX-1, EX-3, EX-4, EX-10, ...) are never used. The 8-K chosen for the release slot is one of these too when
+                        it lists an item of OTHER_8K_ITEMS (an Item 4.02 beside its Item 2.02), release exhibit or none
 A section is found only by its heading in the cleaned text and ends at the next item heading; a heading followed by under TOC_MIN_CHARS
 characters before the next item heading is a table-of-contents entry and is skipped. A section or statement that cannot be found is an
 annotation, never a guess and never a whole-document fallback. Every cut is marked with sec_primary.OMIT.
+
+GOING-CONCERN NOTE (v6). The notes to the financial statements are outside every section, and a going-concern conclusion (ASC 205-40) is
+written there. For the annual report and the 10-Q of the packet, the paragraphs of the primary document that match `going concern` or
+`substantial doubt` and are not already a line of that filing's sections in the packet, each with the paragraph before and after, merged
+where they overlap, in document order, to GC_CAP characters (a gap between two passages is marked with sec_primary.OMIT). Over the cap the
+passages with `substantial doubt` go first and, within each group, the later first (see gc_passages: the document-order cut kept the
+forward-looking-statements preamble of a 10-K and lost its Going Concern note), and the passages left out are annotated
+`gc_passages_omitted`. The match is neutral: it names two phrases and no class, label or outcome. A filing with no match is annotated
+`gc_text_not_found: <accession>` (a normal outcome).
+
+TRIMMING (_trim) is unchanged: items are cut from the END of the evidence list, so the order of dropping is the other 8-Ks (oldest first),
+the release, the amendments, the 10-Q's gc_note, the 10-Q's sections, the annual report's gc_note, the annual report's sections, the
+statements, S0. A gc_note therefore goes after the release and the 8-Ks and before the statements, and before its own filing's sections: it
+is a supplement to the filing's text, so the rest of the packet is cut first and the filing it comes from is cut last.
 
 HEADER. `screener` carries the commit, the three blob shas and `verified_row`, the verified record's row as found (run_id, verdict, pair,
 output_commit, run_updated_at). `builder_code` carries the sha256 of the builder's source files (line ends normalised to LF) and the
@@ -76,7 +93,8 @@ from sec_primary import _is_text_exhibit, _items_list, _split_documents, _units,
 from qwen_c import sec_store
 
 CONTRACT = "m3m.packet.v1"
-BUILDER_VERSION = "m3m.packet.builder.v5"      # v5 2026-10-29: the release slot keeps its other items, reads every EX-99.x, Item 7.01 (WO_N5);
+BUILDER_VERSION = "m3m.packet.builder.v6"      # v6 2026-10-29: the going-concern note, the 8-K body shared across its listed items (WO_N6);
+                                               # v5 2026-10-29: the release slot keeps its other items, reads every EX-99.x, Item 7.01 (WO_N5);
                                                # v4 2026-10-29: 8-K Item 1.02, the archival regime and the packet's `regime` (3N)
 SEC_POLICY = "sec_acceptance_next_full_xnys_session_late_after_1730_plus_one_v1"
 REGIME_VERIFIED = "verified"
@@ -95,6 +113,7 @@ TOTAL_CAP = 140_000
 STATEMENT_CAP = 8_000
 RELEASE_CAP = 14_000
 OTHER_8K_CAP = 4_000
+GC_CAP = 6_000
 OTHER_8K_DAYS = 120
 MAX_OTHER_8K = 4
 OTHER_8K_ITEMS = ("1.01", "1.02", "1.03", "2.01", "2.03", "2.04", "2.06", "3.01", "4.01", "4.02", "5.02", "7.01", "8.01")
@@ -684,35 +703,72 @@ def _release(cik, row, fetch, notes):
     return [_evidence("release", "earnings_release", f"{row['form']} Item 2.02 earnings release ({', '.join(used)})", row, url, raw, text)]
 
 
+def _item_head(items):
+    """The heading of an item the filing lists (`Item 1.01`, `ITEM 8.01.`, `Items 1.01 and 2.03`, a table row `Item 8.01. | Other Events.`)."""
+    return re.compile(r"^\s*(?i:items?)\s*(?:%s)(?!\d)(?:\s*(?:,|and|&)\s*\d{1,2}\.\d{2})*" % "|".join(re.escape(i) for i in items))
+
+
 def eight_k_body_lines(lines, items):
     """The lines of an 8-K body from its first heading of an item the filing lists (`Item 1.01`, `ITEM 8.01.`, `Items 1.01 and 2.03`, a
     table row `Item 8.01. | Other Events.`), or None when the body has no such heading: the cover page is never used."""
     if not items:
         return None
-    head = re.compile(r"^\s*(?i:items?)\s*(?:%s)(?!\d)" % "|".join(re.escape(i) for i in items))
+    head = _item_head(items)
     start = next((n for n, l in enumerate(lines) if head.match(l)), None)
     return None if start is None else lines[start:]
 
 
+def eight_k_item_segments(lines, items):
+    """[(the item numbers of the heading, the lines)] of an 8-K body, one segment for each heading of an item the filing lists: from that
+    heading to the line before the next such heading (the last to the end). The lines before the first heading are in no segment."""
+    if not items:
+        return []
+    head = _item_head(items)
+    marks = [(n, re.findall(r"\d{1,2}\.\d{2}", m.group(0))) for n, l in enumerate(lines) for m in [head.match(l)] if m]
+    return [(nums, lines[n:marks[k + 1][0] if k + 1 < len(marks) else len(lines)]) for k, (n, nums) in enumerate(marks)]
+
+
+def _share(texts, cap):
+    """The texts cut to share `cap` characters (one newline between texts) evenly: the shortest first, each taking what it needs up to an equal
+    share of what is left, so that space a text does not use passes to the longer ones. A text over its share is cut by prefix_text."""
+    budget, left, alloc = cap - (len(texts) - 1), len(texts), {}
+    for i in sorted(range(len(texts)), key=lambda i: (len(texts[i]), i)):
+        alloc[i] = min(len(texts[i]), budget // left)
+        budget -= alloc[i]
+        left -= 1
+    return [prefix_text(t, alloc[i]) for i, t in enumerate(texts)]
+
+
 def _other_8k(cik, row, fetch, notes):
-    """The other-8-K item (CROSS_CHECK_M 6.1b): the 8-K body from its first listed Item heading, then the EX-99.x exhibits in file order,
-    to OTHER_8K_CAP. No other exhibit is read: contracts (EX-1, EX-3, EX-4, EX-10) and everything else are never used."""
+    """The other-8-K item (CROSS_CHECK_M 6.1b): the 8-K body, then the EX-99.x exhibits in file order, to OTHER_8K_CAP. The body is one segment
+    for each listed item of OTHER_8K_ITEMS (eight_k_item_segments), which share OTHER_8K_CAP evenly (_share; builder v6: a long Item 1.01 no
+    longer cuts off the Item 2.04 after it); a body with no heading of such an item is read from its first listed Item heading, as in v5.
+    The exhibits fill what the body leaves. No other exhibit is read: contracts (EX-1, EX-3, EX-4, EX-10) and everything else are never used."""
     url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
     raw = fetch(url)
     docs = _eight_k_docs(raw)
     its = _items_list(row["items"])
     parts = []                                                  # (label, canonical text)
     body = next((d for d in docs if d["type"].upper() in EIGHT_K_FORMS), None)
-    body_lines = eight_k_body_lines(doc_lines(body["raw"]), its) if body is not None else None
-    if body_lines is None:
-        notes.append(f"8k_item_heading_not_found: {row['accession']}")
-    elif canonical("\n".join(body_lines)):
-        parts.append((f"{body['type']} body", canonical("\n".join(body_lines))))
+    lines = doc_lines(body["raw"]) if body is not None else []
+    body_lines = eight_k_body_lines(lines, its) if body is not None else None
+    exhibits = []
     for d in docs:
         if d["type"].upper().startswith("EX-99"):
             t = canonical("\n".join(doc_lines(d["raw"])))
             if t:
-                parts.append((d["type"], t))
+                exhibits.append((d["type"], t))
+    if body_lines is None:
+        notes.append(f"8k_item_heading_not_found: {row['accession']}")
+    else:
+        segments = [canonical("\n".join(ls)) for nums, ls in eight_k_item_segments(lines, its) if set(nums) & set(OTHER_8K_ITEMS)]
+        segments = [t for t in segments if t] or [canonical("\n".join(body_lines))]
+        if sum(len(t) for t in segments) + len(segments) - 1 + sum(len(t) + 1 for _, t in exhibits) > OTHER_8K_CAP:
+            reserve = len(sec_primary.OMIT.format(n=1_000_000)) + 1 if exhibits else 0         # the final cut then leaves the body whole
+            segments = _share(segments, OTHER_8K_CAP - reserve)
+        if "\n".join(segments):
+            parts.append((f"{body['type']} body", "\n".join(segments)))
+    parts += exhibits
     if not parts:
         notes.append(f"8k_text_not_found: {row['accession']}")
         return []
@@ -761,6 +817,65 @@ def _amendment(cik, row, fetch, notes):
         notes.append(f"amendment_text_not_found: {row['form']} {row['accession']}")
         return []
     return [_evidence("amendment", "amendment", f"{row['form']} amendment, from its first Item heading", row, url, raw, text)]
+
+
+# -- the going-concern note
+
+_GC_RE = re.compile(r"going\s+concern|substantial\s+doubt", re.I)
+_SUBSTANTIAL_DOUBT = re.compile(r"substantial\s+doubt", re.I)
+_GAP_ROOM = len(sec_primary.OMIT.format(n=1_000_000)) + 1
+
+
+def gc_passages(lines, shown=(), cap=GC_CAP):
+    """(text, passages found, passages kept) of the going-concern passages of a document's lines. A passage is a line matching `going concern`
+    or `substantial doubt` that is not one of the lines in `shown` (the filing's sections already in the packet), with the line before and the
+    line after; passages that overlap or touch are one. Over `cap` characters whole passages are kept, those with `substantial doubt` (the
+    wording of the ASC 205-40 conclusion) before the rest and, within each, the later first (the notes to the financial statements come
+    after the sections and are what the sections lack); the text is in document order, with a sec_primary.OMIT marker over the lines between
+    two passages. A document at or under `cap` keeps every passage, in document order. ('', 0, 0) when no line matches."""
+    spans = []                                                   # [first line, line after the last, has `substantial doubt`]
+    for i, l in enumerate(lines):
+        if _GC_RE.search(l) and l.strip() not in shown:
+            lo, hi, strong = max(0, i - 1), min(len(lines), i + 2), bool(_SUBSTANTIAL_DOUBT.search(l))
+            if spans and lo <= spans[-1][1]:
+                spans[-1][1], spans[-1][2] = hi, spans[-1][2] or strong
+            else:
+                spans.append([lo, hi, strong])
+    kept, used = [], 0
+    for s in sorted(reversed(spans), key=lambda s: not s[2]):
+        room = sum(len(x) + 1 for x in lines[s[0]:s[1]]) + _GAP_ROOM
+        if used + room <= cap:
+            kept.append(s)
+            used += room
+    if spans and not kept:                                       # one passage over the cap: the caller cuts it
+        kept = [sorted(reversed(spans), key=lambda s: not s[2])[0]]
+    kept.sort()
+    out = []
+    for k, (lo, hi, _) in enumerate(kept):
+        if k:
+            out.append(sec_primary.OMIT.format(n=sum(len(x) + 1 for x in lines[kept[k - 1][1]:lo])))
+        out += lines[lo:hi]
+    return "\n".join(out), len(spans), len(kept)
+
+
+def _gc_note(cik, row, fetch, shown_items, notes):
+    """The going-concern item of a filing (builder v6): gc_passages of its primary document, to GC_CAP characters. `shown_items` are the
+    filing's section items in the packet; their lines are not repeated. A filing with no match is annotated gc_text_not_found; passages left
+    out for the cap are annotated gc_passages_omitted."""
+    shown = {l for it in shown_items for l in it["text"].split("\n")}
+    if not row.get("primary_document"):
+        notes.append(f"gc_text_not_found: {row['accession']}")
+        return []
+    url = f"{_base(cik, row['accession'])}/{row['primary_document']}"
+    raw = fetch(url)
+    text, found, kept = gc_passages(doc_lines(_decode(raw)), shown)
+    text = canonical(prefix_text(canonical(text), GC_CAP))
+    if not text:
+        notes.append(f"gc_text_not_found: {row['accession']}")
+        return []
+    if kept < found:
+        notes.append(f"gc_passages_omitted: {row['accession']} kept {kept} of {found} (over {GC_CAP} characters)")
+    return [_evidence("gc_note", "gc_note", f"{row['form']} going concern and liquidity passages", row, url, raw, text)]
 
 
 # ---- trimming, ids and the build ------------------------------------------------------------------------------------------------
@@ -857,14 +972,16 @@ def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED,
         notes.append("no_eligible_filing: statements (10-Q, 10-K, 20-F or 40-F in the recent submissions)")
     annual = _pick(rows, lambda r: r["form"] in ANNUAL_FORMS, "annual", T, excluded, notes)
     if annual:
-        items += _sections(cik, annual[0], fetch, "annual_section", notes)
+        sections = _sections(cik, annual[0], fetch, "annual_section", notes)
+        items += sections + _gc_note(cik, annual[0], fetch, sections, notes)
     else:
         notes.append("no_eligible_filing: annual (10-K, 20-F or 40-F in the recent submissions)")
     after = annual[0]["accepted"] if annual else None
     quarterly = _pick(rows, lambda r: r["form"] == "10-Q" and (after is None or r["accepted"] is None or r["accepted"] > after),
                       "quarterly", T, excluded, notes)
     if quarterly:
-        items += _sections(cik, quarterly[0], fetch, "quarterly_section", notes)
+        sections = _sections(cik, quarterly[0], fetch, "quarterly_section", notes)
+        items += sections + _gc_note(cik, quarterly[0], fetch, sections, notes)
     else:
         notes.append("no_eligible_filing: quarterly (10-Q after the annual report in the recent submissions)")
     amendments = _pick(rows, lambda r: r["form"] in AMENDMENT_FORMS and (after is None or r["accepted"] is None or r["accepted"] > after),
