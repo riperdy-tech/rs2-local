@@ -21,6 +21,7 @@ EVIDENCE, in this fixed order (ids S0, then F1..., then P1..., sequential within
   P  gc_note            that 10-Q's going-concern passages (v6), right after its sections
   P  amendment          up to MAX_AMENDMENTS eligible 10-K/A, 10-Q/A, 20-F/A, 40-F/A accepted after that annual report, newest first:
                         the primary document from its first Item heading, at most AMENDMENT_CAP characters
+  P  gc_note            each amendment's going-concern passages (v6), right after it
   P  release            the latest eligible 8-K Item 2.02 release: every EX-99.x exhibit of the filing (EX-99, EX-99.1, EX-99.2, ... in
                         exhibit order) read together to RELEASE_CAP (sec_primary.select_text rules); one accepted more than
                         RELEASE_MAX_DAYS before T is not used and is annotated release_stale
@@ -34,18 +35,19 @@ characters before the next item heading is a table-of-contents entry and is skip
 annotation, never a guess and never a whole-document fallback. Every cut is marked with sec_primary.OMIT.
 
 GOING-CONCERN NOTE (v6). The notes to the financial statements are outside every section, and a going-concern conclusion (ASC 205-40) is
-written there. For the annual report and the 10-Q of the packet, the paragraphs of the primary document that match `going concern` or
-`substantial doubt` and are not already a line of that filing's sections in the packet, each with the paragraph before and after, merged
-where they overlap, in document order, to GC_CAP characters (a gap between two passages is marked with sec_primary.OMIT). Over the cap the
+written there. For the annual report, the 10-Q and each amendment of the packet, the paragraphs of the primary document that match
+`going concern` or `substantial doubt` and are not already a line of that filing's sections in the packet, each with the paragraph before
+and after, merged where they overlap, in document order, to GC_CAP characters (a gap between two passages is marked with sec_primary.OMIT). Over the cap the
 passages with `substantial doubt` go first and, within each group, the later first (see gc_passages: the document-order cut kept the
 forward-looking-statements preamble of a 10-K and lost its Going Concern note), and the passages left out are annotated
 `gc_passages_omitted`. The match is neutral: it names two phrases and no class, label or outcome. A filing with no match is annotated
 `gc_text_not_found: <accession>` (a normal outcome).
 
 TRIMMING (_trim) is unchanged: items are cut from the END of the evidence list, so the order of dropping is the other 8-Ks (oldest first),
-the release, the amendments, the 10-Q's gc_note, the 10-Q's sections, the annual report's gc_note, the annual report's sections, the
-statements, S0. A gc_note therefore goes after the release and the 8-Ks and before the statements, and before its own filing's sections: it
-is a supplement to the filing's text, so the rest of the packet is cut first and the filing it comes from is cut last.
+the release, the amendments (each one's gc_note before the amendment), the 10-Q's gc_note, the 10-Q's sections, the annual report's
+gc_note, the annual report's sections, the statements, S0. A gc_note therefore goes after the release and the 8-Ks and before the
+statements, and before its own filing's sections: it is a supplement to the filing's text, so the rest of the packet is cut first and the
+filing it comes from is cut last.
 
 HEADER. `screener` carries the commit, the three blob shas and `verified_row`, the verified record's row as found (run_id, verdict, pair,
 output_commit, run_updated_at). `builder_code` carries the sha256 of the builder's source files (line ends normalised to LF) and the
@@ -987,7 +989,8 @@ def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED,
     amendments = _pick(rows, lambda r: r["form"] in AMENDMENT_FORMS and (after is None or r["accepted"] is None or r["accepted"] > after),
                        "amendment", T, excluded, notes, limit=MAX_AMENDMENTS)
     for r in amendments:
-        items += _amendment(cik, r, fetch, notes)
+        amendment = _amendment(cik, r, fetch, notes)
+        items += amendment + _gc_note(cik, r, fetch, amendment, notes)
     release = _pick(rows, lambda r: r["form"] in EIGHT_K_FORMS and _has_item_202(r["items"]), "release", T, excluded, notes)
     if release and release[0]["accepted"] < T - timedelta(days=RELEASE_MAX_DAYS):
         notes.append(f"release_stale: {release[0]['accession']} accepted {release[0]['accepted_raw']}, more than {RELEASE_MAX_DAYS} days "

@@ -1287,3 +1287,27 @@ def test_share_gives_the_short_texts_what_they_need_and_the_long_ones_equal_part
     assert 3_900 < sum(len(t) for t in out) + 2 <= 4_000
     assert all(sec_primary.OMIT_RE.search(t) for t in out[1:]) and not sec_primary.OMIT_RE.search(out[0])
     assert packet._share(["x" * 10, "y" * 20], 4_000) == ["x" * 10, "y" * 20] and packet._share(["z" * 9_000], 4_000)[0].startswith("zzz")
+
+
+# an amendment is read for going-concern passages too (C2-1122-AMS: the 10-Q/A restates the balance sheet; its going-concern sentence is past
+# the amendment item's AMENDMENT_CAP, and the 10-Q before it has none)
+
+def amend_gc_html():
+    return ("<html><body><p>FORM 10-Q/A</p><p>EXPLANATORY NOTE</p><p>This amendment restates the classification of debt.</p>" + paras("amgc", 5000)
+            + "<p>AMGC_BEFORE the company is in default.</p><p>AMGC_TEXT As a result, these conditions raise substantial doubt about the "
+              "Company's ability to continue as a going concern.</p><p>AMGC_AFTER management's plans.</p>"
+            + "<p>Item 1. Financial Statements</p><p>AM2_START restated quarter.</p>" + paras("am2", 600)
+            + "<p>Item 2. Management's Discussion</p><p>Restated.</p></body></html>").encode()
+
+
+def test_an_amendment_has_its_own_going_concern_note_right_after_it(world):
+    docs = {**AMEND_DOCS, f"{base(AAM2)}/tqa2.htm": amend_gc_html()}
+    pk = build(world, store=with_docs(world, "amgc", extra_rows=[AMEND_ROWS[AAM2], AMEND_ROWS[AAM4]], docs_extra=docs))
+    seq = [(e["kind"], e["source"].get("accession")) for e in pk["evidence"]]
+    assert seq[seq.index(("amendment", AAM2)):][:2] == [("amendment", AAM2), ("gc_note", AAM2)] and seq.index(("gc_note", AAM2)) < seq.index(("release", AREL))
+    am = [e for e in pk["evidence"] if e["kind"] == "amendment"][0]
+    [g] = [e for e in gc_items(pk) if e["source"]["accession"] == AAM2]
+    assert "AMGC_TEXT" not in am["text"] and all(s in g["text"] for s in ("AMGC_BEFORE", "AMGC_TEXT", "AMGC_AFTER"))     # past the amendment's cap
+    assert g["title"] == "10-Q/A going concern and liquidity passages" and g["form"] == "10-Q/A" and g["source"]["url"] == f"{base(AAM2)}/tqa2.htm"
+    assert f"gc_text_not_found: {AAM4}" in pk["annotations"]                              # AAM4: no amendment text and no going-concern passage, both said
+    assert f"amendment_text_not_found: 10-Q/A {AAM4}" in pk["annotations"]
