@@ -8,6 +8,12 @@ The verified-record check is a build-time precondition: replay re-runs every oth
 screener blobs, commit dated after T, and the run-time check of the packet's pinned `verified_row` against T) and carries that row
 through unchanged.
 
+The regime is read from the packet's `regime` (a packet without one, built before builder v4, is `verified`). An archival packet is
+rebuilt from its header: the regime, the screener commit, and its CIK together with where that came from (`cik_source`; a CIK that came
+from the `argument` is passed again as the argument, one that came from the `cik_map` is read from the commit's map again). Replay
+rebuilds with the CURRENT builder only: a packet stored by an older builder_version is read, rebuilt by the current code and reported
+not identical, with the first difference (builder_version or builder_code); there is no compatibility with older builders.
+
 CLI: `python -m qwen_c.replay [--dir cache/m3m/packets]` replays every packet there, prints one JSON line each, and exits 0 only when
 there is at least one packet and every one is identical.
 """
@@ -69,8 +75,10 @@ def replay(packet_path, *, store_root=None, screener_repo_path=None):
 
     ticker = packet._check_ticker(pk["ticker"])
     repo = Path(screener_repo_path) if screener_repo_path is not None else packet.screener_repo()
+    regime = pk.get("regime", packet.REGIME_VERIFIED)
+    cik_arg = pk["cik"] if regime == packet.REGIME_ARCHIVAL and pk.get("cik_source") == "argument" else None
     rebuilt = packet._core(ticker, packet.parse_T(pk["decision_time_utc"]), pk["screener"]["commit"], repo, packet._Inputs(get),
-                           pk["screener"].get("verified_row"))
+                           pk["screener"].get("verified_row"), regime, cik_arg)
     new = packet.canonical_bytes(rebuilt)
     identical = new == stored
     diff = None

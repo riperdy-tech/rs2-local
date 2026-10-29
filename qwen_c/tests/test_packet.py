@@ -243,7 +243,7 @@ def test_full_build_order_kinds_and_sections(world):
     assert pk["screener"]["commit"] == world["commit"]
     assert pk["screener"]["verified_row"] == {"run_id": "r-ok", "verdict": "PASS", "pair": "PASS", "output_commit": world["commit"],
                                               "run_updated_at": RUN_UPDATED}          # ruling 5.1: the row as found
-    assert pk["builder_version"] == "m3m.packet.builder.v3"
+    assert pk["builder_version"] == "m3m.packet.builder.v4" and pk["regime"] == "verified" and "cik_source" not in pk
     assert pk["screener"]["stocks_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.STOCKS_PATH}")
     assert pk["screener"]["factor_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.FACTOR_PATH}")
     assert "Total assets | 84,464 | 76,926" in by["F1"]["text"]                       # the real R4 report, flattened
@@ -796,3 +796,162 @@ def test_a_release_accepted_more_than_120_days_before_T_is_not_used(world):
     assert not [e for e in pk["evidence"] if e["kind"] == "release"]
     assert f"release_stale: {AREL} accepted 2026-08-05T20:01:00.000Z, more than 120 days before T" in pk["annotations"]
     assert not [a for a in pk["annotations"] if a.startswith("no_eligible_filing: release")]
+
+
+# ---- 3N (WO_N2): 8-K Item 1.02 and the archival regime ----------------------------------------------------------------------------------
+
+A102 = "0000000123-26-000077"
+ROW_102 = (A102, "8-K", "2026-10-10", "2026-10-10T14:00:00.000Z", "2026-10-09", "1.02,9.01", "f102.htm")
+BODY_102 = ("<p>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</p><p>FORM 8-K</p><p>Item 1.02 Termination of a Material Definitive Agreement.</p>"
+            "<p>On October 9, 2026, the Company's largest customer gave notice that it is terminating the supply agreement.</p>"
+            "<p>Item 9.01 Financial Statements and Exhibits.</p>")
+
+
+def test_an_item_1_02_eight_k_is_an_other_8k_item(world):
+    assert "1.02" in packet.OTHER_8K_ITEMS
+    txt = eightk_txt(A102, [("8-K", "f102.htm", BODY_102)])
+    pk = build(world, store=with_docs(world, "i102", extra_rows=[ROW_102], docs_extra={f"{base(A102)}/{A102}.txt": txt}))
+    [e] = other(pk, A102)
+    assert e["text"].startswith("Item 1.02 Termination of a Material Definitive Agreement.\nOn October 9, 2026")
+    assert e["title"] == "8-K Items 1.02, 9.01 (8-K body)" and "FORM 8-K" not in e["text"]
+
+
+ARCH = packet.REGIME_ARCHIVAL
+FRAME_DATE = "2026-10-02T00:00:00+00:00"
+
+
+def build_a(w, ticker="TEST", T=T, commit=None, store=None, repo=None, **kw):
+    return packet.build(ticker, T, commit or w["commit"], online=False, screener_repo_path=repo or w["repo"], store_root=store or w["store"],
+                        regime=ARCH, **kw)
+
+
+def frame_repo(root, drop=(), cik_map=None, date=FRAME_DATE):
+    """The make_repo commit and then a frame commit that drops files (paths) and/or rewrites cik_map.json (a dict, written as is)."""
+    repo, _ = make_repo(root)
+    for path in drop:
+        git(repo, "rm", "-q", path, date=date)
+    if cik_map is not None:
+        (repo / packet.CIK_MAP_PATH).write_text(json.dumps(cik_map), encoding="utf-8")
+        git(repo, "add", packet.CIK_MAP_PATH, date=date)
+    git(repo, "commit", "-q", "-m", "frame", date=date)
+    return repo, git(repo, "rev-parse", "HEAD")
+
+
+def test_an_archival_packet_needs_no_verified_record_and_records_the_regime(world):
+    pk = build_a(world)
+    v = build(world)
+    sh = pk["screener"]
+    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v4"
+    assert pk["cik_source"] == "cik_map" and pk["cik"] == CIK
+    assert sh["regime"] == ARCH and sh["screener_commit_verified"] is False and sh["verified_row"] is None
+    assert sh["commit_time_utc"] == "2026-10-01T00:00:00Z" and sh["commit"] == world["commit"]
+    assert {k: sh[k] for k in ("stocks_blob_sha", "factor_blob_sha", "cik_map_blob_sha")} == {
+        k: v["screener"][k] for k in ("stocks_blob_sha", "factor_blob_sha", "cik_map_blob_sha")}
+    assert pk["evidence"] == v["evidence"] and pk["annotations"] == v["annotations"] and pk["excluded"] == v["excluded"]
+    assert pk["raw_inputs"] == v["raw_inputs"] and "regime" not in v["screener"] and "commit_time_utc" not in v["screener"]
+    assert packet.canonical_bytes(build_a(world)) == packet.canonical_bytes(pk)                 # deterministic, as the verified regime
+
+
+def test_an_archival_commit_is_not_checked_against_any_verified_record(world):
+    # the verified regime refuses a commit that is on no PASS row; the archival regime has no record to check
+    with pytest.raises(packet.PacketRefused) as e:
+        build(world, record=[])
+    assert e.value.code == "screener_commit_not_verified"
+    assert build_a(world)["screener"]["verified_row"] is None
+
+
+def test_each_regime_refuses_the_argument_that_belongs_to_the_other(world):
+    with pytest.raises(packet.PacketRefused) as e:
+        build_a(world, verified_record=world["record"])
+    assert e.value.code == "argument_not_for_regime"
+    with pytest.raises(packet.PacketRefused) as e:
+        packet.build("TEST", T, world["commit"], online=False, verified_record=world["record"], screener_repo_path=world["repo"],
+                     store_root=world["store"], cik=CIK)
+    assert e.value.code == "argument_not_for_regime"
+    with pytest.raises(packet.PacketRefused) as e:                                             # verified with no record: refused as before
+        packet.build("TEST", T, world["commit"], online=False, screener_repo_path=world["repo"], store_root=world["store"])
+    assert e.value.code == "screener_commit_not_verified"
+    with pytest.raises(packet.PacketRefused) as e:
+        packet.build("TEST", T, world["commit"], online=False, screener_repo_path=world["repo"], store_root=world["store"], regime="nope")
+    assert e.value.code == "regime_invalid"
+
+
+def test_an_archival_commit_dated_after_T_is_refused_and_one_at_T_is_not(world):
+    with pytest.raises(packet.PacketRefused) as e:
+        build_a(world, T="2026-09-30T23:59:59Z")                                              # the commit is dated 2026-10-01T00:00:00Z
+    assert e.value.code == "frame_commit_after_T"
+    assert build_a(world, T="2026-10-01T00:00:00Z")["screener"]["commit_time_utc"] == "2026-10-01T00:00:00Z"
+
+
+def test_an_archival_commit_without_stocks_json_is_refused(tmp_path):
+    repo = tmp_path / "bare"
+    repo.mkdir()
+    (repo / "README.md").write_text("no snapshot yet", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "init")
+    w = {"repo": repo, "commit": git(repo, "rev-parse", "HEAD"), "store": make_store(tmp_path / "store")}
+    with pytest.raises(packet.PacketRefused) as e:
+        build_a(w)
+    assert e.value.code == "stocks_json_absent"
+
+
+def test_an_archival_commit_where_stocks_json_was_deleted_is_refused(tmp_path):
+    repo, commit = frame_repo(tmp_path / "gone", drop=(packet.STOCKS_PATH,))
+    with pytest.raises(packet.PacketRefused) as e:
+        build_a({"repo": repo, "commit": commit, "store": make_store(tmp_path / "store")})
+    assert e.value.code == "stocks_json_absent"
+
+
+@pytest.mark.parametrize("ticker,code", [("ZZZZ", "ticker_not_in_stocks"), ("MOV", "ticker_excluded"), ("NOCIK", "no_cik")])
+def test_archival_refusals_shared_with_the_verified_regime(world, ticker, code):
+    with pytest.raises(packet.PacketRefused) as e:
+        build_a(world, ticker=ticker)
+    assert e.value.code == code
+
+
+def test_the_cik_comes_from_the_map_or_the_argument_and_the_source_is_recorded(tmp_path):
+    w = {"store": make_store(tmp_path / "store")}
+    # the commit has no cik_map.json: the argument is the CIK (and the factor file is gone too: neither is required)
+    repo, commit = frame_repo(tmp_path / "nomap", drop=(packet.CIK_MAP_PATH, packet.FACTOR_PATH))
+    w.update(repo=repo, commit=commit)
+    with pytest.raises(packet.PacketRefused) as e:
+        build_a(w)
+    assert e.value.code == "no_cik"
+    pk = build_a(w, cik="123")
+    assert pk["cik"] == CIK and pk["cik_source"] == "argument"
+    assert pk["screener"]["cik_map_blob_sha"] is None and pk["screener"]["factor_blob_sha"] is None
+    assert pk["screener"]["stocks_blob_sha"] == git(repo, "rev-parse", f"{commit}:{packet.STOCKS_PATH}")
+    # a map that lacks the ticker
+    repo, commit = frame_repo(tmp_path / "othermap", cik_map={"map": {"NOPROF": "0000000789"}})
+    w.update(repo=repo, commit=commit)
+    pk = build_a(w, cik=CIK)
+    assert pk["cik_source"] == "argument" and pk["screener"]["cik_map_blob_sha"] == git(repo, "rev-parse", f"{commit}:{packet.CIK_MAP_PATH}")
+    # a map that has the ticker: the same argument agrees (the source stays the map), another one conflicts
+    repo, commit = frame_repo(tmp_path / "samemap", cik_map={"map": {"TEST": "0000000123"}})
+    w.update(repo=repo, commit=commit)
+    assert build_a(w)["cik_source"] == "cik_map" and build_a(w, cik=CIK)["cik_source"] == "cik_map"
+    assert build_a(w, cik=123)["cik_source"] == "cik_map"
+    with pytest.raises(packet.PacketRefused) as e:
+        build_a(w, cik="0000000999")
+    assert e.value.code == "cik_conflict" and "0000000123" in str(e.value) and "0000000999" in str(e.value)
+
+
+@pytest.mark.parametrize("bad", ["", "abc", "0", "12345678901", "12 34", -5, True, 1.5])
+def test_an_unreadable_cik_argument_is_refused(world, bad):
+    with pytest.raises(packet.PacketRefused) as e:
+        build_a(world, cik=bad)
+    assert e.value.code == "cik_invalid"
+
+
+def test_the_archival_cli_builds_a_packet_with_no_verified_record(world, monkeypatch, capsys):
+    monkeypatch.setattr(sec_store, "RAW_DIR", world["store"])
+    monkeypatch.setattr(packet, "PACKETS_DIR", world["tmp"] / "cli_packets")
+    assert packet.main(["--ticker", "TEST", "--T", T, "--commit", world["commit"], "--regime", ARCH,
+                        "--screener-repo", str(world["repo"])]) == 0
+    out = json.loads(capsys.readouterr().out)
+    saved = json.loads(Path(out["packet"]).read_text(encoding="utf-8"))
+    assert saved["regime"] == ARCH and saved["cik_source"] == "cik_map" and out["packet_sha256"] == packet.packet_sha256(saved)
+    with pytest.raises(SystemExit) as e:                                     # the default regime still needs the record
+        packet.main(["--ticker", "TEST", "--T", T, "--commit", world["commit"], "--screener-repo", str(world["repo"])])
+    assert e.value.code == 2

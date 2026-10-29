@@ -37,6 +37,17 @@ the verified record; a verified row without a readable GitHub `run_updated_at`, 
 a ticker missing from that commit's stocks.json or from its factor profiles; no CIK; a screener commit dated after T; a T older than the
 oldest row of the submissions' filings.recent (older filings are in filings.files, which v1 does not read).
 A document that cannot be had (NotInStore offline, FetchFailed online, StoreCorrupt) raises too.
+
+TWO REGIMES (SPEC_m3n_event_validation.md section 2; `regime` is a top-level field of every packet). `verified` (the default) is all of the
+above. `archival_sec_acceptance_v1` builds a packet for a historical T from SEC documents under the same acceptance rule and the screener
+commit that was the last to touch stocks.json at or before T (the frame). It is an archival reconstruction, never evidence about this
+system's history. It differs from `verified` only here: no verified record is needed, read or accepted (`verified_record` is refused);
+`screener` carries regime, `screener_commit_verified: false`, `commit_time_utc` (the commit's committer time, UTC Z) and `verified_row: null`;
+a commit whose committer time is after T is refused (`frame_commit_after_T`), and so is one at which stocks.json does not exist
+(`stocks_json_absent`); no factor profile is required (the factor blob is pinned if the commit has one, else null; it is audit-only in both
+regimes); the CIK comes from the commit's cik_map.json, else from the `cik` argument (the packet records `cik_source` "cik_map" or
+"argument"), and both present and unequal is refused (`cik_conflict`). The screener repository is passed in (the stock-screener
+development checkout) and is read only through git. Evidence selection, the acceptance rule, the caps and the excluded tickers are the same.
 """
 import argparse
 import hashlib
@@ -63,8 +74,11 @@ from sec_primary import _is_text_exhibit, _items_list, _release_doc, _split_docu
 from qwen_c import sec_store
 
 CONTRACT = "m3m.packet.v1"
-BUILDER_VERSION = "m3m.packet.builder.v3"
+BUILDER_VERSION = "m3m.packet.builder.v4"      # v4 2026-10-29: 8-K Item 1.02, the archival regime and the packet's `regime` (3N)
 SEC_POLICY = "sec_acceptance_next_full_xnys_session_late_after_1730_plus_one_v1"
+REGIME_VERIFIED = "verified"
+REGIME_ARCHIVAL = "archival_sec_acceptance_v1"
+REGIMES = (REGIME_VERIFIED, REGIME_ARCHIVAL)
 EXCLUDED_TICKERS = ("MG", "MOV", "SENEA", "SENEB")
 
 REPO = Path(__file__).resolve().parent.parent
@@ -80,7 +94,7 @@ RELEASE_CAP = 14_000
 OTHER_8K_CAP = 4_000
 OTHER_8K_DAYS = 120
 MAX_OTHER_8K = 4
-OTHER_8K_ITEMS = ("1.01", "1.03", "2.01", "2.03", "2.04", "2.06", "3.01", "4.01", "4.02", "5.02", "8.01")
+OTHER_8K_ITEMS = ("1.01", "1.02", "1.03", "2.01", "2.03", "2.04", "2.06", "3.01", "4.01", "4.02", "5.02", "8.01")
 RELEASE_MAX_DAYS = 120
 AMENDMENT_CAP = 4_000
 MAX_AMENDMENTS = 2
@@ -282,35 +296,88 @@ def s0_lines(row):
     return [f"{label}: {_fmt(row[k]) if k in row else 'absent'}" for k, label in S0_FIELDS]
 
 
+def _blob(repo, commit_full, path):
+    """The bytes of `path` at `commit_full`, or None when the commit has no such file."""
+    if subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{commit_full}:{path}"], capture_output=True).returncode != 0:
+        return None
+    return _git(repo, "show", f"{commit_full}:{path}")
+
+
+def _blob_sha(repo, commit_full, path):
+    return _git(repo, "rev-parse", f"{commit_full}:{path}").decode("ascii").strip()
+
+
+def _stock_row(stocks_blob, ticker, commit_full):
+    rows = [r for r in json.loads(stocks_blob) if isinstance(r, dict) and r.get("symbol") == ticker]
+    if not rows:
+        raise PacketRefused("ticker_not_in_stocks", f"{ticker} is not in {STOCKS_PATH} at {commit_full}")
+    if len(rows) > 1:
+        raise PacketError(f"{ticker} has {len(rows)} rows in {STOCKS_PATH} at {commit_full}")
+    return rows[0]
+
+
+def _s0_item(commit_full, row, stocks_blob):
+    lines = [f"stocks.json record ({STOCKS_PATH} at {commit_full}), identity and market fields only:"] + s0_lines(row)
+    return {"kind": "screener_row", "name": "screener_row", "title": "Screener row: identity and market fields of the stocks.json record",
+            "source": {"git_commit": commit_full, "path": STOCKS_PATH}, "form": None, "period": None,
+            "accepted_raw": None, "effective_at": None, "raw_sha256": hashlib.sha256(stocks_blob).hexdigest(),
+            "text": canonical("\n".join(lines))}
+
+
+def _map_cik(cmap_blob, ticker):
+    """The ticker's 10-digit CIK in a cik_map.json blob ({ticker: cik} or {"map": {ticker: cik}}), or None."""
+    cmap = json.loads(cmap_blob) or {}
+    cmap = cmap.get("map") if isinstance(cmap.get("map"), dict) else cmap
+    raw = cmap.get(ticker)
+    return str(raw).strip().zfill(10) if raw and str(raw).strip().isdigit() else None
+
+
 def _screener(repo, commit_full, ticker):
     """(S0 item, header fields, cik) from the screener blobs at `commit_full`, or a refusal."""
     blobs, shas = {}, {}
     for path in (STOCKS_PATH, FACTOR_PATH, CIK_MAP_PATH):
         blobs[path] = _git(repo, "show", f"{commit_full}:{path}")
-        shas[path] = _git(repo, "rev-parse", f"{commit_full}:{path}").decode("ascii").strip()
-    stocks = json.loads(blobs[STOCKS_PATH])
-    rows = [r for r in stocks if isinstance(r, dict) and r.get("symbol") == ticker]
-    if not rows:
-        raise PacketRefused("ticker_not_in_stocks", f"{ticker} is not in {STOCKS_PATH} at {commit_full}")
-    if len(rows) > 1:
-        raise PacketError(f"{ticker} has {len(rows)} rows in {STOCKS_PATH} at {commit_full}")
+        shas[path] = _blob_sha(repo, commit_full, path)
+    row = _stock_row(blobs[STOCKS_PATH], ticker, commit_full)
     profiles = (json.loads(blobs[FACTOR_PATH]) or {}).get("profiles")
     if not isinstance(profiles, dict) or not isinstance(profiles.get(ticker), dict):
         raise PacketRefused("ticker_not_in_factor_profiles", f"{ticker} has no profile in {FACTOR_PATH} at {commit_full}")
-    cmap = json.loads(blobs[CIK_MAP_PATH]) or {}
-    cmap = cmap.get("map") if isinstance(cmap.get("map"), dict) else cmap
-    raw_cik = cmap.get(ticker)
-    if not raw_cik or not str(raw_cik).strip().isdigit():
+    cik = _map_cik(blobs[CIK_MAP_PATH], ticker)
+    if not cik:
         raise PacketRefused("no_cik", f"{ticker} has no CIK in {CIK_MAP_PATH} at {commit_full}")
-    cik = str(raw_cik).strip().zfill(10)
-    lines = [f"stocks.json record ({STOCKS_PATH} at {commit_full}), identity and market fields only:"] + s0_lines(rows[0])
-    s0 = {"kind": "screener_row", "name": "screener_row", "title": "Screener row: identity and market fields of the stocks.json record",
-          "source": {"git_commit": commit_full, "path": STOCKS_PATH}, "form": None, "period": None,
-          "accepted_raw": None, "effective_at": None, "raw_sha256": hashlib.sha256(blobs[STOCKS_PATH]).hexdigest(),
-          "text": canonical("\n".join(lines))}
     header = {"commit": commit_full, "stocks_blob_sha": shas[STOCKS_PATH], "factor_blob_sha": shas[FACTOR_PATH],
               "cik_map_blob_sha": shas[CIK_MAP_PATH]}
-    return s0, header, cik
+    return _s0_item(commit_full, row, blobs[STOCKS_PATH]), header, cik
+
+
+def _cik_argument(cik):
+    """The `cik` argument as a 10-digit string, or a refusal (cik_invalid)."""
+    c = str(cik).strip() if cik is not None and not isinstance(cik, bool) else ""
+    if not c.isdigit() or not 0 < int(c) or len(c) > 10:
+        raise PacketRefused("cik_invalid", f"the cik argument {cik!r} is not a CIK of up to 10 digits")
+    return c.zfill(10)
+
+
+def _screener_archival(repo, commit_full, ticker, cik_arg, commit_time):
+    """(S0 item, header fields, cik, cik_source) of the archival regime: stocks.json is required at the commit; cik_map.json and the factor
+    profiles are not (see the module docstring). `commit_time` is the commit's committer time (an aware datetime)."""
+    stocks_blob = _blob(repo, commit_full, STOCKS_PATH)
+    if stocks_blob is None:
+        raise PacketRefused("stocks_json_absent", f"{STOCKS_PATH} is touched by no commit at or before {commit_full}")
+    row = _stock_row(stocks_blob, ticker, commit_full)
+    cmap_blob, factor_blob = _blob(repo, commit_full, CIK_MAP_PATH), _blob(repo, commit_full, FACTOR_PATH)
+    map_cik = _map_cik(cmap_blob, ticker) if cmap_blob is not None else None
+    arg_cik = _cik_argument(cik_arg) if cik_arg is not None else None
+    if map_cik and arg_cik and map_cik != arg_cik:
+        raise PacketRefused("cik_conflict", f"{CIK_MAP_PATH} at {commit_full} gives {map_cik} for {ticker}, the cik argument {arg_cik}")
+    cik = map_cik or arg_cik
+    if not cik:
+        raise PacketRefused("no_cik", f"{ticker} has no CIK in {CIK_MAP_PATH} at {commit_full} and no cik argument was given")
+    header = {"commit": commit_full, "stocks_blob_sha": _blob_sha(repo, commit_full, STOCKS_PATH),
+              "factor_blob_sha": _blob_sha(repo, commit_full, FACTOR_PATH) if factor_blob is not None else None,
+              "cik_map_blob_sha": _blob_sha(repo, commit_full, CIK_MAP_PATH) if cmap_blob is not None else None,
+              "regime": REGIME_ARCHIVAL, "screener_commit_verified": False, "commit_time_utc": _z(commit_time), "verified_row": None}
+    return _s0_item(commit_full, row, stocks_blob), header, cik, "cik_map" if map_cik else "argument"
 
 
 # ---- SEC documents --------------------------------------------------------------------------------------------------------------
@@ -732,16 +799,31 @@ def check_filings_window(rows, T):
         raise PacketRefused("T_before_filings_recent", f"T {_z(T)} is older than the oldest filings.recent row, accepted {_z(min(times))}")
 
 
-def _core(ticker, T, commit_full, repo, fetch, verified):
-    """The packet of an already-verified commit. `fetch` is an _Inputs; `verified` is the pinned verified row (pinned_row). Pure given the
+def _commit_time(repo, commit_full):
+    return datetime.fromisoformat(_git(repo, "show", "-s", "--format=%cI", commit_full).decode("ascii").strip())
+
+
+def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED, cik_arg=None):
+    """The packet of an already-verified commit (regime `verified`; `verified` is the pinned verified row, pinned_row) or of a frame commit
+    (regime `archival_sec_acceptance_v1`; `verified` is None and `cik_arg` the CIK argument, if any). `fetch` is an _Inputs. Pure given the
     store, the repository, the builder's code and the arguments."""
+    if regime not in REGIMES:
+        raise PacketRefused("regime_invalid", f"{regime!r} is not one of {', '.join(REGIMES)}")
     check_T_in_calendar(T)
-    check_run_time(verified, T)
-    s0, sheader, cik = _screener(repo, commit_full, ticker)
-    committed = datetime.fromisoformat(_git(repo, "show", "-s", "--format=%cI", commit_full).decode("ascii").strip())
-    if committed.astimezone(timezone.utc) > T:
-        raise PacketRefused("screener_commit_after_T", f"{commit_full} is dated {committed.isoformat()}, after T {_z(T)}")
-    sheader["verified_row"] = dict(verified)
+    extra = {}
+    if regime == REGIME_ARCHIVAL:
+        committed = _commit_time(repo, commit_full)
+        if committed.astimezone(timezone.utc) > T:
+            raise PacketRefused("frame_commit_after_T", f"{commit_full} is dated {committed.isoformat()}, after T {_z(T)}")
+        s0, sheader, cik, cik_source = _screener_archival(repo, commit_full, ticker, cik_arg, committed)
+        extra["cik_source"] = cik_source
+    else:
+        check_run_time(verified, T)
+        s0, sheader, cik = _screener(repo, commit_full, ticker)
+        committed = _commit_time(repo, commit_full)
+        if committed.astimezone(timezone.utc) > T:
+            raise PacketRefused("screener_commit_after_T", f"{commit_full} is dated {committed.isoformat()}, after T {_z(T)}")
+        sheader["verified_row"] = dict(verified)
     notes, excluded = [], []
     subs = json.loads(fetch(f"https://data.sec.gov/submissions/CIK{cik}.json"))
     rows = _filing_rows(subs)
@@ -788,9 +870,9 @@ def _core(ticker, T, commit_full, repo, fetch, verified):
         items += _other_8k(cik, r, fetch, notes)
 
     items = _assign_ids(_trim(items, notes))
-    return {"contract": CONTRACT, "builder_version": BUILDER_VERSION, "builder_code": builder_code(), "ticker": ticker, "cik": cik,
-            "decision_time_utc": _z(T), "screener": sheader, "sec_policy": SEC_POLICY, "raw_inputs": list(fetch.used), "evidence": items,
-            "annotations": notes, "excluded": excluded}
+    return {"contract": CONTRACT, "builder_version": BUILDER_VERSION, "builder_code": builder_code(), "regime": regime, "ticker": ticker,
+            "cik": cik, **extra, "decision_time_utc": _z(T), "screener": sheader, "sec_policy": SEC_POLICY, "raw_inputs": list(fetch.used),
+            "evidence": items, "annotations": notes, "excluded": excluded}
 
 
 def _check_ticker(ticker):
@@ -802,17 +884,28 @@ def _check_ticker(ticker):
     return t
 
 
-def build(ticker, T, screener_commit, *, online, verified_record, screener_repo_path=None, store_root=None):
-    """The packet dict of `ticker` at decision time T over the screener commit `screener_commit`. `verified_record` is the check_new_runs
-    record (a path to its JSON, or the loaded list of rows). See the module docstring for the refusals."""
+def build(ticker, T, screener_commit, *, online, verified_record=None, screener_repo_path=None, store_root=None, regime=REGIME_VERIFIED,
+          cik=None):
+    """The packet dict of `ticker` at decision time T over the screener commit `screener_commit`. Regime `verified` (the default) needs
+    `verified_record`, the check_new_runs record (a path to its JSON, or the loaded list of rows), and takes no `cik`. Regime
+    `archival_sec_acceptance_v1` takes no `verified_record`, and `cik` only for a commit whose cik_map.json lacks the ticker. See the module
+    docstring for the refusals."""
+    if regime not in REGIMES:
+        raise PacketRefused("regime_invalid", f"{regime!r} is not one of {', '.join(REGIMES)}")
     t = _check_ticker(ticker)
     T = parse_T(T)
+    if regime == REGIME_ARCHIVAL and verified_record is not None:
+        raise PacketRefused("argument_not_for_regime", f"a verified record is not used by regime {regime}")
+    if regime == REGIME_VERIFIED and cik is not None:
+        raise PacketRefused("argument_not_for_regime", f"a cik argument is not used by regime {regime}: the CIK comes from cik_map.json")
     repo = Path(screener_repo_path) if screener_repo_path is not None else screener_repo()
     if isinstance(verified_record, (str, os.PathLike)):
         verified_record = json.loads(Path(verified_record).read_text(encoding="utf-8"))
     commit_full = _resolve_commit(repo, screener_commit)
-    row = verified_row(verified_record, commit_full)
     fetch = _Inputs(lambda url: sec_store.get(url, online=online, root=store_root))
+    if regime == REGIME_ARCHIVAL:
+        return _core(t, T, commit_full, repo, fetch, None, regime, cik)
+    row = verified_row(verified_record, commit_full)
     return _core(t, T, commit_full, repo, fetch, pinned_row(row))
 
 
@@ -845,12 +938,19 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Build one m3m.packet.v1 packet into cache/m3m/packets/")
     ap.add_argument("--ticker", required=True)
     ap.add_argument("--T", required=True, help="decision time, ISO with a zone (e.g. 2026-10-29T00:00:00Z), or 'now'")
-    ap.add_argument("--commit", required=True, help="the screener output commit")
-    ap.add_argument("--verified-record", required=True, help="a check_new_runs out/check_<utc>.json")
+    ap.add_argument("--commit", required=True, help="the screener output commit (regime archival: the frame commit)")
+    ap.add_argument("--regime", choices=REGIMES, default=REGIME_VERIFIED)
+    ap.add_argument("--verified-record", help="a check_new_runs out/check_<utc>.json (required for regime verified, refused for archival)")
+    ap.add_argument("--screener-repo", help="the screener repository to read through git (regime archival: the stock-screener development "
+                                            "checkout); default: the dedicated publish clone")
+    ap.add_argument("--cik", help="the CIK, for an archival frame commit whose cik_map.json lacks the ticker")
     ap.add_argument("--online", action="store_true", help="fetch what the store lacks from SEC")
     a = ap.parse_args(argv)
+    if a.regime == REGIME_VERIFIED and not a.verified_record:
+        ap.error("--verified-record is required for --regime verified")
     T = datetime.now(timezone.utc).replace(microsecond=0) if a.T == "now" else a.T
-    pk = build(a.ticker, T, a.commit, online=a.online, verified_record=a.verified_record)
+    pk = build(a.ticker, T, a.commit, online=a.online, verified_record=a.verified_record, screener_repo_path=a.screener_repo,
+               regime=a.regime, cik=a.cik)
     path = save(pk)
     print(json.dumps({"packet": str(path), "packet_sha256": packet_sha256(pk), "evidence": [e["fact_id"] for e in pk["evidence"]],
                       "annotations": pk["annotations"], "excluded": pk["excluded"]}, ensure_ascii=False, indent=1))
