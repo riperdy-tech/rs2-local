@@ -205,7 +205,7 @@ def test_a_packet_of_the_previous_builder_version_is_rebuilt_by_the_current_one_
     path.write_bytes(packet.canonical_bytes(v3))
     res = rp(w, path)
     assert res["identical"] is False
-    assert res["first_diff"] == {"path": "$.builder_version", "stored": '"m3m.packet.builder.v3"', "rebuilt": '"m3m.packet.builder.v4"'}
+    assert res["first_diff"] == {"path": "$.builder_version", "stored": '"m3m.packet.builder.v3"', "rebuilt": '"m3m.packet.builder.v5"'}
 
 
 def test_cli_replays_an_archival_packet(saved_a, monkeypatch, capsys):

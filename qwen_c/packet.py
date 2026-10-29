@@ -19,11 +19,13 @@ EVIDENCE, in this fixed order (ids S0, then F1..., then P1..., sequential within
   P  quarterly_section  MD&A and Part II Item 1A of the latest eligible 10-Q accepted after that annual report
   P  amendment          up to MAX_AMENDMENTS eligible 10-K/A, 10-Q/A, 20-F/A, 40-F/A accepted after that annual report, newest first:
                         the primary document from its first Item heading, at most AMENDMENT_CAP characters
-  P  release            the latest eligible 8-K Item 2.02 EX-99 release (sec_primary.select_text rules); one accepted more than
+  P  release            the latest eligible 8-K Item 2.02 release: every EX-99.x exhibit of the filing (EX-99, EX-99.1, EX-99.2, ... in
+                        exhibit order) read together to RELEASE_CAP (sec_primary.select_text rules); one accepted more than
                         RELEASE_MAX_DAYS before T is not used and is annotated release_stale
   P  other_8k           eligible 8-Ks of the OTHER_8K_DAYS before T with a listed item, newest first, at most MAX_OTHER_8K: the 8-K body
                         from its first Item heading of an item the filing lists, then its EX-99.x exhibits, to OTHER_8K_CAP. Contracts
-                        and other exhibits (EX-1, EX-3, EX-4, EX-10, ...) are never used
+                        and other exhibits (EX-1, EX-3, EX-4, EX-10, ...) are never used. The 8-K chosen for the release slot is one of
+                        these too when it lists an item of OTHER_8K_ITEMS (an Item 4.02 beside its Item 2.02), release exhibit or none
 A section is found only by its heading in the cleaned text and ends at the next item heading; a heading followed by under TOC_MIN_CHARS
 characters before the next item heading is a table-of-contents entry and is skipped. A section or statement that cannot be found is an
 annotation, never a guess and never a whole-document fallback. Every cut is marked with sec_primary.OMIT.
@@ -69,12 +71,13 @@ import pandas as pd
 import sec_guidance
 import sec_primary
 from sec_guidance import _has_item_202
-from sec_primary import _is_text_exhibit, _items_list, _release_doc, _split_documents, blocks_of, canonical, prefix_text, select_text
+from sec_primary import _is_text_exhibit, _items_list, _split_documents, _units, blocks_of, canonical, prefix_text, select_text
 
 from qwen_c import sec_store
 
 CONTRACT = "m3m.packet.v1"
-BUILDER_VERSION = "m3m.packet.builder.v4"      # v4 2026-10-29: 8-K Item 1.02, the archival regime and the packet's `regime` (3N)
+BUILDER_VERSION = "m3m.packet.builder.v5"      # v5 2026-10-29: the release slot keeps its other items, reads every EX-99.x, Item 7.01 (WO_N5);
+                                               # v4 2026-10-29: 8-K Item 1.02, the archival regime and the packet's `regime` (3N)
 SEC_POLICY = "sec_acceptance_next_full_xnys_session_late_after_1730_plus_one_v1"
 REGIME_VERIFIED = "verified"
 REGIME_ARCHIVAL = "archival_sec_acceptance_v1"
@@ -94,7 +97,7 @@ RELEASE_CAP = 14_000
 OTHER_8K_CAP = 4_000
 OTHER_8K_DAYS = 120
 MAX_OTHER_8K = 4
-OTHER_8K_ITEMS = ("1.01", "1.02", "1.03", "2.01", "2.03", "2.04", "2.06", "3.01", "4.01", "4.02", "5.02", "8.01")
+OTHER_8K_ITEMS = ("1.01", "1.02", "1.03", "2.01", "2.03", "2.04", "2.06", "3.01", "4.01", "4.02", "5.02", "7.01", "8.01")
 RELEASE_MAX_DAYS = 120
 AMENDMENT_CAP = 4_000
 MAX_AMENDMENTS = 2
@@ -651,19 +654,34 @@ def _eight_k_docs(raw):
     return docs
 
 
+_EX99_NUMBER = re.compile(r"^EX-99(?:\.0*(\d+))?$", re.I)
+
+
+def _release_docs(docs):
+    """The release exhibits of an 8-K: every EX-99.x text document (EX-99, EX-99.1, EX-99.01, EX-99.2, ...), in exhibit order (EX-99, then
+    by number; a type of another shape after them, in file order). A qwen_c-local reader: sec_primary._release_doc hard-codes EX-99.1,
+    EX-99.01 and EX-99 and returns the first of them, so a shareholder letter or a presentation in EX-99.2 was never read (builder v5)."""
+    def key(n_d):
+        n, d = n_d
+        m = _EX99_NUMBER.match(d["type"].strip())
+        return (0, int(m.group(1)) if m and m.group(1) else 0, n) if m else (1, 0, n)
+    return [d for _, d in sorted(((n, d) for n, d in enumerate(docs) if d["type"].upper().startswith("EX-99") and "raw" in d), key=key)]
+
+
 def _release(cik, row, fetch, notes):
+    """The release item: every EX-99.x exhibit (_release_docs) read as one document, to RELEASE_CAP by sec_primary.select_text. The title names
+    the exhibits the kept text reaches: those with a selection unit whose first 40 characters are in it (every exhibit, when the
+    text fits). A filing with no readable EX-99.x exhibit is annotated release_exhibit_not_found."""
     url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
     raw = fetch(url)
-    d = _release_doc(_eight_k_docs(raw))
-    if d is None:
-        notes.append(f"release_exhibit_not_found: {row['accession']}")
-        return []
-    text = canonical(select_text(blocks_of(d["raw"]), RELEASE_CAP))
+    docs = _release_docs(_eight_k_docs(raw))
+    blocks = [(d, blocks_of(d["raw"])) for d in docs]
+    text = canonical(select_text([b for _, bs in blocks for b in bs], RELEASE_CAP))
     if not text:
         notes.append(f"release_exhibit_not_found: {row['accession']}")
         return []
-    return [_evidence("release", "earnings_release", f"{row['form']} Item 2.02 earnings release ({d['type']} {d['filename']})", row, url,
-                      raw, text)]
+    used = [f"{d['type']} {d['filename']}" for d, bs in blocks if any(canonical(t)[:40] in text for _, t in _units(bs) if canonical(t))]
+    return [_evidence("release", "earnings_release", f"{row['form']} Item 2.02 earnings release ({', '.join(used)})", row, url, raw, text)]
 
 
 def eight_k_body_lines(lines, items):
@@ -863,8 +881,7 @@ def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED,
     else:
         notes.append("no_eligible_filing: release (8-K Item 2.02 in the recent submissions)")
     since = T - timedelta(days=OTHER_8K_DAYS)
-    rel_acc = release[0]["accession"] if release else None
-    others = _pick(rows, lambda r: (r["form"] in EIGHT_K_FORMS and r["accession"] != rel_acc
+    others = _pick(rows, lambda r: (r["form"] in EIGHT_K_FORMS
                                     and (r["accepted"] is None or r["accepted"] >= since)
                                     and set(_items_list(r["items"])) & set(OTHER_8K_ITEMS)),
                    "other_8k", T, excluded, notes, limit=MAX_OTHER_8K)

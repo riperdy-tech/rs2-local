@@ -130,6 +130,9 @@ def documents():
         f"{base(A10K)}/tk-20251231.htm": tenk_html(),
         f"{q}/tq-20260630.htm": tenq_html(),
         f"{base(AREL)}/{AREL}.txt": eightk_txt(AREL, [("8-K", "f8k.htm", "<p>Item 2.02 Results.</p>"), ("EX-99.1", "ex991.htm", rel)]),
+        f"{base(A701)}/{A701}.txt": eightk_txt(A701, [("8-K", "f701.htm", "<p>Item 7.01 Regulation FD Disclosure.</p><p>E701_TEXT "
+                                                     + filler("e701", 900) + "</p>"),
+                                                     ("EX-99.1", "ex701.htm", "<p>E701_DECK the investor presentation.</p>")]),
         f"{base(A502)}/{A502}.txt": eightk_txt(A502, [("8-K", "f502.htm", "<p>UNITED STATES</p><p>FORM 8-K</p><p>Item 5.02 Departure of "
                                                      "Directors.</p><p>E502_TEXT " + filler("e502", 1400) + "</p>")]),
         f"{base(A801)}/{A801}.txt": eightk_txt(A801, [("8-K", "f801.htm", "<p>Item 8.01 Other Events.</p>"),
@@ -236,14 +239,14 @@ def test_full_build_order_kinds_and_sections(world):
         ("F1", "statement", "balance_sheet"), ("F2", "statement", "income_statement"), ("F3", "statement", "cash_flows"),
         ("P1", "annual_section", "business"), ("P2", "annual_section", "risk_factors"), ("P3", "annual_section", "mdna"),
         ("P4", "quarterly_section", "quarterly_mdna"), ("P5", "release", "earnings_release"),
-        ("P6", "other_8k", "other_8k"), ("P7", "other_8k", "other_8k")]
+        ("P6", "other_8k", "other_8k"), ("P7", "other_8k", "other_8k"), ("P8", "other_8k", "other_8k")]
     by = {e["fact_id"]: e for e in ev}
     assert pk["contract"] == "m3m.packet.v1" and pk["cik"] == CIK and pk["decision_time_utc"] == T
     assert pk["sec_policy"] == "sec_acceptance_next_full_xnys_session_late_after_1730_plus_one_v1"
     assert pk["screener"]["commit"] == world["commit"]
     assert pk["screener"]["verified_row"] == {"run_id": "r-ok", "verdict": "PASS", "pair": "PASS", "output_commit": world["commit"],
                                               "run_updated_at": RUN_UPDATED}          # ruling 5.1: the row as found
-    assert pk["builder_version"] == "m3m.packet.builder.v4" and pk["regime"] == "verified" and "cik_source" not in pk
+    assert pk["builder_version"] == "m3m.packet.builder.v5" and pk["regime"] == "verified" and "cik_source" not in pk
     assert pk["screener"]["stocks_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.STOCKS_PATH}")
     assert pk["screener"]["factor_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.FACTOR_PATH}")
     assert "Total assets | 84,464 | 76,926" in by["F1"]["text"]                       # the real R4 report, flattened
@@ -255,10 +258,12 @@ def test_full_build_order_kinds_and_sections(world):
     assert by["P3"]["text"].startswith("Item 7.\nManagement’s Discussion")          # split heading; cp1252 bytes decoded
     assert by["P4"]["text"].startswith("ITEM 2. MANAGEMENT'S DISCUSSION") and "QMDNA_START" in by["P4"]["text"]
     assert by["P5"]["source"]["accession"] == AREL and "RELEASE_START" in by["P5"]["text"]
-    assert [by["P6"]["source"]["accession"], by["P7"]["source"]["accession"]] == [A801, A502]    # newest first; 7.01 and >120 d out
+    assert [by[f]["source"]["accession"] for f in ("P6", "P7", "P8")] == [A801, A701, A502]    # newest first; 7.01 is listed (v5); >120 d out: not
     assert by["P6"]["text"].startswith("Item 8.01 Other Events.\nE801_TEXT")      # 8-K body from its item, then EX-99.1 (ruling 6.1b)
-    assert by["P7"]["text"].startswith("Item 5.02 Departure of Directors.\nE502_TEXT") and "FORM 8-K" not in by["P7"]["text"]
-    assert by["P6"]["title"] == "8-K Items 8.01, 9.01 (8-K body, EX-99.1)" and by["P7"]["title"] == "8-K Item 5.02 (8-K body)"
+    assert by["P7"]["text"].startswith("Item 7.01 Regulation FD Disclosure.\nE701_TEXT") and "E701_DECK" in by["P7"]["text"]
+    assert by["P8"]["text"].startswith("Item 5.02 Departure of Directors.\nE502_TEXT") and "FORM 8-K" not in by["P8"]["text"]
+    assert by["P6"]["title"] == "8-K Items 8.01, 9.01 (8-K body, EX-99.1)" and by["P8"]["title"] == "8-K Item 5.02 (8-K body)"
+    assert by["P5"]["title"] == "8-K Item 2.02 earnings release (EX-99.1 ex991.htm)"
     assert by["P1"]["effective_at"] == "2026-02-24T14:30:00Z"            # Fri 21:00 ET (later reading) -> Mon, +1 for after 17:30 -> Tue
     assert by["P1"]["accepted_raw"] == "2026-02-20T21:00:00.000Z" and by["P1"]["period"] == "2025-12-31" and by["P1"]["form"] == "10-K"
     raw = documents()[f"{base(A10K)}/tk-20251231.htm"]
@@ -421,12 +426,13 @@ def test_size_cap_trims_in_reverse_list_order_with_annotations(world, monkeypatc
     assert [a for a in pk["annotations"] if a.startswith("trimmed")] == [
         f"trimmed: other_8k other_8k {A502} to {len(cut['text'])} characters (packet over {total - 100} characters)"]
 
-    cap = total - len(by["P6"]["text"]) - len(by["P7"]["text"]) - 2000     # both 8-Ks go, then the release is cut
+    cap = total - len(by["P6"]["text"]) - len(by["P7"]["text"]) - len(by["P8"]["text"]) - 2000     # all three 8-Ks go, then the release is cut
     monkeypatch.setattr(packet, "TOTAL_CAP", cap)
     pk = build(world)
     notes = [a for a in pk["annotations"] if a.startswith("trimmed")]
     assert [n.split(" (")[0].rsplit(" to ", 1)[0] for n in notes] == [
-        f"trimmed_out: other_8k other_8k {A502}", f"trimmed_out: other_8k other_8k {A801}", f"trimmed: release earnings_release {AREL}"]
+        f"trimmed_out: other_8k other_8k {A502}", f"trimmed_out: other_8k other_8k {A701}", f"trimmed_out: other_8k other_8k {A801}",
+        f"trimmed: release earnings_release {AREL}"]
     assert [e["fact_id"] for e in pk["evidence"]] == ["S0", "F1", "F2", "F3", "P1", "P2", "P3", "P4", "P5"]
     assert pk["evidence"][-1]["kind"] == "release" and sum(len(e["text"]) for e in pk["evidence"]) <= cap
     assert by["P1"]["text"] == pk["evidence"][4]["text"]                    # earlier items untouched
@@ -816,6 +822,102 @@ def test_an_item_1_02_eight_k_is_an_other_8k_item(world):
     assert e["title"] == "8-K Items 1.02, 9.01 (8-K body)" and "FORM 8-K" not in e["text"]
 
 
+# ---- WO_N5: builder v5 ------------------------------------------------------------------------------------------------------------
+
+A402 = "0000000123-26-000078"           # OPTU 0001702780-26-000057: Items 2.02, 4.02 and 9.01 and no EX-99
+ROW_402 = (A402, "8-K", "2026-10-15", "2026-10-15T14:00:00.000Z", "2026-10-15", "2.02,4.02,9.01", "f402.htm")
+BODY_402 = ("<p>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</p><p>FORM 8-K</p><p>Item 2.02 Results of Operations and Financial Condition.</p>"
+            "<p>On October 14, 2026, the Company announced its results; they are being restated.</p>"
+            "<p>Item 4.02 Non-Reliance on Previously Issued Financial Statements.</p>"
+            "<p>NONRELIANCE_TEXT On October 14, 2026, the Audit Committee concluded that the financial statements for the quarter ended "
+            "June 30, 2026 should no longer be relied upon.</p><p>Item 9.01 Financial Statements and Exhibits.</p>")
+
+
+def store_402(w, name, docs, extra_rows=(), extra_docs=None):
+    """A store whose newest eligible Item 2.02 8-K is A402 (Items 2.02, 4.02, 9.01) with the given documents [(type, filename, html)]."""
+    return with_docs(w, name, extra_rows=[ROW_402, *extra_rows],
+                     docs_extra={f"{base(A402)}/{A402}.txt": eightk_txt(A402, docs), **(extra_docs or {})})
+
+
+def test_builder_v5_constants():
+    assert packet.BUILDER_VERSION == "m3m.packet.builder.v5" and "7.01" in packet.OTHER_8K_ITEMS and "2.02" not in packet.OTHER_8K_ITEMS
+
+
+def test_a_release_slot_eight_k_with_no_ex99_still_yields_its_item_4_02_text(world):
+    pk = build(world, store=store_402(world, "i402", [("8-K", "f402.htm", BODY_402)]))
+    assert not [e for e in pk["evidence"] if e["kind"] == "release"]                    # the release exhibit is not found, unchanged
+    assert f"release_exhibit_not_found: {A402}" in pk["annotations"]
+    [e] = other(pk, A402)
+    assert "NONRELIANCE_TEXT" in e["text"] and e["text"].startswith("Item 2.02 Results of Operations") and "FORM 8-K" not in e["text"]
+    assert e["title"] == "8-K Items 2.02, 4.02, 9.01 (8-K body)"
+    assert [x["source"]["accession"] for x in pk["evidence"] if x["kind"] == "other_8k"][:2] == [A801, A402]    # newest first, among the others
+
+
+def test_a_release_slot_eight_k_with_an_ex99_yields_the_release_and_its_other_item(world):
+    ex = ("EX-99.1", "ex9911.htm", "<p>RELEASE_402 results.</p>")
+    pk = build(world, store=store_402(world, "i402rel", [("8-K", "f402.htm", BODY_402), ex]))
+    [rel] = [e for e in pk["evidence"] if e["kind"] == "release"]
+    assert rel["source"]["accession"] == A402 and rel["text"] == "RELEASE_402 results."
+    [e] = other(pk, A402)
+    assert e["text"].index("NONRELIANCE_TEXT") < e["text"].index("RELEASE_402") and e["title"] == "8-K Items 2.02, 4.02, 9.01 (8-K body, EX-99.1)"
+    assert not [a for a in pk["annotations"] if a.startswith("release_exhibit_not_found")]
+
+
+def test_a_release_slot_eight_k_with_only_items_2_02_and_9_01_yields_no_other_item(world):
+    pk = build(world)
+    assert [e["source"]["accession"] for e in pk["evidence"] if e["kind"] == "release"] == [AREL] and other(pk, AREL) == []
+
+
+def test_the_release_slot_eight_k_counts_toward_max_other_8k(world):
+    assert packet.MAX_OTHER_8K == 4
+    a103 = "0000000123-26-000079"
+    row = (a103, "8-K", "2026-10-12", "2026-10-12T14:00:00.000Z", "2026-10-12", "1.03", "f103.htm")
+    f103 = eightk_txt(a103, [("8-K", "f103.htm", "<p>Item 1.03 Bankruptcy or Receivership.</p><p>F103_TEXT</p>")])
+    pk = build(world, store=store_402(world, "max", [("8-K", "f402.htm", BODY_402)], extra_rows=[row], extra_docs={f"{base(a103)}/{a103}.txt": f103}))
+    others = [e["source"]["accession"] for e in pk["evidence"] if e["kind"] == "other_8k"]
+    assert others == [A801, A402, a103, A701]                              # five qualify; the oldest (A502) is the fifth and is left out
+
+
+def test_a_seven_01_only_eight_k_is_an_other_8k_item(world):
+    pk = build(world)
+    [e] = other(pk, A701)
+    assert e["text"].startswith("Item 7.01 Regulation FD Disclosure.\nE701_TEXT") and "E701_DECK" in e["text"]
+    assert e["title"] == "8-K Items 7.01, 9.01 (8-K body, EX-99.1)"
+
+
+def test_the_release_reads_every_ex99_exhibit_in_exhibit_order(world):
+    ex1 = ("EX-99.1", "ex991.htm", "<p>FIRST_EXHIBIT the press release.</p>")
+    ex2 = ("EX-99.2", "ex992.htm", "<p>SECOND_EXHIBIT the shareholder letter: we suspend forward guidance.</p>")
+    ex10 = ("EX-99.10", "ex9910.htm", "<p>TENTH_EXHIBIT.</p>")
+    contract = ("EX-10.1", "ex101.htm", "<p>CONTRACT_TEXT</p>")
+    pk = build(world, store=store_402(world, "rel2", [("8-K", "f402.htm", BODY_402), contract, ex10, ex2, ex1]))     # file order is not exhibit order
+    [rel] = [e for e in pk["evidence"] if e["kind"] == "release"]
+    assert rel["text"] == "FIRST_EXHIBIT the press release.\nSECOND_EXHIBIT the shareholder letter: we suspend forward guidance.\nTENTH_EXHIBIT."
+    assert rel["title"] == "8-K Item 2.02 earnings release (EX-99.1 ex991.htm, EX-99.2 ex992.htm, EX-99.10 ex9910.htm)"
+    assert "CONTRACT_TEXT" not in rel["text"]
+
+
+def test_the_release_exhibit_order_is_ex99_then_by_number_and_01_is_1():
+    docs = [{"type": t, "raw": ""} for t in ("EX-99.2", "EX-99.01", "EX-99", "EX-10.1", "EX-99.3", "EX-99.A")]
+    assert [d["type"] for d in packet._release_docs(docs)] == ["EX-99", "EX-99.01", "EX-99.2", "EX-99.3", "EX-99.A"]
+    assert packet._release_docs([{"type": "EX-99.1", "filename": "x.pdf", "skipped": "pdf"}]) == []
+
+
+def test_the_release_is_cut_to_release_cap_over_all_exhibits_and_the_title_names_what_it_reaches(world):
+    big = "".join(f"<p>{filler(f'big-{k}', 600)}</p>" for k in range(40))                  # about 24 000 characters
+    ex1 = ("EX-99.1", "ex991.htm", "<p>FIRST_EXHIBIT the press release.</p>" + big)
+    ex2 = ("EX-99.2", "ex992.htm", "<p>SECOND_EXHIBIT the shareholder letter.</p><p>Outlook: we suspend forward guidance and earnings calls.</p>")
+    pk = build(world, store=store_402(world, "relcut", [("8-K", "f402.htm", BODY_402), ex1, ex2]))
+    [rel] = [e for e in pk["evidence"] if e["kind"] == "release"]
+    assert len(rel["text"]) <= packet.RELEASE_CAP and sec_primary.OMIT_RE.search(rel["text"])
+    assert "we suspend forward guidance" in rel["text"]                                   # the outlook paragraph of EX-99.2 is kept
+    assert rel["title"] == "8-K Item 2.02 earnings release (EX-99.1 ex991.htm, EX-99.2 ex992.htm)"
+    huge2 = ("EX-99.2", "ex992.htm", "<p>" + "word " * 8000 + "</p>")
+    pk = build(world, store=store_402(world, "relcut1", [("8-K", "f402.htm", BODY_402), ex1, huge2]))
+    [rel] = [e for e in pk["evidence"] if e["kind"] == "release"]
+    assert len(rel["text"]) <= packet.RELEASE_CAP
+
+
 ARCH = packet.REGIME_ARCHIVAL
 FRAME_DATE = "2026-10-02T00:00:00+00:00"
 
@@ -841,7 +943,7 @@ def test_an_archival_packet_needs_no_verified_record_and_records_the_regime(worl
     pk = build_a(world)
     v = build(world)
     sh = pk["screener"]
-    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v4"
+    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v5"
     assert pk["cik_source"] == "cik_map" and pk["cik"] == CIK
     assert sh["regime"] == ARCH and sh["screener_commit_verified"] is False and sh["verified_row"] is None
     assert sh["commit_time_utc"] == "2026-10-01T00:00:00Z" and sh["commit"] == world["commit"]
