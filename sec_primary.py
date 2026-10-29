@@ -58,7 +58,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import sec_guidance
-from sec_guidance import PAT_SAFE_HARBOR, UA, _clean_html, _has_item_202
+from sec_guidance import PAT_SAFE_HARBOR, _clean_html, _has_item_202, sec_ua
 
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache" / "sec_primary"
@@ -105,9 +105,10 @@ def _http_get(url, timeout=60):
     """The bytes of one sec.gov / data.sec.gov URL (an exception on any failure); one request, then the throttle."""
     if not re.match(r"^https://(www\.|data\.)?sec\.gov/", url):
         raise ValueError(f"sec_primary fetches only sec.gov and data.sec.gov, not {url[:60]}")
+    headers = sec_ua()
     for attempt in range(3):
         try:
-            req = urllib.request.Request(url, headers=UA)
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 data = r.read(25_000_000)
             time.sleep(THROTTLE_S)

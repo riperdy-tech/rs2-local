@@ -343,11 +343,18 @@ def test_the_network_is_only_sec_gov_under_ten_requests_a_second(monkeypatch):
     monkeypatch.setattr(sp.time, "sleep", lambda s: slept.append(s))
     monkeypatch.setattr(sp, "THROTTLE_S", _REAL_THROTTLE)
     assert _REAL_HTTP_GET("https://data.sec.gov/submissions/CIK0000123456.json") == b"ok"
-    assert asked[0][1]["User-agent"] == "RS2-Local research riperdy@gmail.com" and slept == [_REAL_THROTTLE]
+    assert asked[0][1]["User-agent"] == "RS2 test runner test@example.com" and slept == [_REAL_THROTTLE]
 
 
 def test_sec_guidance_user_agent_is_reused():
-    assert sp.UA == {"User-Agent": "RS2-Local research riperdy@gmail.com"}
+    assert sp.sec_ua is sp.sec_guidance.sec_ua
+
+
+def test_http_get_refuses_without_a_contact_before_a_socket(monkeypatch):
+    monkeypatch.delenv("SEC_USER_AGENT")
+    monkeypatch.setattr(sp.urllib.request, "urlopen", lambda *a, **k: pytest.fail("reached the network"))
+    with pytest.raises(RuntimeError, match="SEC_USER_AGENT"):
+        _REAL_HTTP_GET("https://data.sec.gov/submissions/CIK0000123456.json")
 
 
 # ---- the pack text, its parse and the facts ----------------------------------------------------------------------------------------

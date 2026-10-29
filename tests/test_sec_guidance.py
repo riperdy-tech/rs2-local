@@ -28,8 +28,24 @@ class DummyResponse:
 def test_depth_triggers_submissions_alias():
     """depth_triggers._submissions is still importable and is the same function."""
     assert depth_triggers._submissions is sec_guidance._submissions
-    assert depth_triggers.UA is sec_guidance.UA
     assert depth_triggers.SUB_CACHE == sec_guidance.SUB_CACHE
+
+
+def test_sec_ua_is_the_operators_declared_contact(monkeypatch):
+    monkeypatch.setenv("SEC_USER_AGENT", "  Jane Doe jane@example.com ")
+    assert sec_guidance.sec_ua() == {"User-Agent": "Jane Doe jane@example.com"}
+
+
+@pytest.mark.parametrize("value", [None, "", "StockScreener/1.0"])
+def test_missing_contact_fails_loudly_instead_of_degrading(monkeypatch, value):
+    """A missing contact is a configuration error: it must not be swallowed into 'SEC fetch failed' for every name."""
+    if value is None:
+        monkeypatch.delenv("SEC_USER_AGENT")
+    else:
+        monkeypatch.setenv("SEC_USER_AGENT", value)
+    monkeypatch.setattr(sec_guidance.urllib.request, "urlopen", lambda *a, **k: pytest.fail("reached the network"))
+    with pytest.raises(RuntimeError, match="SEC_USER_AGENT"):
+        sec_guidance.latest_earnings_release("0000001234")
 
 
 def test_selection_picks_newest_8k_with_202_and_ignores_without_and_after_asof(monkeypatch):

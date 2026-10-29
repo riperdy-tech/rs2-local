@@ -43,9 +43,9 @@ def _capture(monkeypatch, body="<html><body>ok</body></html>"):
 def test_sec_gov_fetch_uses_the_declared_sec_identity(monkeypatch):
     seen = _capture(monkeypatch)
     at.fetch_page("https://www.sec.gov/Archives/edgar/data/1/000/0001.txt")
-    assert seen["ua"] == sec_guidance.UA["User-Agent"]
+    assert seen["ua"] == sec_guidance.sec_ua()["User-Agent"]
     at.fetch_page("https://efts.sec.gov/LATEST/search-index?q=x")
-    assert seen["ua"] == sec_guidance.UA["User-Agent"]
+    assert seen["ua"] == sec_guidance.sec_ua()["User-Agent"]
 
 
 def test_other_hosts_keep_the_generic_identity(monkeypatch):

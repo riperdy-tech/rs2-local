@@ -6,6 +6,7 @@ EX-99.01, EX-99), filtering for outlook, guidance, backlog, bookings, and orders
 """
 import html
 import json
+import os
 import re
 import sys
 import time
@@ -17,7 +18,18 @@ HERE = Path(__file__).resolve().parent
 
 SUB_CACHE = HERE / "cache" / "sec_submissions"
 SEC_8K_CACHE = HERE / "cache" / "sec_8k"
-UA = {"User-Agent": "RS2-Local research riperdy@gmail.com"}
+
+
+def sec_ua():
+    """The User-Agent SEC requires: the name and email of whoever runs this code, from the SEC_USER_AGENT environment
+    variable (e.g. "Jane Doe jane@example.com"). Raises when it is unset: SEC answers HTTP 403 to a request without a
+    contact, and a clone of this public repository must never send someone else's."""
+    ua = os.environ.get("SEC_USER_AGENT", "").strip()
+    if "@" not in ua:
+        raise RuntimeError("SEC_USER_AGENT must be set to your name and email (e.g. 'Jane Doe jane@example.com'); "
+                           "SEC refuses requests without a contact")
+    return {"User-Agent": ua}
+
 
 PAT_OUTLOOK = re.compile(
     r'\b(outlook|guidance|expects?|expected to|reaffirm\w*|rais(es|ed|ing)|backlog|remaining performance obligations?|book-to-bill|bookings|orders)\b',
@@ -46,9 +58,10 @@ def _submissions(cik):
                 return d
         except Exception:
             pass
+    headers = sec_ua()            # outside the try: a missing contact is a configuration error, not a missing feed
     try:
         req = urllib.request.Request(
-            f"https://data.sec.gov/submissions/CIK{cik}.json", headers=UA)
+            f"https://data.sec.gov/submissions/CIK{cik}.json", headers=headers)
         with urllib.request.urlopen(req, timeout=30) as r:
             d = json.loads(r.read().decode("utf-8", "replace"))
         d["_fetched_utc"] = datetime.now(timezone.utc).isoformat()
@@ -148,8 +161,9 @@ def latest_earnings_release(cik, asof=None) -> dict | None:
     acc_no_dash = accession.replace("-", "")
     url = f"https://www.sec.gov/Archives/edgar/data/{int_cik}/{acc_no_dash}/{accession}.txt"
 
+    headers = sec_ua()
     try:
-        req = urllib.request.Request(url, headers=UA)
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw_data = resp.read().decode("utf-8", "replace")
         time.sleep(0.2)

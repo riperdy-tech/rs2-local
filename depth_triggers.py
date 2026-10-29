@@ -80,7 +80,6 @@ def _verdict_age_days(verdict):
             verdict.get("date", "1970-01-01"), "%Y-%m-%d")).days
     except ValueError:
         return 10 ** 6
-UA = sec_guidance.UA
 BASELINE_FORMS = {"10-Q", "10-K", "10-K/A", "10-Q/A", "20-F", "40-F"}
 
 
