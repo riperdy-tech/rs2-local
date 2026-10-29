@@ -228,7 +228,7 @@ def test_a_clean_run_is_complete_and_every_record_recomputes(env):
     assert man["model"]["manifest_sha256"] == sha(env["model_manifest"].read_bytes())
     assert man["model"]["system_layer_digest"] == "sha256:" + "9" * 64 and man["model"]["tag"] == runner.MODEL
     # the manifest's fixed fields
-    assert man["contract"] == "m3m.analysis.v1" and man["prompt_version"] == "m3m.prompt.v1" and man["builder_version"] == "fixture_b.1"
+    assert man["contract"] == "m3m.analysis.v1" and man["prompt_version"] == "m3m.prompt.v2" and man["builder_version"] == "fixture_b.1"
     assert man["ollama_version"] == "0.40.3" and man["kis_halt"] == "not_resolvable_in_rs2"
     assert man["qwen_c"] == {"git_commit": "a" * 40, "dirty": False}
     assert man["options"]["num_ctx"] == 98304 and man["options"]["num_predict"] == 12288 and man["options"]["think"] == "medium"

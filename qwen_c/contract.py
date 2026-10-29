@@ -49,7 +49,9 @@ or "," that is not inside a number ("approx.99%", "est.$999 million"; ruling 1.2
 FY26, F1). Reading more of the model's text can only add figures that must be found or listed, so it can only fail a claim.
 
 NUMBER RULE. A wanted figure (v, c, u) is matched by a printed figure (v2, c2, u2) when
-    - the currencies are equal (c2 == c: a figure with no currency matches only a figure with no currency); and
+    - the wanted currency, if any, is the printed one (c2 == c); a wanted figure with no currency matches a printed one with or
+      without a currency (smoke run 2026-10-29: tables print "$ 11,291"); a currency WORD after the number (dollars, euros, pounds
+      sterling, yen) is that currency, so "1.2 billion dollars" is not found in "€1.2 billion"; and
     - the units are equal and v2 == v, or both u and u2 are scale units (k, m, bn, tn) and v x scale(u) == v2 x scale(u2).
 A bare figure (no currency, no unit) therefore matches only a bare figure (ruling 1.1). So "$1.2 billion" is found in "$1,200 million",
 "US$1.2 billion" and "$0.0012 trillion"; it is NOT found in "1.2 billion" or "€1.2 billion" (the currency differs), nor in a bare
@@ -61,6 +63,8 @@ A YEAR of the claim text need not be listed (ruling 1.5) only when all hold: it 
 no decimal, 1900-2100; it is directly preceded (by spaces or one hyphen) by a year word: in, fiscal, FY, year, since, by, through, until,
 from, during, of, ended, ending, end, before, after, early, late, mid, a month's full name, Q1-Q4, H1, H2, quarter, half; and a cited
 item prints the same four digits as a bare token with no comma. "closed 2025 stores" and "2,025" are not years.
+A DATE "Month D, YYYY" of the claim text that a cited item prints as the same month, day and year exempts its day and year
+from listing (dated_spans).
 
 An unsupported claim stays visible with its reason. Nothing downstream may read a claim whose `support` is not `supported` as a
 verified value (non-negotiable 3).
@@ -221,6 +225,10 @@ _CUR_CANON = {"US$": "$", "$": "$", "USD": "$", "CAD": "C$", "AUD": "A$", "€":
 _UNIT_CANON = {"%": "%", "thousand": "k", "k": "k", "million": "m", "mn": "m", "mm": "m", "m": "m", "billion": "bn", "bn": "bn",
                "b": "bn", "trillion": "tn", "tn": "tn", "t": "tn", "x": "x", "×": "x", "bp": "bp", "bps": "bp",
                "basis point": "bp", "pp": "pp", "ppt": "pp", "percentage point": "pp"}
+_CUR_WORD = re.compile(r"\s+(dollars?|euros?|pounds?\s+sterling|yen)\b", re.I)    # smoke run 2026-10-29: "1.2 billion dollars"
+_CUR_WORDS = {"dollar": "$", "euro": "€", "pounds sterling": "£", "pound sterling": "£", "yen": "¥"}
+_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
+_DATE = re.compile(r"(?<![A-Za-z])(" + "|".join(_MONTHS) + r")\s+(\d{1,2}),?\s+(\d{4})(?!\d)", re.I)
 _YEAR_BEFORE = re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(YEAR_WORDS) + r")(?:\s+|-)$", re.I)
 
 
@@ -251,13 +259,16 @@ def read_figures(text, claim_side=False):
         except InvalidOperation:
             continue
         cur = (m.group(1) or "").strip()
+        if not cur:
+            w = _CUR_WORD.match(s, m.end())
+            cur = _CUR_WORDS[w.group(1).lower().rstrip("s")] if w else ""
         out.append([v, _CUR_CANON.get(cur, cur), _unit_canon(m.group(3)), core, s[:m.start(2)], m.start(), m.end()])
     for i in range(len(out) - 2, -1, -1):              # a range's lower bound takes the upper bound's unit (and currency, if it has none)
         lo, hi = out[i], out[i + 1]
         if not lo[2] and hi[2] and _RANGE_GAP.fullmatch(s[lo[6]:hi[5]]):
             lo[2] = hi[2]
             lo[1] = lo[1] or hi[1]
-    return [tuple(f[:5]) for f in out]
+    return [tuple(f) for f in out]
 
 
 def figures_of(text, claim_side=False):
@@ -267,7 +278,7 @@ def figures_of(text, claim_side=False):
 
 def _year_of(f):
     """The four digits of a figure that is a year by its own form (YEAR rule, less the cited-item condition), else None."""
-    v, c, u, core, before = f
+    v, c, u, core, before = f[:5]
     if c or u or not re.fullmatch(r"\d{4}", core) or not 1900 <= v <= 2100 or not _YEAR_BEFORE.search(before):
         return None
     return core
@@ -276,6 +287,17 @@ def _year_of(f):
 def printed_years(texts):
     """The bare four-digit tokens with no comma that the item texts print."""
     return {f[3] for t in texts for f in read_figures(t) if not f[1] and not f[2] and re.fullmatch(r"\d{4}", f[3])}
+
+
+def _date_key(m):
+    return m.group(1).lower(), int(m.group(2)), m.group(3)
+
+
+def dated_spans(claim_text, cited):
+    """The (start, end) spans, in the normalised claim text, of the dates "Month D, YYYY" that a cited item prints as the same month,
+    day and year (smoke run 2026-10-29: "June 30, 2026" made 30 and 2026 figures to list). A date no cited item prints is not exempt."""
+    printed = {_date_key(m) for t in cited for m in _DATE.finditer(norm_figure_text(t))}
+    return [(m.start(), m.end()) for m in _DATE.finditer(norm_figure_text(claim_text)) if _date_key(m) in printed]
 
 
 def entry_text(x):
@@ -291,7 +313,7 @@ def entry_text(x):
 def fig_matches(want, have):
     v, c, u = want
     v2, c2, u2 = have
-    if c2 != c:
+    if c and c2 != c:
         return False
     if u2 == u:
         return v2 == v
@@ -333,9 +355,12 @@ def check_claim(claim, items, ticker=None):
             failures.append({"check": "number_not_found", "detail": s})
     tk = Decimal(ticker).normalize() if ticker and str(ticker).isdigit() else None
     years = printed_years(cited)
+    dates = dated_spans(claim["claim"], cited)
     must = set()
     for f in read_figures(claim["claim"], claim_side=True):     # per occurrence: "in 2025" does not exempt "closed 2025 stores"
         if (not f[1] and not f[2] and f[0] == tk) or (_year_of(f) is not None and _year_of(f) in years):
+            continue
+        if not f[1] and not f[2] and any(a <= f[5] < b for a, b in dates):     # by start: "2026," ends after the date
             continue
         must.add(f[:3])
     for f in sorted(must, key=str):

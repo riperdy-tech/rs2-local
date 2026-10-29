@@ -13,6 +13,20 @@ FIX = Path(__file__).resolve().parent / "fixtures_b"
 PACKET = json.loads((FIX / "packet_acme.json").read_text(encoding="utf-8"))
 
 PINS = {
+    "m3m.prompt.v2": {   # 2026-10-29: the FIGURES scale sentence (smoke run MA, AUDIT_M5); m3m.prompt.v1 was used by one run
+        "SYSTEM": "1fc6498c1385bb51257e77c8d1e20b9eb732bf576650bf19142df8b8d170324c",
+        "RETRY_LINE": "3eeee83f99a03448e76e788cb45399bb29d709a3ab286c28939dc1ccf8e1c82e",
+        "thesis_change": "2bef986503b497d7d0ff42af2fdb7a5c1538642d5c9949fe4919c5507fb209fc",
+        "LEFT_OUT_LINE": "a83e279e9e9f3a1dbd33b7c1ac0d754c17558ed34d66d7cc9c99a9e40682b486",
+        "MISSING_LINE": "d7c0c3712d8caefada183363178426420ce134a605ae3a98fd1066e8151189d8",
+        "render_packet(packet_acme)": "e6e68066bd678022adbe96f2992914f0a3d4f232ec9b1532898dd81062fee2dd",
+        "business_model": "428f45d0ba1e79b7e21c4e0ddfa4c1def70a7e29ecf045ab686447b7594ab692",
+        "financial_health": "608cb7d45015652566443a382456fd0af335288c0a36574f824519de02b6c004",
+        "competitive_position": "a7704a274a6e9b48c990c6464b86d5d1e6938d13d253f17b9ad7dd6c50b25be4",
+        "growth_thesis": "d40fb8b51c9b3f38c979827c3ddf7c63a95c5dc07133fd883601d64ac20ccd60",
+        "risks": "0b35f6a7ededdd8afcb11153145352b04f70f1ca0e4b1a2ace6a3c8cc45383fd",
+        "unresolved_questions": "e765b84fc9b8440e9f35f8047bafcb8902b6d370fa63740fade45dca6ba29592",
+    },
     "m3m.prompt.v1": {
         "SYSTEM": "2b9d6a8a29a237bfa2ae255823d7ae97bd4a75dda0da1f49eb7ab74526a0cd6e",
         "business_model": "428f45d0ba1e79b7e21c4e0ddfa4c1def70a7e29ecf045ab686447b7594ab692",
@@ -44,7 +58,7 @@ def current():
 
 
 def test_prompt_version_and_pinned_hashes():
-    assert tasks.PROMPT_VERSION == "m3m.prompt.v1"
+    assert tasks.PROMPT_VERSION == "m3m.prompt.v2"
     assert tasks.PROMPT_VERSION in PINS, "a new PROMPT_VERSION needs its own pin set"
     assert current() == PINS[tasks.PROMPT_VERSION], "what the model is told changed: bump PROMPT_VERSION and add a pin set"
 

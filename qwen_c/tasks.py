@@ -8,7 +8,7 @@ Changing any text here changes what the model is told: bump PROMPT_VERSION and r
 """
 from datetime import datetime
 
-PROMPT_VERSION = "m3m.prompt.v1"
+PROMPT_VERSION = "m3m.prompt.v2"   # v2 2026-10-29: the FIGURES scale sentence (smoke run MA)
 TASKS = ("business_model", "financial_health", "competitive_position", "growth_thesis", "risks", "thesis_change",
          "unresolved_questions")
 
@@ -22,7 +22,7 @@ CLAIMS. Each claim is one short statement drawn from the evidence. Every claim l
 
 QUOTATIONS. "quotes" holds extracts copied exactly, character for character, from the cited items, each one sentence or shorter. Do not shorten, join, translate or correct a quotation. If you cannot copy it exactly, leave it out.
 
-FIGURES. Every number written in a claim must also be listed in that claim's "numbers", written exactly as a cited item prints it, with the currency sign, the unit word (thousand, million, billion) or the % only when the item prints it next to the number. When a table gives its scale only in its heading, such as "$ in Millions", write the number in the claim and in "numbers" exactly as printed, for example "1,234", and name the scale apart from it, for example "(table in millions)". Do not round, convert, add up or compute new figures.
+FIGURES. Every number written in a claim must also be listed in that claim's "numbers", written exactly as a cited item prints it, with the currency sign, the unit word (thousand, million, billion) or the % only when the item prints it next to the number. When a table gives its scale only in its heading, such as "$ in Millions", write the number in the claim and in "numbers" exactly as printed, for example "1,234", and name the scale apart from it: write "$19,476 (table in millions)", never "$19,476 million". Do not round, convert, add up or compute new figures.
 
 UNKNOWNS. When the evidence cannot answer part of the task, say so in "unknowns" in a short sentence. Do not guess.
 

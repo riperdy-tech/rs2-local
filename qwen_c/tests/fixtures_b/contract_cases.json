@@ -305,10 +305,10 @@
   },
   "supports": [
    "number_not_listed",
-   "number_not_found",
+   "number_not_listed",
    "number_not_found"
   ],
-  "note": "WO_M4: claims 2 and 3 now fail first on number_not_found (a listed 2.5 billion has no currency, a listed 31.2 has no unit, and decorations must be equal); number_not_listed is still recorded for each"
+  "note": "WO_M4: claims 2 and 3 now fail first on number_not_found (a listed 2.5 billion has no currency, a listed 31.2 has no unit, and decorations must be equal); number_not_listed is still recorded for each; AUDIT_M5: a listed 2.5 billion with no currency is now found in $2.5 billion, so claim 2 fails first on number_not_listed (the claim's $2.5 billion is not listed with its currency)"
  },
  {
   "name": "unknown_fact_id",

@@ -56,7 +56,7 @@ def F(v, c="", u=""):
 
 @pytest.mark.parametrize("want,text,found", [
     ("1.2 billion", "revenue of 1,200 million", True),          # the item states the value at that scale
-    ("1.2 billion", "revenue of $1.2 billion", False),          # WO_M4: the currencies must be equal (no currency is not a wildcard)
+    ("1.2 billion", "revenue of $1.2 billion", True),           # AUDIT_M5: no wanted currency matches a printed one (tables print "$ 1,234")
     ("$1.2 billion", "revenue of $1,200 million", True),
     ("$1.2 billion", "revenue of $0.0012 trillion", True),       # ruling 1.1: tn converts with k / m / bn
     ("1.2 billion", "Total revenue | 1,200 | 1,100", False),     # a bare 1,200 is not 1.2 billion
@@ -68,7 +68,7 @@ def F(v, c="", u=""):
     ("15.4%", "a margin of 15.4", False),
     ("15.4", "a margin of 15.4%", False),                        # ruling 1.1: a bare figure matches only a bare figure
     ("15.4", "a ratio of 15.4x", False),
-    ("15.4", "a price of $15.4", False),
+    ("15.4", "a price of $15.4", True),                          # AUDIT_M5: as above; the units must still be equal
     ("15.4", "a ratio of 15.4", True),
     ("15.4 percent", "a margin of 15.4%", True),
     ("15.4%", "a margin of 15.4 per cent", True),
@@ -238,3 +238,14 @@ def test_thesis_change_points_are_checked_and_unaddressed_points_recorded():
     got = contract.check_task("thesis_change", {**reply, "claims": [], "unknowns": ["nothing newer"]}, PACKET, ["G1"])
     assert got["status"] == "ok" and got["points_not_addressed"] == ["G1"]
     assert "points_not_addressed" not in contract.check_task("risks", {"task": "risks", "claims": [], "unknowns": ["x"]}, PACKET)
+
+
+def test_a_currency_word_and_a_printed_date():
+    # AUDIT_M5 (smoke run MA, 2026-10-29)
+    item = "June 30, 2026 | Cash and cash equivalents | $ 11,291 | Debt EUR 1.2 billion"
+    c = {"fact_ids": ["F1"], "quotes": [], "confidence_basis": "stated"}
+    chk = lambda claim, numbers: contract.check_claim({**c, "claim": claim, "numbers": numbers}, {"F1": item}, "MA")["support"]
+    assert chk("At June 30, 2026, cash was 11,291 (table in millions)", ["11,291"]) == "supported"
+    assert chk("At June 30, 2027, cash was 11,291", ["11,291"]) == "number_not_listed"          # a date no cited item prints
+    assert chk("Debt was 1.2 billion dollars", ["1.2 billion dollars"]) == "number_not_found"     # "dollars" is $, the item prints EUR
+    assert chk("Cash was $11,291 million", ["$11,291"]) == "number_not_listed"                  # scale drift stays unsupported
