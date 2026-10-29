@@ -78,6 +78,10 @@ no decimal, 1900-2100; it is directly preceded (by spaces or one hyphen) by a ye
 from, during, of, ended, ending, end, before, after, early, late, mid, a month's full name, Q1-Q4, H1, H2, quarter, half, due, or by an earlier year of a list or range of years that is so
 preceded ("in 2023, 2024 and 2025", "in 2032-2036"); and a cited
 item prints the same four digits as a bare token with no comma. "closed 2025 stores" and "2,025" are not years.
+A DESIGNATOR NUMBER of the claim text, a bare number right after one of the words chapter, item, rule, section, note, form, part,
+article, title, series, class, exhibit, schedule, regulation, tier, phase or proposal (singular or plural), need not be listed when a cited
+item prints the same word and number ("Chapter 11", "Item 1.03", "Rule 5550"). It names a provision, not a quantity (3N smoke run
+2026-10-29: a correct, cited bankruptcy claim was number_not_listed on "Chapter 11").
 A DATE of the claim text ("June 30, 2026", "Jun. 30, 2026", "30 June 2026", "30 Jun 2026") that a cited item prints as the same month,
 day and year, in any of those forms, exempts its day and year from listing (dated_spans).
 
@@ -313,6 +317,24 @@ def _year_of(f):
     return core
 
 
+_DESIG = ("chapter", "item", "rule", "section", "note", "form", "part", "article", "title", "series", "class", "exhibit", "schedule",
+          "regulation", "tier", "phase", "proposal")
+_DESIG_BEFORE = re.compile(r"(?<![A-Za-z])(" + "|".join(_DESIG) + r")s?\s+$", re.I)
+_DESIG_PRINTED = re.compile(r"(?<![A-Za-z])(" + "|".join(_DESIG) + r")s?\s+(\d[\d.]*)", re.I)
+
+
+def printed_designators(texts):
+    """{(designator, number)} of the cited texts: "Chapter 11", "Item 1.03", "Rule 5550" (3N smoke run 2026-10-29)."""
+    return {(m.group(1).lower(), m.group(2).rstrip(".")) for t in texts for m in _DESIG_PRINTED.finditer(norm_figure_text(t))}
+
+
+def _designator_of(f):
+    """(designator, digits) of a bare claim figure printed right after a designator word ("Chapter 11"), else None."""
+    v, c, u, core, before = f[:5]
+    m = _DESIG_BEFORE.search(before)
+    return (m.group(1).lower(), core.rstrip(".")) if m and not c and not u else None
+
+
 def printed_years(texts):
     """The bare four-digit tokens with no comma that the item texts print."""
     return {f[3] for t in texts for f in read_figures(t) if not f[1] and not f[2] and re.fullmatch(r"\d{4}", f[3])}
@@ -453,12 +475,15 @@ def check_claim(claim, items, ticker=None, statements=()):
     listed |= {h for h in stmt_figs if any(not u and v == h[0] and c in ("", h[1]) for v, c, u in listed)}    # THE STATEMENT RULE
     tk = Decimal(ticker).normalize() if ticker and str(ticker).isdigit() else None
     years = printed_years(cited)
+    desig = printed_designators(cited)
     dates = dated_spans(claim["claim"], cited)
     must = set()
     for f in read_figures(claim["claim"], claim_side=True):     # per occurrence: "in 2025" does not exempt "closed 2025 stores"
         if (not f[1] and not f[2] and f[0] == tk) or (_year_of(f) is not None and _year_of(f) in years):
             continue
         if not f[1] and not f[2] and any(a <= f[5] < b for a, b in dates):     # by start: "2026," ends after the date
+            continue
+        if _designator_of(f) is not None and _designator_of(f) in desig:     # "Chapter 11" when a cited item prints "Chapter 11" (3N smoke)
             continue
         must.add(f[:3])
     for f in sorted(must, key=str):

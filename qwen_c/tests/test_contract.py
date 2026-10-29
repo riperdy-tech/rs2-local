@@ -421,3 +421,15 @@ def test_year_lists_ranges_and_due():
     assert chk("Coverage falls from 98.2% in 2026 to 15.1% in 2032-2037", ["98.2%", "15.1%"]) == "number_not_listed"   # 2037 is printed nowhere
     assert chk("The company closed 2025 stores and 2024 more", []) == "number_not_listed"                             # not years: no year word
     assert contract.figures_of("in 2026 to 15.1%", claim_side=True) == {(Decimal("2026"), "", ""), (Decimal("15.1"), "", "%")}
+
+
+def test_designator_numbers():
+    # 3N smoke run 2026-10-29 (FATBP): "Chapter 11" names a provision, not a quantity
+    item = "Item 1.03 Bankruptcy or Receivership. On January 26, 2026 the Company commenced voluntary cases under chapter 11 of title 11; Rule 5550(a)(2)."
+    c = {"fact_ids": ["P8"], "quotes": [], "confidence_basis": "stated"}
+    chk = lambda claim, numbers: contract.check_claim({**c, "claim": claim, "numbers": numbers}, {"P8": item}, "FAT")["support"]
+    assert chk("The company filed under Chapter 11 (Item 1.03)", []) == "supported"
+    assert chk("Nasdaq cited Rule 5550", []) == "supported"
+    assert chk("The company filed under Chapter 7", []) == "number_not_listed"          # a designator number no cited item prints
+    assert chk("The company has 11 subsidiaries", []) == "number_not_listed"            # not after a designator word
+    assert chk("The company filed under Chapter 11 owing $5 million", []) == "number_not_listed"
