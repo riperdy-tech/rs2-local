@@ -201,15 +201,28 @@
       "$1.2 million"
      ],
      "confidence_basis": "stated in the cited item"
+    },
+    {
+     "claim": "Total revenue was 1,200 billion.",
+     "fact_ids": [
+      "F1"
+     ],
+     "quotes": [],
+     "numbers": [
+      "1,200 billion"
+     ],
+     "confidence_basis": "stated in the cited item"
     }
    ],
    "unknowns": []
   },
   "supports": [
+   "supported",
    "number_not_found",
    "number_not_found",
    "number_not_found"
-  ]
+  ],
+  "note": "M-LIVE 2026-10-29, THE STATEMENT RULE: claim 1 is now supported, because F1 is a statement whose heading declares \"$ in Millions\", so its 1,200 is 1.2 billion; claim 4 keeps a statement off-by-scale case"
  },
  {
   "name": "number_in_an_uncited_item_or_another_currency",

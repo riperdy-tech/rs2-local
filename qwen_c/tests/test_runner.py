@@ -514,7 +514,7 @@ def test_a_prior_without_ok_growth_or_risks_is_prior_unusable(env):
 
 def test_a_prior_with_no_supported_claim_is_prior_unusable(env, monkeypatch):
     real = contract.check_claim
-    monkeypatch.setattr(contract, "check_claim", lambda c, items, ticker=None: {**real(c, items, ticker), "support": "number_not_found"})
+    monkeypatch.setattr(contract, "check_claim", lambda c, items, ticker=None, statements=(): {**real(c, items, ticker, statements), "support": "number_not_found"})
     runner.run(_packet_at(env, "2026-05-01T13:00:00Z", "early.json"), url=env["url"])
     monkeypatch.setattr(contract, "check_claim", real)
     late = run(env)

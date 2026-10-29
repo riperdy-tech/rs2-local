@@ -249,3 +249,64 @@ def test_a_currency_word_and_a_printed_date():
     assert chk("At June 30, 2027, cash was 11,291", ["11,291"]) == "number_not_listed"          # a date no cited item prints
     assert chk("Debt was 1.2 billion dollars", ["1.2 billion dollars"]) == "number_not_found"     # "dollars" is $, the item prints EUR
     assert chk("Cash was $11,291 million", ["$11,291"]) == "number_not_listed"                  # scale drift stays unsupported
+
+
+STMT = ("Consolidated Statements of Operations - USD ($) shares in Millions, $ in Millions | 3 Months Ended\n"
+        "Jun. 30, 2026 | Jun. 30, 2025\n"
+        "Cash and cash equivalents | $ 11,291 | $ 10,566\n"
+        "Class A treasury stock, at cost, 536 and 518 shares, respectively | (92,226) | (83,224)\n"
+        "Basic Earnings per Share (in dollars per share) | $ 4.98 | $ 4.08\n"
+        "Basic weighted-average shares outstanding (in shares) | 882 | 908\n"
+        "Effective tax rate (in percent) | 17 | 18")
+
+
+def test_statement_heading():
+    # THE STATEMENT RULE (M-LIVE 2026-10-29)
+    assert contract.statement_heading(STMT) == ("$", "m", "m")
+    assert contract.statement_heading("Consolidated Balance Sheets - USD ($) $ in Thousands | Dec. 31, 2025") == ("$", "k", "")
+    assert contract.statement_heading("Balance Sheets - USD ($) | Dec. 31, 2025") == ("$", "", "")
+    assert contract.statement_heading("Item 1. Business\nWe sell - USD ($) in Millions") is None
+
+
+def test_the_statement_rule():
+    # M-LIVE 2026-10-29: the heading's currency and scale are read row by row, never in a row label or a period cell
+    c = {"fact_ids": ["F1"], "quotes": [], "confidence_basis": "stated"}
+
+    def chk(claim, numbers, statements=("F1",)):
+        return contract.check_claim({**c, "claim": claim, "numbers": numbers}, {"F1": STMT}, "MA", statements)["support"]
+
+    assert chk("Cash was $11,291 million", ["$11,291 million"]) == "supported"
+    assert chk("Cash was $11.291 billion", ["$11.291 billion"]) == "supported"
+    assert chk("Cash was 11,291 million", ["11,291 million"]) == "supported"
+    assert chk("Cash was $11,291 (table in millions)", ["$11,291"]) == "supported"
+    assert chk("Cash was $11,291 billion", ["$11,291 billion"]) == "number_not_found"
+    assert chk("Cash was $11,291 thousand", ["$11,291 thousand"]) == "number_not_found"
+    assert chk("Cash was $11,291 million", ["$11,291 million"], statements=()) == "number_not_found"   # not a statement: no heading
+    assert chk("Treasury stock was $92,226 million", ["(92,226)"]) == "supported"
+    assert chk("Treasury stock covered 536 million shares", ["536 million"]) == "number_not_found"     # a row label is not scaled
+    assert chk("Basic EPS was $4.98", ["$4.98"]) == "supported"
+    assert chk("Basic EPS was $4.98 million", ["$4.98 million"]) == "number_not_found"                 # a per-share row takes no scale
+    assert chk("Basic shares were 882 million", ["882 million"]) == "supported"
+    assert chk("Basic shares were $882 million", ["$882 million"]) == "number_not_found"               # a share row takes no currency
+    assert chk("The tax rate was 17 million", ["17 million"]) == "number_not_found"                    # another "(in ...)" takes nothing
+    assert chk("Revenue was $2,026 million", ["$2,026 million"]) == "number_not_found"                 # a period cell takes nothing
+
+
+def test_a_listed_statement_cell_lists_its_readings():
+    # M-LIVE 2026-10-29 (MA financial_health): the model lists the cell as printed and writes the declared scale in the claim
+    c = {"fact_ids": ["F1"], "quotes": [], "confidence_basis": "stated"}
+    chk = lambda claim, numbers: contract.check_claim({**c, "claim": claim, "numbers": numbers}, {"F1": STMT}, "MA", ("F1",))["support"]
+    assert chk("Cash was $11,291 million at June 30, 2026", ["$ 11,291"]) == "supported"
+    assert chk("Cash was $11,291 billion at June 30, 2026", ["$ 11,291"]) == "number_not_listed"
+    assert chk("Cash was $11,291 million", ["11,291 thousand"]) == "number_not_found"
+
+
+def test_dates_in_either_order_and_month_form():
+    # M-LIVE 2026-10-29: R-file column heads print "Jun. 30, 2026"; CMRE claims wrote "31 Dec 2025"
+    item = "Balance Sheets - USD ($) $ in Thousands | Dec. 31, 2025 | Dec. 31, 2024\nCash | $ 519,847 | $ 656,880"
+    c = {"fact_ids": ["F1"], "quotes": [], "confidence_basis": "stated"}
+    chk = lambda claim: contract.check_claim({**c, "claim": claim, "numbers": ["$519,847"]}, {"F1": item}, "CMRE", ("F1",))["support"]
+    assert chk("Cash was $519,847 (table in thousands) at 31 Dec 2025") == "supported"
+    assert chk("Cash was $519,847 (table in thousands) at December 31, 2025") == "supported"
+    assert chk("Cash was $519,847 (table in thousands) at 31 December 2025") == "supported"
+    assert chk("Cash was $519,847 (table in thousands) at 30 Dec 2025") == "number_not_listed"          # a date no item prints

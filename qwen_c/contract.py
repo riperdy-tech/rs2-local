@@ -55,7 +55,16 @@ NUMBER RULE. A wanted figure (v, c, u) is matched by a printed figure (v2, c2, u
     - the units are equal and v2 == v, or both u and u2 are scale units (k, m, bn, tn) and v x scale(u) == v2 x scale(u2).
 A bare figure (no currency, no unit) therefore matches only a bare figure (ruling 1.1). So "$1.2 billion" is found in "$1,200 million",
 "US$1.2 billion" and "$0.0012 trillion"; it is NOT found in "1.2 billion" or "€1.2 billion" (the currency differs), nor in a bare
-"1,200" (even under a table heading "$ in Millions": a scale stated only in a heading is not read), nor in "$1.23 billion". "15.4%" is
+"1,200" of prose, nor in "$1.23 billion". A heading's scale is read only in a statement item, under THE STATEMENT RULE.
+
+THE STATEMENT RULE (M-LIVE 2026-10-29). A statement item (kind "statement") is a FilingSummary R report whose first line declares its
+currency and scale: "... - USD ($) shares in Millions, $ in Millions | Jun. 30, 2026 | ...". Every figure of a value cell printed with no
+unit, and with no currency or the declared one, is also read with the declared currency and, on a money row, the declared scale; a
+per-share row ("(in dollars per share)", "(USD per share)") takes the currency only; a share row ("(in shares)", "(shares)") takes the
+share scale only; a row ending in another "(in ...)" and the row labels and period cells take nothing (statement_figures). So in a
+"$ in Millions" balance sheet the cell "11,291" is found as "11,291", "$11,291", "$11,291 million" and "$11.291 billion", and never as
+"$11,291 billion" or "$11,291 thousand"; "$4.98 million" is never found on a per-share row. A `numbers` entry with no unit that a
+cited statement reads this way lists every reading of that cell, so a listed "$ 11,291" lists the claim's "$11,291 million". "15.4%" is
 not found in a bare "15.4", and a bare "15.4" is not found in "15.4%", "15.4x" or "$15.4". "$10.6 trillion" is not found in
 "$10.6 million". The same predicate decides whether a number of the claim text is listed in `numbers`.
 
@@ -63,8 +72,8 @@ A YEAR of the claim text need not be listed (ruling 1.5) only when all hold: it 
 no decimal, 1900-2100; it is directly preceded (by spaces or one hyphen) by a year word: in, fiscal, FY, year, since, by, through, until,
 from, during, of, ended, ending, end, before, after, early, late, mid, a month's full name, Q1-Q4, H1, H2, quarter, half; and a cited
 item prints the same four digits as a bare token with no comma. "closed 2025 stores" and "2,025" are not years.
-A DATE "Month D, YYYY" of the claim text that a cited item prints as the same month, day and year exempts its day and year
-from listing (dated_spans).
+A DATE of the claim text ("June 30, 2026", "Jun. 30, 2026", "30 June 2026", "30 Jun 2026") that a cited item prints as the same month,
+day and year, in any of those forms, exempts its day and year from listing (dated_spans).
 
 An unsupported claim stays visible with its reason. Nothing downstream may read a claim whose `support` is not `supported` as a
 verified value (non-negotiable 3).
@@ -228,7 +237,10 @@ _UNIT_CANON = {"%": "%", "thousand": "k", "k": "k", "million": "m", "mn": "m", "
 _CUR_WORD = re.compile(r"\s+(dollars?|euros?|pounds?\s+sterling|yen)\b", re.I)    # smoke run 2026-10-29: "1.2 billion dollars"
 _CUR_WORDS = {"dollar": "$", "euro": "€", "pounds sterling": "£", "pound sterling": "£", "yen": "¥"}
 _MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
-_DATE = re.compile(r"(?<![A-Za-z])(" + "|".join(_MONTHS) + r")\s+(\d{1,2}),?\s+(\d{4})(?!\d)", re.I)
+_MONTH_NO = {**{m: i for i, m in enumerate(_MONTHS, 1)}, **{m[:3]: i for i, m in enumerate(_MONTHS, 1)}, "sept": 9}
+_MONTH = r"(" + "|".join(_MONTHS + ("sept", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec")) + r")\.?"
+_DATE = re.compile(r"(?<![A-Za-z])" + _MONTH + r"\s+(\d{1,2}),?\s+(\d{4})(?!\d)", re.I)          # June 30, 2026 / Jun. 30, 2026
+_DATE_DMY = re.compile(r"(?<![A-Za-z0-9])(\d{1,2})\s+" + _MONTH + r",?\s+(\d{4})(?!\d)", re.I)    # 31 Dec 2025 (M-LIVE, CMRE)
 _YEAR_BEFORE = re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(YEAR_WORDS) + r")(?:\s+|-)$", re.I)
 
 
@@ -289,15 +301,78 @@ def printed_years(texts):
     return {f[3] for t in texts for f in read_figures(t) if not f[1] and not f[2] and re.fullmatch(r"\d{4}", f[3])}
 
 
-def _date_key(m):
-    return m.group(1).lower(), int(m.group(2)), m.group(3)
+def _dates(text):
+    """[((month number, day, year), start, end)] of the dates of a normalised text, in either order and with either month form."""
+    out = [((_MONTH_NO[m.group(1).lower()], int(m.group(2)), m.group(3)), m.start(), m.end()) for m in _DATE.finditer(text)]
+    out += [((_MONTH_NO[m.group(2).lower()], int(m.group(1)), m.group(3)), m.start(), m.end()) for m in _DATE_DMY.finditer(text)]
+    return out
 
 
 def dated_spans(claim_text, cited):
-    """The (start, end) spans, in the normalised claim text, of the dates "Month D, YYYY" that a cited item prints as the same month,
-    day and year (smoke run 2026-10-29: "June 30, 2026" made 30 and 2026 figures to list). A date no cited item prints is not exempt."""
-    printed = {_date_key(m) for t in cited for m in _DATE.finditer(norm_figure_text(t))}
-    return [(m.start(), m.end()) for m in _DATE.finditer(norm_figure_text(claim_text)) if _date_key(m) in printed]
+    """The (start, end) spans, in the normalised claim text, of the dates that a cited item prints as the same month, day and year,
+    whatever the month's form or the order ("June 30, 2026" in the claim is "Jun. 30, 2026" in an R-file column head; smoke run and
+    M-LIVE 2026-10-29). A date no cited item prints is not exempt."""
+    printed = {k for t in cited for k, _, _ in _dates(norm_figure_text(t))}
+    return [(a, b) for k, a, b in _dates(norm_figure_text(claim_text)) if k in printed]
+
+
+_STMT_HEAD = re.compile(r" - ([A-Z]{3}) \([^()|]*\)((?:,?\s*\S+ in (?:Thousands|Millions|Billions))*)\s*(?:\||$)")
+_STMT_SCALE = re.compile(r"(\S+) in (Thousands|Millions|Billions)")
+_STMT_SCALE_UNIT = {"Thousands": "k", "Millions": "m", "Billions": "bn"}
+_ROW_PER_SHARE = re.compile(r"\((?:in )?[^()]*per share\)\s*$", re.I)
+_ROW_SHARES = re.compile(r"\((?:in )?shares\)\s*$", re.I)
+_ROW_OTHER_UNIT = re.compile(r"\(in [^()]*\)\s*$", re.I)
+_PERIOD_CELL = re.compile(r"\s*(?:\d+ Months Ended|" + _MONTH + r"\s+\d{1,2},?\s+\d{4})\s*", re.I)
+
+
+def statement_heading(text):
+    """(currency, money scale unit, share scale unit) that the first line of a FilingSummary R report declares, as in
+    "Consolidated Balance Sheets - USD ($) shares in Millions, $ in Millions | Jun. 30, 2026 | ...", else None."""
+    m = _STMT_HEAD.search((text or "").split("\n", 1)[0])
+    if not m:
+        return None
+    money = shares = ""
+    for who, scale in _STMT_SCALE.findall(m.group(2)):
+        if who.lower() == "shares":
+            shares = _STMT_SCALE_UNIT[scale]
+        else:
+            money = _STMT_SCALE_UNIT[scale]
+    return _CUR_CANON.get(m.group(1), m.group(1)), money, shares
+
+
+def statement_figures(text):
+    """The figures a statement item states once its heading is read (THE STATEMENT RULE, M-LIVE 2026-10-29): every figure of a value
+    cell (not the row label, not a period cell) printed with no unit, and with no currency or the declared one, is also read with the
+    declared currency, and, on a money row, with the declared scale. A row whose label ends "(in ... per share)" or "(USD per share)"
+    takes the currency only; a row ending "(in shares)" or "(shares)" takes the share scale only, with no currency; a row ending in any
+    other "(in ...)" takes nothing. The literal figures are kept as read."""
+    head = statement_heading(text)
+    if head is None:
+        return set()
+    cur, money, shares = head
+    out = set()
+    for line in text.split("\n")[1:]:
+        cells = line.split(" | ")
+        if len(cells) < 2:
+            continue
+        label = cells[0]
+        per_share, share_row = bool(_ROW_PER_SHARE.search(label)), bool(_ROW_SHARES.search(label))
+        if not per_share and not share_row and _ROW_OTHER_UNIT.search(label):
+            continue
+        for cell in cells[1:]:
+            if _PERIOD_CELL.fullmatch(cell):
+                continue
+            for v, c, u, *_ in read_figures(cell):
+                if u or c not in ("", cur):
+                    continue
+                if share_row:
+                    if shares:
+                        out.add((v, "", shares))
+                    continue
+                out.add((v, cur, ""))
+                if money and not per_share:
+                    out.add((v, cur, money))
+    return out
 
 
 def entry_text(x):
@@ -326,8 +401,9 @@ def figure_found(want, figures):
 
 # ---------------------------------------------------------------- the claim checks
 
-def check_claim(claim, items, ticker=None):
-    """{"support", "support_failures"} for one kept claim; `items` is {fact_id: text} of the packet."""
+def check_claim(claim, items, ticker=None, statements=()):
+    """{"support", "support_failures"} for one kept claim; `items` is {fact_id: text} of the packet; `statements` are the fact ids
+    whose items are statements (kind "statement"), read under THE STATEMENT RULE as well."""
     failures = []
     ids = claim["fact_ids"]
     unknown = [i for i in ids if i not in items]
@@ -339,9 +415,13 @@ def check_claim(claim, items, ticker=None):
     for q in claim["quotes"]:
         if not quote_found(q, cited):
             failures.append({"check": "quote_not_found", "detail": q})
-    cited_figs = set()
-    for t in cited:
-        cited_figs |= figures_of(t)
+    cited_figs, stmt_figs = set(), set()
+    for i in ids:
+        if i in items:
+            cited_figs |= figures_of(items[i])
+            if i in statements:
+                stmt_figs |= statement_figures(items[i])
+    cited_figs |= stmt_figs
     listed = set()
     for x in claim["numbers"]:
         s = entry_text(x)
@@ -353,6 +433,7 @@ def check_claim(claim, items, ticker=None):
         missing = [f for f in figs if not figure_found(f, cited_figs)]
         if missing:
             failures.append({"check": "number_not_found", "detail": s})
+    listed |= {h for h in stmt_figs if any(not u and v == h[0] and c in ("", h[1]) for v, c, u in listed)}    # THE STATEMENT RULE
     tk = Decimal(ticker).normalize() if ticker and str(ticker).isdigit() else None
     years = printed_years(cited)
     dates = dated_spans(claim["claim"], cited)
@@ -385,9 +466,10 @@ def check_task(task_id, obj, packet, point_ids=None):
         return {"status": "malformed", "shape_errors": errors, "dropped_fields": dropped, "claims": [], "unknowns": [],
                 "support_counts": {}}
     items = evidence_texts(packet)
+    statements = {e["fact_id"] for e in packet.get("evidence") or [] if e.get("kind") == "statement"}
     claims, counts = [], {}
     for c in kept["claims"]:
-        chk = check_claim(c, items, packet.get("ticker"))
+        chk = check_claim(c, items, packet.get("ticker"), statements)
         claims.append({**c, **chk})
         counts[chk["support"]] = counts.get(chk["support"], 0) + 1
     out = {"status": "ok", "shape_errors": [], "dropped_fields": dropped, "claims": claims, "unknowns": kept["unknowns"],
