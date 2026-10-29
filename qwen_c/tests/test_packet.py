@@ -246,7 +246,7 @@ def test_full_build_order_kinds_and_sections(world):
     assert pk["screener"]["commit"] == world["commit"]
     assert pk["screener"]["verified_row"] == {"run_id": "r-ok", "verdict": "PASS", "pair": "PASS", "output_commit": world["commit"],
                                               "run_updated_at": RUN_UPDATED}          # ruling 5.1: the row as found
-    assert pk["builder_version"] == "m3m.packet.builder.v6" and pk["regime"] == "verified" and "cik_source" not in pk
+    assert pk["builder_version"] == "m3m.packet.builder.v7" and pk["regime"] == "verified" and "cik_source" not in pk
     assert pk["screener"]["stocks_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.STOCKS_PATH}")
     assert pk["screener"]["factor_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.FACTOR_PATH}")
     assert "Total assets | 84,464 | 76,926" in by["F1"]["text"]                       # the real R4 report, flattened
@@ -944,7 +944,7 @@ def test_an_archival_packet_needs_no_verified_record_and_records_the_regime(worl
     pk = build_a(world)
     v = build(world)
     sh = pk["screener"]
-    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v6"
+    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v7"
     assert pk["cik_source"] == "cik_map" and pk["cik"] == CIK
     assert sh["regime"] == ARCH and sh["screener_commit_verified"] is False and sh["verified_row"] is None
     assert sh["commit_time_utc"] == "2026-10-01T00:00:00Z" and sh["commit"] == world["commit"]
@@ -1113,7 +1113,7 @@ def gc_store(w, name, tenk=None, tenq=None):
 
 
 def test_builder_v6_constants():
-    assert packet.BUILDER_VERSION == "m3m.packet.builder.v6" and packet.GC_CAP == 6_000 and packet.OTHER_8K_CAP == 4_000
+    assert packet.BUILDER_VERSION == "m3m.packet.builder.v7" and packet.GC_CAP == 6_000 and packet.OTHER_8K_CAP == 4_000
 
 
 def test_the_going_concern_note_follows_the_sections_of_its_filing_with_a_paragraph_each_side(world):
@@ -1190,28 +1190,25 @@ def test_the_going_concern_note_is_capped_and_omitted_passages_are_annotated(wor
     assert a.startswith(f"gc_passages_omitted: {A10K} kept ") and a.endswith(f" of 12 (over {packet.GC_CAP} characters)")
 
 
-def test_size_cap_trimming_order_with_going_concern_notes_present(world, monkeypatch):
+def test_size_cap_trimming_never_counts_or_cuts_the_going_concern_notes(world, monkeypatch):
+    # v7 (CROSS_CHECK_O 6a): in v6 the notes counted against TOTAL_CAP and pushed out the event 8-Ks (PTHS 4.02, EONR 3.01)
     store = gc_store(world, "gctrim", tenk=tenk_gc_html(), tenq=tenq_gc_html())
     full = build(world, store=store)
+    notes = [e for e in full["evidence"] if e["kind"] == "gc_note"]
+    assert len(notes) == 2
+    rest = sum(len(e["text"]) for e in full["evidence"] if e["kind"] != "gc_note")
+    monkeypatch.setattr(packet, "TOTAL_CAP", rest)                        # the notes alone take the packet over: nothing is cut
+    pk = build(world, store=store)
+    assert pk["evidence"] == full["evidence"] and not [a for a in pk["annotations"] if a.startswith("trimmed")]
     by = {(e["kind"], e["source"].get("accession")): e for e in full["evidence"] if e["kind"] != "other_8k"}
-    total = sum(len(e["text"]) for e in full["evidence"])
-    gone = (sum(len(e["text"]) for e in full["evidence"] if e["kind"] == "other_8k") + len(by["release", AREL]["text"])
-            + len(by["gc_note", AQ]["text"]))
-    monkeypatch.setattr(packet, "TOTAL_CAP", total - gone - 50)           # the 8-Ks, the release and the 10-Q's note go; the 10-Q's sections are cut by 50
+    gone = sum(len(e["text"]) for e in full["evidence"] if e["kind"] == "other_8k") + len(by["release", AREL]["text"])
+    monkeypatch.setattr(packet, "TOTAL_CAP", rest - gone - 50)            # the 8-Ks and the release go; the 10-Q's sections are cut by 50
     pk = build(world, store=store)
     assert [a.split(" (")[0].rsplit(" to ", 1)[0] for a in pk["annotations"] if a.startswith("trimmed")] == [
         f"trimmed_out: other_8k other_8k {A502}", f"trimmed_out: other_8k other_8k {A701}", f"trimmed_out: other_8k other_8k {A801}",
-        f"trimmed_out: release earnings_release {AREL}", f"trimmed_out: gc_note gc_note {AQ}", f"trimmed: quarterly_section quarterly_mdna {AQ}"]
-    assert [e["fact_id"] for e in pk["evidence"]] == ["S0", "F1", "F2", "F3", "P1", "P2", "P3", "P4", "P5"]
-    assert [e["kind"] for e in pk["evidence"]][7:] == ["gc_note", "quarterly_section"]          # the annual note is still here
-
-    q = len(by["quarterly_section", AQ]["text"])
-    monkeypatch.setattr(packet, "TOTAL_CAP", total - gone - q - 30)       # now the 10-Q's sections go too, and then the annual note (under MIN_TRIMMED)
-    pk = build(world, store=store)
-    assert [a.split(" (")[0].rsplit(" to ", 1)[0] for a in pk["annotations"] if a.startswith("trimmed")][-2:] == [
-        f"trimmed_out: quarterly_section quarterly_mdna {AQ}", f"trimmed_out: gc_note gc_note {A10K}"]
-    assert [e["text"] for e in pk["evidence"]] == [e["text"] for e in full["evidence"][:7]]        # the statements and the annual sections are whole
-    assert len(by["gc_note", A10K]["text"]) < packet.MIN_TRIMMED + 30                                  # which is why the note is dropped, not cut
+        f"trimmed_out: release earnings_release {AREL}", f"trimmed: quarterly_section quarterly_mdna {AQ}"]
+    assert [e["text"] for e in pk["evidence"] if e["kind"] == "gc_note"] == [e["text"] for e in notes]      # both notes whole
+    assert sum(len(e["text"]) for e in pk["evidence"] if e["kind"] != "gc_note") <= packet.TOTAL_CAP
 
 
 # 8-K body shared across its listed items

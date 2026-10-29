@@ -43,11 +43,12 @@ forward-looking-statements preamble of a 10-K and lost its Going Concern note), 
 `gc_passages_omitted`. The match is neutral: it names two phrases and no class, label or outcome. A filing with no match is annotated
 `gc_text_not_found: <accession>` (a normal outcome).
 
-TRIMMING (_trim) is unchanged: items are cut from the END of the evidence list, so the order of dropping is the other 8-Ks (oldest first),
-the release, the amendments (each one's gc_note before the amendment), the 10-Q's gc_note, the 10-Q's sections, the annual report's
-gc_note, the annual report's sections, the statements, S0. A gc_note therefore goes after the release and the 8-Ks and before the
-statements, and before its own filing's sections: it is a supplement to the filing's text, so the rest of the packet is cut first and the
-filing it comes from is cut last.
+TRIMMING (_trim, v7). TOTAL_CAP applies to every item except the gc_notes, and those items are cut exactly as in v5: from the END of
+the evidence list, so the other 8-Ks (oldest first) go first, then the release, the amendments, the 10-Q's sections, the annual report's
+sections and the statements. The gc_notes are never cut by _trim; each is bounded by GC_CAP, so a packet holds at most
+TOTAL_CAP + 4 * GC_CAP characters (about 66k tokens at runner.CHARS_PER_TOKEN, inside NUM_CTX). Why: in v6 the notes counted against
+TOTAL_CAP, and on the DEV regression rebuild (CROSS_CHECK_O 6a, m3n/n7) they pushed out the event 8-Ks of PTHS (Item 4.02) and EONR
+(Item 3.01), which v5 had carried. A supplement must not displace the time-critical evidence.
 
 HEADER. `screener` carries the commit, the three blob shas and `verified_row`, the verified record's row as found (run_id, verdict, pair,
 output_commit, run_updated_at). `builder_code` carries the sha256 of the builder's source files (line ends normalised to LF) and the
@@ -95,7 +96,8 @@ from sec_primary import _is_text_exhibit, _items_list, _split_documents, _units,
 from qwen_c import sec_store
 
 CONTRACT = "m3m.packet.v1"
-BUILDER_VERSION = "m3m.packet.builder.v6"      # v6 2026-10-29: the going-concern note, the 8-K body shared across its listed items (WO_N6);
+BUILDER_VERSION = "m3m.packet.builder.v7"      # v7 2026-10-29: gc_notes outside TOTAL_CAP, so they never push out an 8-K (CROSS_CHECK_O 6a);
+                                               # v6 2026-10-29: the going-concern note, the 8-K body shared across its listed items (WO_N6);
                                                # v5 2026-10-29: the release slot keeps its other items, reads every EX-99.x, Item 7.01 (WO_N5);
                                                # v4 2026-10-29: 8-K Item 1.02, the archival regime and the packet's `regime` (3N)
 SEC_POLICY = "sec_acceptance_next_full_xnys_session_late_after_1730_plus_one_v1"
@@ -883,10 +885,12 @@ def _gc_note(cik, row, fetch, shown_items, notes):
 # ---- trimming, ids and the build ------------------------------------------------------------------------------------------------
 
 def _trim(items, notes):
-    """TOTAL_CAP characters of evidence text: items are cut in reverse order of the evidence list, each cut annotated; an item that would
-    keep under MIN_TRIMMED characters is left out."""
+    """TOTAL_CAP characters of evidence text, gc_notes not counted and never cut (v7; see TRIMMING): the other items are cut in reverse order
+    of the evidence list, each cut annotated; an item that would keep under MIN_TRIMMED characters is left out."""
     for it in list(reversed(items)):
-        excess = sum(len(i["text"]) for i in items) - TOTAL_CAP
+        if it["kind"] == "gc_note":
+            continue
+        excess = sum(len(i["text"]) for i in items if i["kind"] != "gc_note") - TOTAL_CAP
         if excess <= 0:
             break
         where = it["source"].get("accession") or it["source"].get("git_commit")
