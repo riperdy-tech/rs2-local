@@ -955,3 +955,12 @@ def test_the_archival_cli_builds_a_packet_with_no_verified_record(world, monkeyp
     with pytest.raises(SystemExit) as e:                                     # the default regime still needs the record
         packet.main(["--ticker", "TEST", "--T", T, "--commit", world["commit"], "--screener-repo", str(world["repo"])])
     assert e.value.code == 2
+
+
+def test_effective_at_before_the_calendar():
+    # 3N 2026-10-29 (control HPI, a fund with 2004 filings in filings.recent): a filing accepted before the calendar's first session is
+    # effective by that session's open, not a DateOutOfBounds crash
+    cal = packet._calendar()
+    got = packet.effective_at(datetime(2004, 12, 29, 15, 0, tzinfo=timezone.utc))
+    assert got == cal.first_session_open.to_pydatetime().astimezone(timezone.utc)
+    assert got < packet.effective_at(datetime(2025, 12, 22, 15, 0, tzinfo=timezone.utc))

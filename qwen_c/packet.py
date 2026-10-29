@@ -165,6 +165,8 @@ def effective_at(accepted_utc, calendar=None):
     calendar = calendar or _calendar()
     loc = accepted_utc.astimezone(EASTERN)
     target = pd.Timestamp(loc.date() + timedelta(days=1))
+    if target < calendar.first_session:          # 3N 2026-10-29: a pre-2005 filing (funds); effective by the calendar's first open, before any T
+        return calendar.first_session_open.to_pydatetime().astimezone(timezone.utc)
     session = calendar.date_to_session(target, direction="next")
     if loc.time() >= time(17, 30):
         session = calendar.next_session(session)
