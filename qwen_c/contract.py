@@ -100,7 +100,9 @@ if _REPO not in sys.path:
 
 import sec_primary  # noqa: E402
 
-CONTRACT = "m3m.analysis.v2"     # v2 2026-10-29: the material_events task and its event_type, status and occurred_on (3N)
+CONTRACT = "m3m.analysis.v3"     # v3 2026-10-30: form names, ASC/ASU codes and case numbers are designators; a figure inside the
+                                 # claim's own passing quote counts as listed (RR_N_DEV §8, SPEC_m3n §7)
+                                 # v2 2026-10-29: the material_events task and its event_type, status and occurred_on (3N)
 TASK_IDS = ("business_model", "financial_health", "competitive_position", "growth_thesis", "risks", "thesis_change",
             "unresolved_questions", "material_events")
 # PROTOCOL_factor_ai_m2_2026-10-23.md section 6, the event types of the ground-truth register ("liquidity/contract rupture" is two
@@ -318,9 +320,10 @@ def _year_of(f):
 
 
 _DESIG = ("chapter", "item", "rule", "section", "note", "form", "part", "article", "title", "series", "class", "exhibit", "schedule",
-          "regulation", "tier", "phase", "proposal")
-_DESIG_BEFORE = re.compile(r"(?<![A-Za-z])(" + "|".join(_DESIG) + r")s?\s+$", re.I)
-_DESIG_PRINTED = re.compile(r"(?<![A-Za-z])(" + "|".join(_DESIG) + r")s?\s+(\d[\d.]*)", re.I)
+          "regulation", "tier", "phase", "proposal", "asc", "asu", "topic", "no")       # v3: ASC 820, ASU 2016-13, Topic 842, Case No. 26-465
+_DESIG_BEFORE = re.compile(r"(?<![A-Za-z])(" + "|".join(_DESIG) + r")s?\.?\s+$", re.I)
+_DESIG_PRINTED = re.compile(r"(?<![A-Za-z])(" + "|".join(_DESIG) + r")s?\.?\s+(\d[\d.]*)", re.I)
+_FORM_AFTER = re.compile(r"\s?-\s?(?:K|Q|F)(?![A-Za-z])")       # v3: the number of a form name, "10-Q", "8-K", "20-F", "10-K/A"
 
 
 def printed_designators(texts):
@@ -477,6 +480,8 @@ def check_claim(claim, items, ticker=None, statements=()):
     years = printed_years(cited)
     desig = printed_designators(cited)
     dates = dated_spans(claim["claim"], cited)
+    claim_norm = norm_figure_text(claim["claim"])
+    quote_figs = [figures_of(q) for q in claim["quotes"] if quote_found(q, cited)]
     must = set()
     for f in read_figures(claim["claim"], claim_side=True):     # per occurrence: "in 2025" does not exempt "closed 2025 stores"
         if (not f[1] and not f[2] and f[0] == tk) or (_year_of(f) is not None and _year_of(f) in years):
@@ -484,6 +489,10 @@ def check_claim(claim, items, ticker=None, statements=()):
         if not f[1] and not f[2] and any(a <= f[5] < b for a, b in dates):     # by start: "2026," ends after the date
             continue
         if _designator_of(f) is not None and _designator_of(f) in desig:     # "Chapter 11" when a cited item prints "Chapter 11" (3N smoke)
+            continue
+        if not f[1] and not f[2] and _FORM_AFTER.match(claim_norm, f[6]):   # v3: "10" of "10-Q" names a form, it is not a quantity
+            continue
+        if any(figure_found(f[:3], qf) for qf in quote_figs):                # v3: printed inside the claim's own verified quote
             continue
         must.add(f[:3])
     for f in sorted(must, key=str):

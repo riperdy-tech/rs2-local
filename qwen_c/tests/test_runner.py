@@ -231,7 +231,7 @@ def test_a_clean_run_is_complete_and_every_record_recomputes(env):
     assert man["model"]["manifest_sha256"] == sha(env["model_manifest"].read_bytes())
     assert man["model"]["system_layer_digest"] == "sha256:" + "9" * 64 and man["model"]["tag"] == runner.MODEL
     # the manifest's fixed fields
-    assert man["contract"] == "m3m.analysis.v2" and man["prompt_version"] == "m3m.prompt.v3" and man["builder_version"] == "fixture_b.1"
+    assert man["contract"] == "m3m.analysis.v3" and man["prompt_version"] == "m3m.prompt.v3" and man["builder_version"] == "fixture_b.1"
     assert man["ollama_version"] == "0.40.3" and man["kis_halt"] == "not_resolvable_in_rs2"
     assert man["qwen_c"] == {"git_commit": "a" * 40, "dirty": False}
     assert man["options"]["num_ctx"] == 98304 and man["options"]["num_predict"] == 12288 and man["options"]["think"] == "medium"
@@ -731,7 +731,7 @@ def test_the_material_events_task_is_checked_by_its_own_contract_fields(env):
     (c, bad) = analysis(res)["tasks"]["material_events"]["claims"]
     assert (c["event_type"], c["status"], c["occurred_on"]) == ("other_material_event", "occurred", "not stated")
     assert c["support"] == "supported" and bad["support"] == "number_not_found"
-    assert manifest(res)["contract"] == "m3m.analysis.v2" and manifest(res)["prompt_version"] == "m3m.prompt.v3"
+    assert manifest(res)["contract"] == "m3m.analysis.v3" and manifest(res)["prompt_version"] == "m3m.prompt.v3"
 
 
 def test_thesis_change_runs_only_when_requested_and_the_prior_is_looked_up_only_then(env):
