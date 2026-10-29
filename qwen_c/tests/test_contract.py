@@ -437,35 +437,35 @@ def test_designator_numbers():
 
 # ---------------------------------------------------------------- v3 (2026-10-30, RR_N_DEV §8): designators and quote cover
 
-def _chk(claim, quotes, numbers, text):
+def _chk_v3(claim, quotes, numbers, text):
     return contract.check_claim({"claim": claim, "fact_ids": ["P1"], "quotes": quotes, "numbers": numbers}, {"P1": text})
 
 
 def test_v3_form_names_are_not_quantities():
     text = "The Company filed its quarterly report on Form 10-Q and a current report on Form 8-K."
-    assert _chk("The 10-Q and the 8-K were filed.", [], [], text)["support"] == "supported"
+    assert _chk_v3("The 10-Q and the 8-K were filed.", [], [], text)["support"] == "supported"
 
 
 def test_v3_asc_codes_and_case_numbers_are_designators_when_printed():
     text = "a misapplication of ASC 820 in the chapter 11 case, Case No. 26-465, before the court"
-    assert _chk("A misapplication of ASC 820 was found.", [], [], text)["support"] == "supported"
-    assert _chk("It cited ASC 842.", [], [], text)["support"] == "number_not_listed"          # not printed in the cited item
+    assert _chk_v3("A misapplication of ASC 820 was found.", [], [], text)["support"] == "supported"
+    assert _chk_v3("It cited ASC 842.", [], [], text)["support"] == "number_not_listed"          # not printed in the cited item
 
 
 def test_v3_a_figure_inside_the_claims_own_verified_quote_counts_as_listed():
     text = "the minimum bid price of $1.00 for 30 consecutive trading days"
     q = "the minimum bid price of $1.00 for 30 consecutive trading days"
-    assert _chk("Bid price below $1.00 for 30 consecutive trading days.", [q], [], text)["support"] == "supported"
+    assert _chk_v3("Bid price below $1.00 for 30 consecutive trading days.", [q], [], text)["support"] == "supported"
 
 
 def test_v3_a_figure_outside_the_quote_still_must_be_listed():
     text = "the minimum bid price of $1.00 for 30 consecutive trading days; 45 days to respond"
     q = "the minimum bid price of $1.00"
-    r = _chk("Bid price below $1.00 for 30 consecutive trading days.", [q], [], text)
+    r = _chk_v3("Bid price below $1.00 for 30 consecutive trading days.", [q], [], text)
     assert r["support"] == "number_not_listed" and {f["detail"] for f in r["support_failures"]} == {"30"}
 
 
 def test_v3_a_quote_that_is_not_found_covers_nothing():
     text = "the minimum bid price of $1.00 for 30 consecutive trading days"
-    r = _chk("Below $1.00 for 30 days.", ["for 30 consecutive calendar days"], [], text)
+    r = _chk_v3("Below $1.00 for 30 days.", ["for 30 consecutive calendar days"], [], text)
     assert r["support"] == "quote_not_found" and any(f["check"] == "number_not_listed" for f in r["support_failures"])
