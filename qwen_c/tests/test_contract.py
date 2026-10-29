@@ -116,9 +116,9 @@ def test_the_ticker_is_not_a_figure_of_the_claim():
 
 
 def test_the_contract_owns_every_task_id_and_field_set():
-    assert contract.CONTRACT == "m3m.analysis.v1"
+    assert contract.CONTRACT == "m3m.analysis.v2"
     assert contract.TASK_IDS == ("business_model", "financial_health", "competitive_position", "growth_thesis", "risks",
-                                 "thesis_change", "unresolved_questions")
+                                 "thesis_change", "unresolved_questions", "material_events")
     assert set(contract.TASK_EXTRA) <= set(contract.TASK_IDS)
     with pytest.raises(Exception):
         contract._type_ok("nope", 1)
@@ -134,6 +134,104 @@ def test_null_optional_fields_are_allowed_and_kept():
     assert errors == [] and kept["claims"][0]["mechanism"] is None and kept["claims"][0]["horizon"] == "1 year"
     kept, errors, _ = contract.validate("business_model", {"task": "business_model", "claims": [{**c, "counter": 3}], "unknowns": []})
     assert errors == ["claims[0].counter has a wrong type"]
+
+
+# ---------------------------------------------------------------- 3N: the material_events task (contract m3m.analysis.v2)
+
+EVENT_ITEM = {"fact_id": "P3", "kind": "other_8k", "name": "other_8k", "title": "8-K Item 4.02",
+              "text": "Item 4.02 Non-Reliance on Previously Issued Financial Statements. On October 12, 2026, the Audit Committee concluded "
+                      "that the previously issued financial statements for the year ended December 31, 2025 should no longer be relied upon."}
+EVENT_PACKET = {**PACKET, "evidence": PACKET["evidence"] + [EVENT_ITEM]}
+
+
+def event_claim(**over):
+    c = {"claim": "The Audit Committee concluded on October 12, 2026 that the financial statements for the year ended December 31, 2025 "
+                  "should no longer be relied upon.",
+         "fact_ids": ["P3"], "quotes": ["the previously issued financial statements for the year ended December 31, 2025 should no longer be "
+                                        "relied upon"],
+         "numbers": [], "confidence_basis": "stated in the cited item",
+         "event_type": "restatement_or_non_reliance", "status": "occurred", "occurred_on": "October 12, 2026"}
+    c.update(over)
+    return c
+
+
+def event_reply(claims, unknowns=()):
+    return {"task": "material_events", "claims": claims, "unknowns": list(unknowns)}
+
+
+def test_a_valid_event_claim_is_ok_and_supported_with_its_three_fields_kept():
+    got = contract.check_task("material_events", event_reply([event_claim()]), EVENT_PACKET)
+    assert got["status"] == "ok", got["shape_errors"]
+    (c,) = got["claims"]
+    assert c["support"] == "supported", c["support_failures"]
+    assert (c["event_type"], c["status"], c["occurred_on"]) == ("restatement_or_non_reliance", "occurred", "October 12, 2026")
+
+
+@pytest.mark.parametrize("event_type", contract.EVENT_TYPES)
+@pytest.mark.parametrize("status", contract.EVENT_STATUSES)
+def test_every_event_type_and_status_of_the_contract_is_accepted(event_type, status):
+    got = contract.check_task("material_events", event_reply([event_claim(event_type=event_type, status=status)]), EVENT_PACKET)
+    assert got["status"] == "ok"
+
+
+def test_the_event_types_are_the_twelve_of_the_spec_and_the_statuses_two():
+    assert len(contract.EVENT_TYPES) == 12 and len(set(contract.EVENT_TYPES)) == 12
+    assert contract.EVENT_TYPES[0] == "bankruptcy_or_restructuring" and contract.EVENT_TYPES[-1] == "other_material_event"
+    assert contract.EVENT_STATUSES == ("occurred", "announced_pending")
+    assert contract.TASK_EXTRA["material_events"] == {"event_type": "event_type", "status": "event_status", "occurred_on": "str"}
+
+
+@pytest.mark.parametrize("bad", ["bankruptcy", "restatement", "Restatement_Or_Non_Reliance", "", None, 3, ["contract_loss"]])
+def test_a_bad_event_type_is_a_shape_error(bad):                    # "bankruptcy" is a risk_type, not an event_type
+    got = contract.check_task("material_events", event_reply([event_claim(event_type=bad)]), EVENT_PACKET)
+    assert got["status"] == "malformed" and got["shape_errors"] == ["claims[0].event_type has a wrong type or value"]
+    assert got["claims"] == []
+
+
+@pytest.mark.parametrize("bad", ["pending", "announced", "occurred ", "", None, True])
+def test_a_bad_event_status_is_a_shape_error(bad):
+    got = contract.check_task("material_events", event_reply([event_claim(status=bad)]), EVENT_PACKET)
+    assert got["status"] == "malformed" and got["shape_errors"] == ["claims[0].status has a wrong type or value"]
+
+
+@pytest.mark.parametrize("field", ["event_type", "status", "occurred_on"])
+def test_a_missing_event_field_is_a_shape_error(field):
+    c = event_claim()
+    del c[field]
+    got = contract.check_task("material_events", event_reply([c]), EVENT_PACKET)
+    assert got["status"] == "malformed" and got["shape_errors"] == [f"claims[0] missing field {field}"]
+
+
+def test_occurred_on_is_any_string_but_must_be_a_string():
+    got = contract.check_task("material_events", event_reply([event_claim(occurred_on="not stated")]), EVENT_PACKET)
+    assert got["status"] == "ok" and got["claims"][0]["occurred_on"] == "not stated"
+    got = contract.check_task("material_events", event_reply([event_claim(occurred_on=None)]), EVENT_PACKET)
+    assert got["status"] == "malformed" and got["shape_errors"] == ["claims[0].occurred_on has a wrong type or value"]
+
+
+def test_the_event_fields_belong_to_material_events_only():
+    # another task's reply that carries event fields has them dropped and logged, never kept
+    c = {k: v for k, v in event_claim().items() if k not in ("event_type", "status", "occurred_on")}
+    kept, errors, dropped = contract.validate("business_model", {"task": "business_model", "claims": [{**c, "event_type": "contract_loss"}],
+                                                                "unknowns": []})
+    assert errors == [] and dropped == ["claims[0].event_type"] and "event_type" not in kept["claims"][0]
+
+
+def test_an_empty_event_reply_is_malformed_and_no_claims_with_one_unknowns_line_is_ok():
+    got = contract.check_task("material_events", event_reply([]), EVENT_PACKET)
+    assert got["status"] == "malformed" and got["shape_errors"] == ["the reply has no claims and no unknowns"]
+    line = "The evidence shows no material event."
+    got = contract.check_task("material_events", event_reply([], [line]), EVENT_PACKET)
+    assert got["status"] == "ok" and got["claims"] == [] and got["unknowns"] == [line] and got["support_counts"] == {}
+
+
+def test_the_event_claim_goes_through_the_same_citation_quote_and_figure_checks():
+    f = lambda **kw: contract.check_task("material_events", event_reply([event_claim(**kw)]), EVENT_PACKET)["claims"][0]["support"]
+    assert f(quotes=["the Audit Committee never concluded anything"]) == "quote_not_found"
+    assert f(fact_ids=[]) == "no_citation"
+    assert f(fact_ids=["P9"]) == "unknown_fact_id"
+    assert f(claim="Restatement of 4,000 filings.", quotes=[]) == "number_not_listed"
+    assert f(claim="Restatement of 4,000 filings.", quotes=[], numbers=["4,000"]) == "number_not_found"
 
 
 @pytest.mark.parametrize("claim,numbers,want", [

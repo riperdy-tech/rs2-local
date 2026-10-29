@@ -1,6 +1,7 @@
-"""contract.py - the output contract `m3m.analysis.v1` and its citation checks (SPEC_m3m_qwen_pipeline.md section 5).
+"""contract.py - the output contract `m3m.analysis.v2` and its citation checks (SPEC_m3m_qwen_pipeline.md section 5; v2 adds the
+`material_events` task, SPEC_m3n_event_validation.md section 3).
 
-This module is the single owner of `m3m.analysis.v1`. A field the model sends that is not listed here is dropped from the stored
+This module is the single owner of `m3m.analysis.v2`. A field the model sends that is not listed here is dropped from the stored
 analysis and the drop is logged in the task's `dropped_fields`; model text that is kept is never edited.
 
 THE SHAPE (a hand-written validator, no dependency). Per task the model returns
@@ -9,10 +10,13 @@ and a claim is
     {"claim": str, "fact_ids": [str], "quotes": [str], "numbers": [str | number], "confidence_basis": str,
      "mechanism"?: str | null, "horizon"?: str | null, "counter"?: str | null}
 plus, for `risks`, "risk_type" (RISK_TYPES); for `thesis_change`, "point" (the prior point's id) and "change_type" (CHANGE_TYPES); for
-`unresolved_questions`, "settled_by" (the document that would settle the question). A missing field, a wrong type, an unknown task id or
-a task id other than the one asked is a shape error; so is an empty reply (no claims and no unknowns, ruling 4.1) and, for
-`thesis_change`, a `point` that is not one of the earlier point ids given (ruling 4.3; with none given, every point is unknown). Any
-shape error makes the task `malformed`. The earlier points no claim addresses are recorded as `points_not_addressed`.
+`unresolved_questions`, "settled_by" (the document that would settle the question); for `material_events`, "event_type" (EVENT_TYPES),
+"status" (EVENT_STATUSES) and "occurred_on" (the date as an item prints it, or "not stated"; any string). A missing field, a wrong
+type or value (an `event_type` or `status` outside its list, like a `risk_type`), an unknown task id or a task id other than the one
+asked is a shape error; so is an empty reply (no claims and no unknowns, ruling 4.1) and, for `thesis_change`, a `point` that is not
+one of the earlier point ids given (ruling 4.3; with none given, every point is unknown). Any shape error makes the task `malformed`.
+The earlier points no claim addresses are recorded as `points_not_addressed`. A `material_events` reply with no claims and one
+unknowns line (no event in the evidence) is a valid reply.
 
 THE CHECKS, per claim, recorded beside it as `support` (the first failing check in the order below, else `supported`) and
 `support_failures` (every failure with its detail):
@@ -92,14 +96,19 @@ if _REPO not in sys.path:
 
 import sec_primary  # noqa: E402
 
-CONTRACT = "m3m.analysis.v1"
+CONTRACT = "m3m.analysis.v2"     # v2 2026-10-29: the material_events task and its event_type, status and occurred_on (3N)
 TASK_IDS = ("business_model", "financial_health", "competitive_position", "growth_thesis", "risks", "thesis_change",
-            "unresolved_questions")
+            "unresolved_questions", "material_events")
 # PROTOCOL_factor_ai_m2_2026-10-23.md section 6, the event types of the ground-truth register ("liquidity/contract rupture" is two
 # types here), plus `other`.
 RISK_TYPES = ("guidance_withdrawal", "bankruptcy", "delisting", "restatement", "liquidity_rupture", "contract_rupture",
               "regulatory_action", "thesis_break", "other")
 CHANGE_TYPES = ("unchanged", "changed", "unknown", "unsupported")
+# SPEC_m3n_event_validation.md section 3: the twelve event types of `material_events`, and whether the event has occurred or is announced
+EVENT_TYPES = ("bankruptcy_or_restructuring", "going_concern_doubt", "restatement_or_non_reliance", "delisting_notice",
+               "acquisition_of_the_company", "contract_loss", "guidance_withdrawal", "debt_default_or_acceleration",
+               "material_impairment", "auditor_change", "trading_halt", "other_material_event")
+EVENT_STATUSES = ("occurred", "announced_pending")
 SUPPORT_ORDER = ("unknown_fact_id", "no_citation", "quote_not_found", "number_not_found", "number_not_listed")
 SUPPORTED = "supported"
 
@@ -110,6 +119,7 @@ TASK_EXTRA = {
     "risks": {"risk_type": "risk_type"},
     "thesis_change": {"point": "str", "change_type": "change_type"},
     "unresolved_questions": {"settled_by": "str"},
+    "material_events": {"event_type": "event_type", "status": "event_status", "occurred_on": "str"},
 }
 SCALE = {"k": Decimal(10) ** 3, "m": Decimal(10) ** 6, "bn": Decimal(10) ** 9, "tn": Decimal(10) ** 12}
 YEAR_WORDS = ("in", "fiscal", "fy", "year", "since", "by", "through", "until", "from", "during", "of", "ended", "ending", "end",
@@ -132,6 +142,10 @@ def _type_ok(kind, v):
         return isinstance(v, str) and v in RISK_TYPES
     if kind == "change_type":
         return isinstance(v, str) and v in CHANGE_TYPES
+    if kind == "event_type":
+        return isinstance(v, str) and v in EVENT_TYPES
+    if kind == "event_status":
+        return isinstance(v, str) and v in EVENT_STATUSES
     raise ValueError(kind)
 
 

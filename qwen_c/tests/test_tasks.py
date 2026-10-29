@@ -13,6 +13,21 @@ FIX = Path(__file__).resolve().parent / "fixtures_b"
 PACKET = json.loads((FIX / "packet_acme.json").read_text(encoding="utf-8"))
 
 PINS = {
+    "m3m.prompt.v3": {   # 2026-10-29: the material_events task (3N, SPEC_m3n_event_validation.md section 3); every other text is v2's
+        "SYSTEM": "1fc6498c1385bb51257e77c8d1e20b9eb732bf576650bf19142df8b8d170324c",
+        "RETRY_LINE": "3eeee83f99a03448e76e788cb45399bb29d709a3ab286c28939dc1ccf8e1c82e",
+        "thesis_change": "2bef986503b497d7d0ff42af2fdb7a5c1538642d5c9949fe4919c5507fb209fc",
+        "LEFT_OUT_LINE": "a83e279e9e9f3a1dbd33b7c1ac0d754c17558ed34d66d7cc9c99a9e40682b486",
+        "MISSING_LINE": "d7c0c3712d8caefada183363178426420ce134a605ae3a98fd1066e8151189d8",
+        "render_packet(packet_acme)": "e6e68066bd678022adbe96f2992914f0a3d4f232ec9b1532898dd81062fee2dd",
+        "business_model": "428f45d0ba1e79b7e21c4e0ddfa4c1def70a7e29ecf045ab686447b7594ab692",
+        "financial_health": "608cb7d45015652566443a382456fd0af335288c0a36574f824519de02b6c004",
+        "competitive_position": "a7704a274a6e9b48c990c6464b86d5d1e6938d13d253f17b9ad7dd6c50b25be4",
+        "growth_thesis": "d40fb8b51c9b3f38c979827c3ddf7c63a95c5dc07133fd883601d64ac20ccd60",
+        "risks": "0b35f6a7ededdd8afcb11153145352b04f70f1ca0e4b1a2ace6a3c8cc45383fd",
+        "unresolved_questions": "e765b84fc9b8440e9f35f8047bafcb8902b6d370fa63740fade45dca6ba29592",
+        "material_events": "4fd1962ba725255957e4f15dc4241f633ae0221987631f7634c388371583394b",
+    },
     "m3m.prompt.v2": {   # 2026-10-29: the FIGURES scale sentence (smoke run MA, AUDIT_M5); m3m.prompt.v1 was used by one run
         "SYSTEM": "1fc6498c1385bb51257e77c8d1e20b9eb732bf576650bf19142df8b8d170324c",
         "RETRY_LINE": "3eeee83f99a03448e76e788cb45399bb29d709a3ab286c28939dc1ccf8e1c82e",
@@ -58,9 +73,15 @@ def current():
 
 
 def test_prompt_version_and_pinned_hashes():
-    assert tasks.PROMPT_VERSION == "m3m.prompt.v2"
+    assert tasks.PROMPT_VERSION == "m3m.prompt.v3"
     assert tasks.PROMPT_VERSION in PINS, "a new PROMPT_VERSION needs its own pin set"
     assert current() == PINS[tasks.PROMPT_VERSION], "what the model is told changed: bump PROMPT_VERSION and add a pin set"
+
+
+def test_v3_changes_only_the_new_task_and_no_v2_pin_moves():
+    v2, v3 = PINS["m3m.prompt.v2"], PINS["m3m.prompt.v3"]
+    assert {k: v for k, v in v3.items() if k != "material_events"} == v2
+    assert set(v3) - set(v2) == {"material_events"}
 
 
 def test_the_system_text_is_at_most_400_words_and_covers_the_spec_points():
@@ -103,9 +124,29 @@ def test_the_task_list_is_the_contracts():
     assert set(tasks.INSTRUCTIONS) == set(tasks.TASKS) - {"thesis_change"}
 
 
+def test_material_events_is_last_so_the_seed_index_of_every_other_task_is_unchanged():
+    # seed = base + task index (SPEC 3M section 6): the seven v1/v2 tasks keep indexes 0-6
+    assert tasks.TASKS[:7] == ("business_model", "financial_health", "competitive_position", "growth_thesis", "risks", "thesis_change",
+                               "unresolved_questions")
+    assert tasks.TASKS[7:] == ("material_events",)
+
+
 def test_the_risk_types_in_the_instruction_are_the_contracts():
     listed = re.search(r'"risk_type" is one of: ([a-z_, ]+)\.', tasks.INSTRUCTIONS["risks"]).group(1)
     assert tuple(x.strip() for x in listed.split(",")) == contract.RISK_TYPES
+
+
+def test_the_event_types_and_statuses_in_the_instruction_are_the_contracts():
+    text = tasks.INSTRUCTIONS["material_events"]
+    listed = re.search(r'"event_type" is one of: ([a-z_, ]+)\.', text).group(1)
+    assert tuple(x.strip() for x in listed.split(",")) == contract.EVENT_TYPES
+    assert '"status" is occurred or announced_pending.' in text and contract.EVENT_STATUSES == ("occurred", "announced_pending")
+    # the brief's rules: an event has occurred or been formally announced, a risk is not an event, an empty answer is stated
+    for phrase in ("HAS OCCURRED or HAS BEEN FORMALLY ANNOUNCED", "A risk that could happen is not an event",
+                   "is never an event", "return no claims and one unknowns line"):
+        assert phrase in text
+    shape = _shape_of(text)["claims"][0]
+    assert shape["status"] == "occurred or announced_pending" and "occurred_on" in shape
 
 
 def test_the_message_layout_is_system_then_packet_then_instruction():

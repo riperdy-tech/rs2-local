@@ -32,7 +32,8 @@ def valid_reply(task):
     claim = {"claim": "Revenue rose to $1,200 million in 2025.", "fact_ids": ["P1"], "quotes": ["Revenue rose to $1,200 million in 2025"],
              "numbers": ["$1,200 million", "2025"], "confidence_basis": "stated in P1"}
     claim.update({"risks": {"risk_type": "other"}, "thesis_change": {"point": "G1", "change_type": "unchanged"},
-                  "unresolved_questions": {"settled_by": "the next 10-Q"}}.get(task, {}))
+                  "unresolved_questions": {"settled_by": "the next 10-Q"},
+                  "material_events": {"event_type": "other_material_event", "status": "occurred", "occurred_on": "not stated"}}.get(task, {}))
     bad = {"claim": "Margin was 99.9%.", "fact_ids": ["P1"], "quotes": [], "numbers": ["99.9%"], "confidence_basis": "inferred"}
     bad.update({k: v for k, v in claim.items() if k not in bad})
     return {"task": task, "claims": [claim, bad], "unknowns": ["nothing on segments"]}
@@ -216,7 +217,7 @@ def test_a_clean_run_is_complete_and_every_record_recomputes(env):
     # analysis and manifest and ledger
     assert sha((d / "analysis.json").read_bytes()) == man["analysis_sha256"]
     (line,) = runner._read_jsonl(runner.M3M_DIR / "ledger.jsonl")
-    summary = {"claims": 12, "supported": 6, "unsupported": 6}            # ruling 4.1: six tasks sent, one good and one bad claim each
+    summary = {"claims": 14, "supported": 7, "unsupported": 7}            # ruling 4.1: seven tasks sent, one good and one bad claim each
     assert line == {"run_id": res["run_id"], "ticker": "ACME", "T": "2026-10-29T13:00:00Z", "packet_sha256": man["packet"]["packet_sha256"],
                     "status": "complete", "support_summary": summary, "manifest_sha256": sha((d / "manifest.json").read_bytes())}
     assert an["support_summary"] == res["support_summary"] == summary and res["ledger_appended"] is True
@@ -228,7 +229,7 @@ def test_a_clean_run_is_complete_and_every_record_recomputes(env):
     assert man["model"]["manifest_sha256"] == sha(env["model_manifest"].read_bytes())
     assert man["model"]["system_layer_digest"] == "sha256:" + "9" * 64 and man["model"]["tag"] == runner.MODEL
     # the manifest's fixed fields
-    assert man["contract"] == "m3m.analysis.v1" and man["prompt_version"] == "m3m.prompt.v2" and man["builder_version"] == "fixture_b.1"
+    assert man["contract"] == "m3m.analysis.v2" and man["prompt_version"] == "m3m.prompt.v3" and man["builder_version"] == "fixture_b.1"
     assert man["ollama_version"] == "0.40.3" and man["kis_halt"] == "not_resolvable_in_rs2"
     assert man["qwen_c"] == {"git_commit": "a" * 40, "dirty": False}
     assert man["options"]["num_ctx"] == 98304 and man["options"]["num_predict"] == 12288 and man["options"]["think"] == "medium"

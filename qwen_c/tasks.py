@@ -8,9 +8,10 @@ Changing any text here changes what the model is told: bump PROMPT_VERSION and r
 """
 from datetime import datetime
 
-PROMPT_VERSION = "m3m.prompt.v2"   # v2 2026-10-29: the FIGURES scale sentence (smoke run MA)
+PROMPT_VERSION = "m3m.prompt.v3"   # v2 2026-10-29: the FIGURES scale sentence (smoke run MA); v3 2026-10-29: the material_events task (3N)
+# material_events is last, so every other task keeps its seed index (seed = base + task index)
 TASKS = ("business_model", "financial_health", "competitive_position", "growth_thesis", "risks", "thesis_change",
-         "unresolved_questions")
+         "unresolved_questions", "material_events")
 
 SYSTEM = """You analyse one company using only the evidence given in this conversation.
 
@@ -67,6 +68,16 @@ INSTRUCTIONS = {
         "claim, \"claim\" is the question, \"fact_ids\" are the items that raise it, and \"settled_by\" names the document "
         "that would settle it (for example a specific filing, exhibit or disclosure). One claim per question.\n"
         "Reply in this shape:\n" + _shape("unresolved_questions", '"settled_by": "the document that would settle it"')),
+    "material_events": (
+        "TASK material_events. List every material event that the evidence shows HAS OCCURRED or HAS BEEN FORMALLY ANNOUNCED (filed or "
+        "published), one claim per event. A risk that could happen is not an event; risk-factor language (\"could\", \"may\", \"if\") is "
+        "never an event. \"event_type\" is one of: bankruptcy_or_restructuring, going_concern_doubt, restatement_or_non_reliance, "
+        "delisting_notice, acquisition_of_the_company, contract_loss, guidance_withdrawal, debt_default_or_acceleration, "
+        "material_impairment, auditor_change, trading_halt, other_material_event. \"status\" is occurred or announced_pending. "
+        "\"occurred_on\" is the date as an item prints it, or \"not stated\". Cite the item that reports the event and quote it. If the "
+        "evidence shows no such event, return no claims and one unknowns line saying the evidence shows no material event.\n"
+        "Reply in this shape:\n" + _shape("material_events", '"event_type": "one of the event types above", "status": "occurred or '
+                                          'announced_pending", "occurred_on": "the date as an item prints it, or not stated"')),
 }
 
 THESIS_CHANGE_INSTRUCTION = (
