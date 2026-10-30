@@ -18,7 +18,7 @@ import re
 from qwen_c import contract
 from qwen_c.value import desk, forecast, forecast_fin
 
-CHECKS_VERSION = "m3q.checks.v8"   # v8 2026-10-31 (financial smoke S2): why names the failing figures   # v7 2026-10-31 CROSS_CHECK_Q3d 1-3, O-1   # v6 2026-10-31 CROSS_CHECK_Q3c: the record-neutral reference (B13), the per-share tolerance   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
+CHECKS_VERSION = "m3q.checks.v9"   # v9 2026-10-31 CROSS_CHECK_Q3e 1-6   # v8 2026-10-31 (financial smoke S2): why names the failing figures   # v7 2026-10-31 CROSS_CHECK_Q3d 1-3, O-1   # v6 2026-10-31 CROSS_CHECK_Q3c: the record-neutral reference (B13), the per-share tolerance   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 MARGIN_SOURCES = ("record", "pricing_or_mix", "investment_in_explicit_years", "investment_after_year5", "decline")
@@ -212,8 +212,8 @@ def reasons_by_input(out, items, ticker, statements, fy_ends=(), route="operatin
         cited = [items[a] for a in claim["fact_ids"] if a in items]
         why = None
         if chk["support"] != contract.SUPPORTED:
-            bad = [f["detail"] for f in chk["support_failures"] if f["check"] == chk["support"]]
-            why = f"contract: {chk['support']}" + (f" ({'; '.join(str(d)[:80] for d in bad[:4])})" if bad else "")
+            why = "contract: " + "; ".join(_failure_text(c, [f["detail"] for f in chk["support_failures"] if f["check"] == c])
+                                           for c in contract.SUPPORT_ORDER if any(f["check"] == c for f in chk["support_failures"]))
         elif not claim["quotes"]:
             why = "no quote: a reason must quote the evidence it rests on"
         elif key[1] in keywords and not re.search(keywords[key[1]], claim["claim"], re.I):
@@ -236,16 +236,28 @@ def _sq(s):
 
 def input_value_text(out, key, route="operating"):
     """The printed forms of the input `key` = (scenario, input) value, so a reason can state the value it argues for: each number as a
-    fraction and as a percentage (one decimal and none). '' when the input is not numeric."""
+    fraction and as a percentage at its exact value; normalized as its year and delta_pts in points (Q3e-2). '' when not numeric."""
     sc = merged(out, key[0]) if key[0] in ("base", "bear", "bull") and isinstance(out.get("base"), dict) else {}
     v = sc.get(key[1])
-    if isinstance(v, dict):
-        v = [v.get("delta_pts"), v.get("book_growth" if route == "financial" else "rev_growth")]      # CROSS_CHECK_Q3 9: by route
-    vals = [x for x in (v if isinstance(v, list) else [v]) if _num(x)]
     forms = []
-    for x in vals:
-        forms += [f"{x}", f"{x:.2f}", f"{x:.4f}", f"{100 * x:.1f}%", f"{100 * x:.0f}%", f"{x:.1f}", f"{x:.0f}"]
+    if isinstance(v, dict):                                               # Q3e-2: the year, and delta_pts in points (never as %)
+        if _num(v.get("year")):
+            forms.append(f"year {int(v['year'])}")
+        if _num(v.get("delta_pts")):
+            d = float(v["delta_pts"])
+            forms += [f"{d:g} percentage points", f"{100 * d:g} basis points"]
+        v = [v.get("book_growth" if route == "financial" else "rev_growth")]      # CROSS_CHECK_Q3 9: by route
+    for x in (y for y in (v if isinstance(v, list) else [v]) if _num(y)):
+        forms += [f"{x}", f"{100 * x:g}%"] + [s for s in (f"{x:.2f}", f"{x:.4f}") if float(s) == x]     # Q3e-6: the exact value only
     return " ".join(forms)
+
+
+def _failure_text(check, details):
+    """Q3e-3: one contract failure class with every figure it names, and what a figure no cited item prints asks for."""
+    text = f"{check} ({', '.join(str(d)[:60] for d in details)})" if details else check
+    if check == "number_not_listed":
+        text += ": list it if a cited item prints it, otherwise remove it from the claim"
+    return text
 
 
 def _ok(rs):
@@ -262,7 +274,12 @@ def _direction_contradiction(claim, value, bar):
     return None
 
 
+_WITHIN = re.compile(r"(?<!not )\b(?:within|inside)\s+(?:the\s+)?(?:filed\s+|historical\s+)?(?:record|range)", re.I)
+
+
 def _direction_one(claim, value, bar):
+    if _WITHIN.search(claim) and not bar["min"] <= value <= bar["max"]:      # Q3e-5
+        return f"says within the record [{bar['min']:.4f}, {bar['max']:.4f}] but the input is {value:.4f}"
     for neg, word, ref in _DIRECTION.findall(claim):
         ref = ref.lower()
         up = re.fullmatch(_UP, word, re.I) is not None
@@ -393,7 +410,9 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
     for name in ("bear", "bull"):
         for k in out.get(name) or {}:
             if k not in ("transition_year",) and not _ok(by.get((name, k), [])):
-                unsupported((name, k), "no supported reason for the scenario's own input")
+                rs = by.get((name, k), [])                                # Q3e-3: the repair turn sees why
+                unsupported((name, k), "no supported reason for the scenario's own input"
+                            + (f" ({'; '.join(x['why'] for x in rs)})" if rs else ""))
     path, roe_n = forecast_fin.build_path(base, bar)
     # V3 (ROE outside the filed ROE record), V4 on scenario ROE inputs, V10 (a reason contradicting its ROE)
     for name in ("base", "bear", "bull"):
@@ -565,13 +584,14 @@ def _neutral_op(b, bar, r):
     if ga is None:
         return None, "record_neutral_unavailable: no growth anchor"
     med = bar["median"]
-    ronic = r                                                             # Q3d-2: growth at the cost of capital adds nothing
+    d = float(b.get("delta") or 0.0)                                      # Q3e-1: equity return r (O5), growth adds nothing
+    ronic = r if not d else (1.0 - d) * r + d * float(b["kd"]) * (1.0 - float(b["tau"]))
     sc = {"rev_growth": [ga, ga], "op_margin": [med, med], "normalized": {"year": 3, "baseline": "median", "delta_pts": 0.0, "rev_growth": ga},
           "transition": "linear", "transition_year": None, "fade_years": NEUTRAL_FADE, "long_run_op_margin": med, "terminal_ronic": ronic,
           "terminal_g": ga, "margin_source": "record", "capex_path": None, "investment_path": None}
     try:
         return (desk.value_operating(forecast.assemble(sc, b, bar, r=r))["value_per_share"],
-                f"margin {med:.4f}, growth {ga:.4f}, terminal RONIC = r {r:.4f}, F {NEUTRAL_FADE}")
+                f"margin {med:.4f}, growth {ga:.4f}, terminal RONIC {ronic:.4f} (equity return r {r:.4f}), F {NEUTRAL_FADE}")
     except desk.DeskRefusal as e:
         return None, f"record_neutral_unavailable: {e.code}"
 
@@ -654,7 +674,9 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
     for name in ("bear", "bull"):
         for k in out.get(name) or {}:
             if k not in ("transition_year",) and not _ok(by.get((name, k), [])):
-                unsupported((name, k), "no supported reason for the scenario's own input")
+                rs = by.get((name, k), [])                                # Q3e-3: the repair turn sees why
+                unsupported((name, k), "no supported reason for the scenario's own input"
+                            + (f" ({'; '.join(x['why'] for x in rs)})" if rs else ""))
     path, m_n = forecast.build_path(base, bar, b["R0"])
     m_l = float(base["long_run_op_margin"])
 

@@ -6,7 +6,7 @@ import re
 from qwen_c import tasks
 from qwen_c.value import checks, task
 
-PINNED = "0bd27bb0d4bd431adfd313f5f15685df1639faa008cca3ef1b5327283273175f"   # m3q.prompt.v6
+PINNED = "e3664d9e9b4502ae7c6275b8364b66e7bc3881235f61a7b8e8619df5f757626f"   # m3q.prompt.v7
 
 
 def test_system_is_the_shared_text_and_the_formation_tasks_are_untouched():

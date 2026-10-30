@@ -173,7 +173,7 @@ def test_6_preferred_without_its_dividends_is_refused():
 def test_9_input_value_text_by_route():
     out = OP.clean()
     out["base"]["normalized"]["book_growth"] = 0.37
-    assert "4.0%" in checks.input_value_text(out, ("base", "normalized")) and "37.0%" not in checks.input_value_text(out, ("base", "normalized"))
+    assert "4%" in checks.input_value_text(out, ("base", "normalized")) and "37%" not in checks.input_value_text(out, ("base", "normalized"))   # Q3e-6: exact forms
 
 
 def test_11_aoci_is_stamped_with_its_share_of_book():

@@ -222,7 +222,7 @@ def test_an_unbuilt_family_is_still_refused_by_name():
     assert e.value.code == "family_not_routed"
 
 
-PINNED_FIN = "8ba2b4c0966ba877d4eb2a97716b26da9e0104de3661433b0d0850438a69976b"   # m3q.prompt.fin.v4
+PINNED_FIN = "09f8643ecce720fa0ae0e43e32c3ee0e87524b68fddd96b5da1f21b8342bbbae"   # m3q.prompt.fin.v5
 
 
 def test_the_financial_prompt_is_pinned_and_the_operating_one_untouched():
