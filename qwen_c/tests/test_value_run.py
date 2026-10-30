@@ -97,3 +97,14 @@ def test_memo_prints_code_numbers_and_only_supported_reasons(setup, monkeypatch)
     text = memo.render(res, checks.reasons_by_input(res["inputs"], items, "TEST", set(), C.ENDS))
     assert "diagnostic only" in text and f"{res['values']['base']:,.2f}" in text
     assert "Revenue will double" not in text and "The company expects revenue growth of 5% in 2026." in text
+
+
+def test_engine_defect_is_recorded_not_raised(setup, monkeypatch):
+    from qwen_c.value import checks
+    p, out = setup
+    monkeypatch.setattr(runner, "call", fake([C.clean()], []))
+    def boom(*a, **k):
+        raise AssertionError("V1: injected")
+    monkeypatch.setattr(checks, "check", boom)
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out, url="http://x")
+    assert res["status"] == "engine_defect" and (next(out.iterdir()) / "result.json").exists()

@@ -6,7 +6,7 @@ import re
 from qwen_c import tasks
 from qwen_c.value import checks, task
 
-PINNED = "06bf3ba6173eac2df624cf1ab861e207bd046295526fd530be8d8fa793e478c4"
+PINNED = "375ee3d246c8175cd794b003924819416e98e2fc97551cedef32bd009e617e47"
 
 
 def test_system_is_the_shared_text_and_the_formation_tasks_are_untouched():

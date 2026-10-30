@@ -148,6 +148,9 @@ def value_operating(inp):
         eq = equity_ronic(float(inp[name]), delta, kd, tau)
         if not eq > 0:
             raise DeskRefusal("equity_ronic_not_positive", f"{name} {inp[name]} at delta {delta}, kd {kd} gives an equity return {eq:.6g}")
+    eq_t = equity_ronic(float(inp["ronic_T"]), delta, kd, tau)
+    if not eq_t > gt:                                                 # the re-run: growth paid at a return at or below itself never pays out
+        raise DeskRefusal("ronic_not_above_growth", f"the long-run equity return {eq_t:.6g} does not exceed g_T {gt}")
     stub = inp["stub_days"]
     if not (isinstance(stub, (int, float)) and 0 <= stub <= 800):
         raise DeskRefusal("input_invalid", "stub_days (fiscal-year end to T) must be in [0, 800]")

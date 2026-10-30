@@ -84,7 +84,7 @@ def test_depreciation_only_tag_is_not_reduced_by_amortization():
 
 def test_debt_components_and_kd():
     b = base()
-    assert b["debt0"] == 20 and b["delta"] == pytest.approx(20 / 200) and b["kd"] == pytest.approx(1 / 20)
+    assert b["debt0"] == 20 and b["delta"] == pytest.approx(13 / 193) and b["kd"] == pytest.approx(1 / 20)   # O5: net of cash (N10)
     assert "leverage_bridge_unvalidated" in b["stamps"]
 
 
@@ -212,3 +212,30 @@ def test_bridge_adds_each_years_amortization_and_none_in_the_long_run():
     with_a = inputs.bridge_x_margin(b, [0.16], [100.0], [1.0])[0]
     without = inputs.bridge_x_margin(b, [0.16], [100.0])[0]
     assert with_a == pytest.approx(b["m0"]) and with_a - without == pytest.approx(1.0 * (1 - b["tau"]) / 100)
+
+
+
+def test_nci_material_is_stamped_and_dominant_refused():
+    assert "nci_material" in base(facts(nci_income=series([1, 1, 1, 1, 2.0])))["stamps"]       # 15% of pretax
+    with pytest.raises(desk.DeskRefusal) as e:
+        base(facts(nci_income=series([1, 1, 1, 1, 4.0])))                                     # 31%
+    assert e.value.code == "nci_dominant"
+
+
+def test_revenue_not_positive_is_refused():
+    with pytest.raises(desk.DeskRefusal) as e:
+        base(facts(revenue=series([80, 0, 90, 95, 100])))
+    assert e.value.code == "revenue_not_positive"
+
+
+def test_eps_rounded_to_the_cent_is_accepted():
+    # NI 0.104 on 10 shares is 0.0104 a share, filed as 0.01: 4% off relatively, within the cent
+    f = facts(net_income=series([8, 8.8, 9.6, 10, 0.104]), eps_diluted=series([0.8, 0.88, 0.96, 1.0, 0.01]))
+    assert "shares_weighted_average_diluted" in base(f)["stamps"]
+
+
+def test_vintages_out_of_bounds_falls_back_to_pooled():
+    # life = gross_prior / D&A_org = 200 / 4 = 50 years: outside [5, 40]
+    f = facts(ppe_gross=series([200, 200, 200, 200, 200]), ppe_net=series([100, 100, 100, 100, 100]))
+    b = base(f)
+    assert b["ppe"] is None and b["da_rule"] == "pooled" and any(s.startswith("da_vintages_out_of_bounds") for s in b["stamps"])

@@ -25,6 +25,7 @@ def _statements(packet):
     return {e["fact_id"] for e in packet["evidence"] if e.get("kind") == "statement"}
 
 
+MAX_STUB_DAYS = 800
 ROUTED = ("operating", "commodity")      # ruling 17: every other family (financial until its task exists) is a named no_call
 
 
@@ -42,11 +43,14 @@ def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow
     b = inputs.base(f, market_cap=market_cap, bill_rate=bill)
     b["bill_source"] = bill_src
     b["stub_days"] = (T.date() - date.fromisoformat(b["fy0"])).days      # ruling 7: rolled forward from the fiscal-year end to T
+    if b["stub_days"] > MAX_STUB_DAYS:                                    # CROSS_CHECK_Q2 N12: refused before any model call
+        raise desk.DeskRefusal("base_year_too_old", f"the base fiscal year ended {b['stub_days']} days before T")
     if b.get("oi0") is None:                                              # ruling 24: a data no-call before any model call
         raise desk.DeskRefusal("bridge_unavailable", "operating income for the base year is not filed")
     bar = forecast.record_bar(b["record"]["op_margin"])
     record = forecast.record_items(f)
     r, prov = coe.cost_of_equity(sector, T, allow_after_T=allow_after_T)
+    b["g_anchor"] = prov["g_anchor"]                                      # N7: the long-run growth anchor the checks annotate against
     fy_ends = [v["end"] for v in f["revenue"]["values"]]
     return f, b, bar, record, r, prov, fy_ends
 
@@ -86,7 +90,10 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
         result.update(status="no_call", reason=e.code, detail=str(e))
         runner._write_json(run_dir / "result.json", result)
         return result
-    result.update(family=family, base=b, bar=bar, cost_of_equity=r, coe=prov, facts_provenance=f.get("_provenance"))
+    fact_stamps = {c: sorted({v["stamp"] for v in d["values"] if v.get("stamp")}) for c, d in f.items()
+                   if not c.startswith("_") and any(v.get("stamp") for v in d["values"])}
+    result.update(family=family, base=b, bar=bar, cost_of_equity=r, coe=prov, facts_provenance=f.get("_provenance"),
+                  stamps=b["stamps"] + prov.get("stamps", []), fact_stamps=fact_stamps)            # N16
     items = {e["fact_id"]: e for e in packet["evidence"]}
     items.update({i["fact_id"]: i for i in record})
     retry, attempts, res = None, [], None
@@ -96,7 +103,12 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
         runner._write_json(run_dir / "raw" / f"attempt_{n}.json", {"messages": msgs, "response": resp, "outcome": outcome, "detail": detail})
         att = {"attempt": n, "seed": s, "outcome": outcome, "detail": detail, "seconds": secs}
         if outcome == "reply":
-            res = checks.check(obj, items, packet["ticker"], _statements(packet), b, bar, r, fy_ends)
+            try:
+                res = checks.check(obj, items, packet["ticker"], _statements(packet), b, bar, r, fy_ends)
+            except AssertionError as e:                                   # N11: an engine defect is recorded, never a crash
+                att.update(outcome="engine_defect", detail=str(e))
+                attempts.append(att)
+                break
             att.update(status=res["status"], inputs=obj, checks={k: v for k, v in res.items() if k != "results"}, values=res["values"])
             attempts.append(att)
             if res["status"] == "ok" or n == 2:

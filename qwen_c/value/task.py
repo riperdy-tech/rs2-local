@@ -11,7 +11,7 @@ import json
 
 from qwen_c import tasks
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v2"   # v2 2026-10-30 (CROSS_CHECK_Q 26, operator decision C5 default): price-blind [S0];
+VALUATION_PROMPT_VERSION = "m3q.prompt.v3"   # v3 2026-10-30 (CROSS_CHECK_Q2 N8): [V0] names the D&A rule the desk uses   # v2 2026-10-30 (CROSS_CHECK_Q 26, operator decision C5 default): price-blind [S0];
 #                                              reasons must quote; scenario inputs need their own reasons; capex_path (O7)
 PRICE_LINES = ("price:", "marketCap:", "price as-of")
 NL = "\n"
@@ -74,7 +74,8 @@ def render_base(b, bar, r, coe_prov):
              f"Filed operating margin record: min {bar['min']:.4f}, p25 {bar['p25']:.4f}, median {bar['median']:.4f}, "
              f"p75 {bar['p75']:.4f}, max {bar['max']:.4f}, last {bar['last']:.4f}.",
              f"Base-year revenue {b['R0']:,.0f}; tax rate {b['tau']:.4f}; return on opening capital {b['ronic0']:.4f}; "
-             f"capital expenditure {b['c_ratio']:.4f} and depreciation {b['d_ratio']:.4f} of revenue (pooled).",
+             f"capital expenditure {b['c_ratio']:.4f} and depreciation {b['d_ratio']:.4f} of revenue (pooled); the desk depreciates by "
+             f"the {b.get('da_rule', 'pooled')} rule" + (" (filed plant ages)" if b.get('da_rule') == "vintages" else "") + ".",
              f"Cost of equity {r:.4f} (risk-free {coe_prov['rf']:.4f}, long-run growth anchor {coe_prov['g_anchor']:.4f}, "
              f"loading {coe_prov['loading_adjusted']:.3f}, equity premium {coe_prov['closure_erp']:.4f})."]
     return "\n".join(lines)

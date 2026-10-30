@@ -16,10 +16,11 @@ bill rate the cash is NOT added and the interest stays in the base (stamped): ne
 """
 import statistics
 
+from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION
 
-INPUTS_VERSION = "m3q.inputs.v2"
+INPUTS_VERSION = "m3q.inputs.v3"   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -28,6 +29,10 @@ TAX_DEPART = 0.05            # ruling 9: the latest in-band rate is used only wi
 KD_BAND = (0.01, 0.20)       # ruling 5 (the audited coverage rule)
 SHARES_TOL = 0.05            # ruling 5: NI / diluted shares against filed diluted EPS
 RONIC0_CAP = 1.0             # ruling 21 (the doctrine's cap)
+EPS_ROUNDING = 0.006         # CROSS_CHECK_Q2 N15
+NCI_MATERIAL, NCI_DOMINANT = 0.10, 0.25   # N9
+VINTAGE_LIFE = (5, 40)       # N8
+VINTAGE_RATIO_TOL = 0.5
 DEBT_TOTAL_EXCLUDES_SHORT = {"LongTermDebt", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"}
 CURRENT_INCLUDES_SHORT = {"DebtCurrent", "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings"}
 
@@ -86,6 +91,8 @@ def base(f, *, market_cap, bill_rate):
     if len(ends) < MIN_POOL_YEARS:
         raise DeskRefusal("history_short", f"{len(ends)} fiscal years of revenue; at least {MIN_POOL_YEARS} are needed to pool")
     e0 = ends[-1]
+    if any(not rev[e] > 0 for e in ends):
+        raise DeskRefusal("revenue_not_positive", f"a pooled year has revenue <= 0: {[(e, rev[e]) for e in ends if not rev[e] > 0]}")
     stale = {c: d for c, d in (f.get("_stale") or {}).items() if c in ("net_income", "capex", "da", "revenue", "pretax_income", "operating_income")}
     if stale:
         raise DeskRefusal("facts_stale", f"concepts end before the latest revenue year {e0}: {stale}")
@@ -94,6 +101,8 @@ def base(f, *, market_cap, bill_rate):
     stamps = ["rou_depreciation_not_separated", "leases_not_modeled"]
     if any((v.get("form") or "").startswith(("20-F", "40-F")) for v in f["revenue"]["values"]):
         stamps.append("per_share_basis_unverified")                         # ruling 18: no ADS ratio is applied
+    else:
+        stamps.append("split_after_fy0_unchecked")                          # CROSS_CHECK_Q2 #18: split detection not built
     tau, s = tax_rate(f)
     stamps.append(s)
     ni, da, cx, am, pt, oi = (_by_end(f, k) for k in ("net_income", "da", "capex", "amortization", "pretax_income", "operating_income"))
@@ -128,6 +137,10 @@ def base(f, *, market_cap, bill_rate):
     if nci is None:
         nci = 0.0
         stamps.append("nci_not_filed")
+    elif pt[e0] > 0 and abs(nci) / pt[e0] > NCI_DOMINANT:                # N9: the K_0 dollar hold of the NCI share is not valid then
+        raise DeskRefusal("nci_dominant", f"NCI {nci:.6g} is {abs(nci) / pt[e0]:.0%} of pretax income")
+    elif pt[e0] > 0 and abs(nci) / pt[e0] > NCI_MATERIAL:
+        stamps.append("nci_material")
     pt_ex = pt[e0] - i_pre - nci / (1 - tau)
     x0 = (pt_ex + a0) * (1 - tau)
     if not x0 > 0:
@@ -138,11 +151,14 @@ def base(f, *, market_cap, bill_rate):
     da_tag = {v["end"]: v["tag"] for v in f["da"]["values"]}
     d_ratio = sum(da[e] - (am[e] if use_amort and da_tag[e] not in DA_EXCLUDES_AMORTIZATION else 0.0) for e in pool) / r_sum
     c_ratio = sum(cx[e] for e in pool) / r_sum
+    capex_record = {e: cx[e] / rev[e] for e in pool}
     ac, lc, eq, ie, gw, ia = (_by_end(f, k) for k in ("assets_current", "liabilities_current", "equity", "interest_expense", "goodwill",
                                                        "intangibles"))
     if not (e0 in ac and e0 in lc):
         raise DeskRefusal("input_missing", f"current assets and current liabilities for {e0}")
     debt0, how0 = debt_total(f, e0)
+    if how0 and how0.startswith("LongTermDebt") and _tag(f, "debt_current", e0) == "LongTermDebtCurrent":
+        stamps.append("debt_total_tag_ambiguous")                          # CROSS_CHECK_Q2 #27 (MTCH)
     prev = ends[-2]
     debt_prev, _ = debt_total(f, prev)
     interest = ie.get(e0)
@@ -166,6 +182,9 @@ def base(f, *, market_cap, bill_rate):
     w = nwc0 / rev[e0]
     if not (prev in eq and prev in cash):
         raise DeskRefusal("input_missing", f"equity and cash for {prev} (the opening capital)")
+    for c in ("goodwill", "intangibles", "st_investments"):
+        if not _by_end(f, c):
+            stamps.append(f"{c}_not_filed_taken_as_0")                    # N14
     # ruling 21: tangible capital, the return capped at 100%
     tangible = eq[prev] + debt_prev - cash[prev] - _by_end(f, "st_investments").get(prev, 0.0) - gw.get(prev, 0.0) - ia.get(prev, 0.0)
     ronic0 = (x0 + (interest or 0.0) * (1 - tau)) / tangible if tangible > 0 else float("inf")
@@ -176,7 +195,10 @@ def base(f, *, market_cap, bill_rate):
         stamps.append("ronic0_capped_at_100pct" if tangible > 0 else "tangible_capital_not_positive_ronic0_capped")
     if not (market_cap and market_cap > 0):
         raise DeskRefusal("market_cap_unavailable", "delta needs the market value of equity")
-    delta = debt0 / (debt0 + market_cap)
+    net_debt = max(0.0, debt0 - c_l)                                       # N10: O5 as approved, net of cash and short-term investments
+    delta = net_debt / (net_debt + market_cap)
+    if how0 in ("DebtAndCapitalLeaseObligations", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"):
+        stamps.append("debt_includes_finance_leases")
     if delta > 0:
         stamps.append("leverage_bridge_unvalidated")                      # B12: K_0 flat interest and market-weight delta (RR_Q3 §7)
     shares = _by_end(f, "diluted_shares").get(e0)
@@ -185,24 +207,33 @@ def base(f, *, market_cap, bill_rate):
     eps = _by_end(f, "eps_diluted").get(e0)
     if eps:
         implied = ni[e0] / shares
-        if abs(implied / eps - 1) > SHARES_TOL:
+        if abs(implied / eps - 1) > SHARES_TOL and abs(implied - eps) > EPS_ROUNDING:   # N15: EPS is filed to the cent
             raise DeskRefusal("shares_scale_unverified", f"NI / diluted shares {implied:.6g} against filed diluted EPS {eps:.6g}")
     else:
         stamps.append("shares_unreconciled_no_eps")
     stamps.append("shares_weighted_average_diluted")
     # ruling 4: the vintages D&A rule from filed PP&E (prior gross, gross, net, D&A_org of the base year); else pooled, stamped
     gross, net = _by_end(f, "ppe_gross"), _by_end(f, "ppe_net")
-    da_org0 = da[e0] - (am[e0] if use_amort and da_tag[e0] not in DA_EXCLUDES_AMORTIZATION else 0.0)
+    da_org0 = da[e0] - (am.get(e0, 0.0) if da_tag[e0] not in DA_EXCLUDES_AMORTIZATION else 0.0)   # N8: always without amortization
     ppe = ({"gross_prior": gross[prev], "gross": gross[e0], "net": net[e0], "da_org_0": da_org0}
            if prev in gross and e0 in gross and e0 in net and gross[e0] > 0 and da_org0 > 0 else None)
     if ppe is None:
         stamps.append("da_vintages_no_gross_ppe")
+    else:
+        # N8: the vintages rule only within bounds: life in [5, 40], its year-5 D&A ratio (flat revenue, pooled capex) within +-50% of pooled
+        life = round(ppe["gross_prior"] / ppe["da_org_0"])
+        path, _ = desk.da_org_path(5, [rev[e0]] * 6, [c_ratio * rev[e0]] * 5, d_ratio, ppe)
+        if not (VINTAGE_LIFE[0] <= life <= VINTAGE_LIFE[1] and abs(path[4] / rev[e0] / d_ratio - 1) <= VINTAGE_RATIO_TOL):
+            ppe = None
+            stamps.append(f"da_vintages_out_of_bounds(life {life})")
     return {"version": INPUTS_VERSION, "fy0": e0, "ppe": ppe, "revenue_hist": [rev[e] for e in ends], "R0": rev[e0], "x0": x0, "m0": x0 / rev[e0],
             "oi0": oi[e0], "k0": k0, "op_margin0": oi[e0] / rev[e0], "d_ratio": d_ratio, "c_ratio": c_ratio, "w": w, "tau": tau,
             "ronic0": ronic0, "delta": delta, "kd": kd, "debt0": debt0, "debt_basis": how0, "shares": shares, "excess_cash": excess_cash,
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,
             "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps,
-            "record": {"op_margin": {e: oi[e] / rev[e] for e in ends if e in oi}}}
+            "da_rule": "vintages" if ppe else "pooled",
+            "record": {"op_margin": {e: oi[e] / rev[e] for e in ends if e in oi}, "capex_ratio": capex_record,
+                       "rev_growth_max": max(rev[ends[i]] / rev[ends[i - 1]] - 1 for i in range(1, len(ends)))}}
 
 
 def bridge_x_margin(b, op_margins, revenues, amort=None):

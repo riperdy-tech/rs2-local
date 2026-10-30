@@ -18,7 +18,7 @@ import re
 from qwen_c import contract
 from qwen_c.value import desk, forecast
 
-CHECKS_VERSION = "m3q.checks.v2"
+CHECKS_VERSION = "m3q.checks.v3"   # v3 2026-10-30 CROSS_CHECK_Q2
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 MARGIN_SOURCES = ("record", "pricing_or_mix", "investment_in_explicit_years", "investment_after_year5", "decline")
@@ -29,6 +29,8 @@ REPLACEABLE = ("rev_growth", "op_margin", "normalized", "transition", "transitio
                "terminal_ronic", "terminal_g")
 ORDERED = ("rev_growth", "op_margin", "normalized", "long_run_op_margin", "terminal_ronic", "terminal_g")   # V9: Bear <= Base <= Bull
 SEAM_BAND = (0.67, 1.5)
+V11_TOL = 0.0005                                                            # N17
+SPREAD_MIN = 0.02                                                           # N7 (annotation)
 ALWAYS_STAMPS = ["v5_withdrawn_status_unenforced"]                          # ruling 15
 _KEYWORDS = {                                                               # ruling 12: the reason must address its input
     "rev_growth": r"growth|grow|revenue|sales|demand|volume|price|backlog|order",
@@ -46,8 +48,10 @@ _KEYWORDS = {                                                               # ru
 }
 _UP = r"above|higher than|exceeds?|greater than|more than"
 _DOWN = r"below|lower than|under|beneath|less than"
-_REF = (r"(?:the\s+)?(?:company'?s\s+|its\s+)?(?:filed\s+|historical\s+|\d+-year\s+|five-year\s+|ten-year\s+|eight-year\s+)?"
-        r"(?:record\s+)?(median|maximum|max|high|minimum|min|low|record|last year|latest year)")
+_REF = (r"(?:the\s+)?(?:company'?s\s+|its\s+)?(?:filed\s+|historical\s+|\d+[- ]year\s+|(?:three|four|five|six|seven|eight|nine|ten)[- ]year\s+)?"
+        r"(?:record\s+)?(median|average|mean|maximum|max|high|minimum|min|low|record|last year|latest year)")
+_RETURN_TO_GROWTH = re.compile(r"\b(grow|grows|growing|recover|recovers|recovery|rebound|return to growth|returns to growth|expand|expands|expansion)\b", re.I)
+_YEAR_NAMED = re.compile(r"\b(?:19|20)\d{2}\b")
 _DIRECTION = re.compile(r"(\b(?:not|no|never)\b\s+(?:\w+\s+){0,2}?)?\b(" + _UP + "|" + _DOWN + r")\s+" + _REF, re.I)
 
 
@@ -170,10 +174,18 @@ def _key(path):
 
 
 def fiscal_year_of(period, fy_ends):
-    """The fiscal-year end (from the facts) whose year contains `period` (a date string), or None."""
+    """The fiscal-year end (from the facts) whose year contains `period` (a date string). A period after the last filed fiscal year (the
+    10-Q filed after FY0's annual report) belongs to the next fiscal year, FY0 + one year (CROSS_CHECK_Q2 N1). None if undated or more
+    than a year past FY0."""
     p = str(period or "")[:10]
-    later = [e for e in sorted(fy_ends) if e >= p]
-    return later[0] if later and len(p) == 10 else None
+    ends = sorted(fy_ends)
+    if len(p) != 10 or not ends:
+        return None
+    later = [e for e in ends if e >= p]
+    if later:
+        return later[0]
+    nxt = f"{int(ends[-1][:4]) + 1}{ends[-1][4:]}"
+    return nxt if p <= nxt else None
 
 
 def reasons_by_input(out, items, ticker, statements, fy_ends=()):
@@ -197,7 +209,9 @@ def reasons_by_input(out, items, ticker, statements, fy_ends=()):
         if why is None and norm in seen_claims and seen_claims[norm] != key:
             why = f"the same claim already serves {'.'.join(seen_claims[norm])}"
         seen_claims.setdefault(norm, key)
-        span = {fiscal_year_of(c.get("period"), fy_ends) for c in cited if c["kind"] in FILED_KINDS} - {None}
+        # N2: the span counts only the filed (non-[Y]) items a verified quote of this reason comes from
+        quoted = [c for c in cited if any(contract.quote_found(q, [c["text"]]) for q in claim["quotes"])]
+        span = {fiscal_year_of(c.get("period"), fy_ends) for c in quoted if c["kind"] in FILED_KINDS} - {None}
         got.setdefault(key, []).append({"i": i, "reason": rz, "support": chk["support"], "ok": why is None, "why": why,
                                         "kinds": {c["kind"] for c in cited}, "span_years": span})
     return got
@@ -208,10 +222,20 @@ def _ok(rs):
 
 
 def _direction_contradiction(claim, value, bar):
-    for neg, word, ref in _DIRECTION.findall(claim or ""):
+    for sentence in re.split(r"(?<=[.;])\s+", claim or ""):
+        if _YEAR_NAMED.search(sentence):                                   # N5: about one named year's margin, not the input
+            continue
+        why = _direction_one(sentence, value, bar)
+        if why:
+            return why
+    return None
+
+
+def _direction_one(claim, value, bar):
+    for neg, word, ref in _DIRECTION.findall(claim):
         ref = ref.lower()
         up = re.fullmatch(_UP, word, re.I) is not None
-        if ref == "median":
+        if ref in ("median", "average", "mean"):
             ref_v = bar["median"]
         elif ref in ("last year", "latest year"):
             ref_v = bar["last"]
@@ -267,26 +291,48 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
     path, m_n = forecast.build_path(base, bar, b["R0"])
     m_l = float(base["long_run_op_margin"])
 
-    def span_ok(k):
-        return any(len(x["span_years"]) >= 2 for x in _ok(by.get(("base", k), [])))
+    def span_ok(name, k):
+        return any(len(x["span_years"]) >= 2 for x in _ok(by.get((name, k), [])))
 
-    # V3: margins outside the filed record need a supported reason spanning two filed fiscal years (not the [Y] record itself)
-    margins = [("normalized", m_n), ("long_run_op_margin", m_l)] + [("investment_path", yr["op_margin"]) for yr in (ip or [])]
-    for k, v in margins:
-        if not bar["min"] <= v <= bar["max"] and not span_ok(k):
-            unsupported(("base", k), f"V3 unsupported_premium: {v:.4f} outside the filed record [{bar['min']:.4f}, {bar['max']:.4f}] "
-                                     f"with no supported reason quoting filed items of two fiscal years")
-    # V10: a reason's stated direction must agree with its input
-    for k, v in (("normalized", m_n), ("long_run_op_margin", m_l)):
-        for x in by.get(("base", k), []):
-            why = _direction_contradiction(x["reason"].get("claim"), v, bar)
-            if why:
-                unsupported(("base", k), f"V10 reason contradicts its input: {why}")
-                res["refused_reasons"] = sorted(set(res["refused_reasons"]) | {x["i"]})
+    # V3, V4 and V10 on Base and on every scenario's own margin inputs (N4, N5)
+    for name in ("base", "bear", "bull"):
+        keys = None if name == "base" else set(out.get(name) or {})
+        sc = merged(out, name)
+        _, mn_s = forecast.build_path(sc, bar, b["R0"])
+        vals = {"normalized": mn_s, "long_run_op_margin": float(sc["long_run_op_margin"]), "op_margin": sum(sc["op_margin"]) / 2}
+        margins = [(k, v) for k, v in vals.items() if k != "op_margin"]
+        if name == "base":
+            margins += [("investment_path", yr["op_margin"]) for yr in (ip or [])]
+        for k, v in margins:                                                 # V3: outside the record needs a two-fiscal-year span
+            if (keys is None or k in keys) and not bar["min"] <= v <= bar["max"] and not span_ok(name, k):
+                unsupported((name, k), f"V3 unsupported_premium: {v:.4f} outside the filed record [{bar['min']:.4f}, {bar['max']:.4f}] "
+                                       f"with no supported reason quoting filed items of two fiscal years")
+        if keys is not None:
+            for k in ("op_margin", "normalized", "long_run_op_margin"):    # V4 on scenario margin inputs
+                ok = _ok(by.get((name, k), []))
+                if k in keys and ok and not any(x["kinds"] & set(V4_KINDS) for x in ok):
+                    unsupported((name, k), "V4: no supported reason cites a filed statement, section or record year")
+        for k, v in vals.items():                                            # V10 over every margin reason
+            if keys is not None and k not in keys:
+                continue
+            for x in by.get((name, k), []):
+                why = _direction_contradiction(x["reason"].get("claim"), v, bar)
+                if why:
+                    unsupported((name, k), f"V10 reason contradicts its input: {why}")
+                    res["refused_reasons"] = sorted(set(res["refused_reasons"]) | {x["i"]})
+    # N6: a capex path outside the filed record of capex/revenue needs a two-fiscal-year span, like V3
+    cp = base.get("capex_path")
+    if cp:
+        ratios = [cp["year5"]] if isinstance(cp, dict) else list(cp)
+        crec = list((b.get("record") or {}).get("capex_ratio", {}).values())
+        if crec and any(not min(crec) <= c <= max(crec) for c in ratios) and not span_ok("base", "capex_path"):
+            unsupported(("base", "capex_path"), f"capex/revenue {ratios} outside the filed record [{min(crec):.4f}, {max(crec):.4f}] with no "
+                                                f"supported reason quoting filed items of two fiscal years")
     # V7: a shrinking Base with positive terminal growth needs a supported, growth-addressing reason on terminal_g (the keyword rule)
     shrink = sum(1 for g in (path[0]["rev_growth"], path[1]["rev_growth"], float(base["normalized"]["rev_growth"])) if g < 0)
-    if shrink >= 2 and base["terminal_g"] > 0 and not _ok(by.get(("base", "terminal_g"), [])):
-        unsupported(("base", "terminal_g"), "V7: Base revenue shrinks yet terminal_g > 0 without a supported reason")
+    if shrink >= 2 and base["terminal_g"] > 0 and not any(_RETURN_TO_GROWTH.search(x["reason"]["claim"])
+                                                          for x in _ok(by.get(("base", "terminal_g"), []))):
+        unsupported(("base", "terminal_g"), "V7: Base revenue shrinks yet terminal_g > 0 without a supported reason for a return to growth")
     # V11 and the investment path (rulings 2, 4)
     src = base["margin_source"]
     if src == "investment_after_year5" and not ip:
@@ -298,7 +344,7 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
             unsupported(("base", "investment_path"), f"year {yr['year']}: capex/revenue {yr['capex_over_revenue']:.4f} is not above the pooled "
                                                      f"{b['c_ratio']:.4f}: not an investment programme")
     last = (ip[-1]["op_margin"] if ip else path[4]["op_margin"])
-    if src in ("record", "decline") and m_l > last + 1e-12:
+    if src in ("record", "decline") and m_l > last + V11_TOL:
         unsupported(("base", "margin_source"), f"V11: margin_source {src!r} with a long-run margin above the last explicit year's")
     if src == "investment_in_explicit_years" and not base.get("capex_path"):
         unsupported(("base", "margin_source"), "investment_in_explicit_years needs a capex_path (O7)")
@@ -328,6 +374,29 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
     d = abs(float(base["normalized"]["delta_pts"]))
     if 0 < d < 0.05 or d > 50:
         res["annotations"].append(f"delta_pts_scale_suspect: {base['normalized']['delta_pts']}")
+    # V3g (the CROSS_CHECK_Q2 re-run): revenue growth above the filed record's maximum, and terminal growth above the MRI long-run growth
+    # anchor, need a supported reason quoting filed items of two fiscal years, as a margin outside the record does
+    g_anchor = b.get("g_anchor")
+    if g_anchor is None:
+        res["annotations"].append("g_anchor_missing: terminal growth not checked against the long-run anchor")
+    gmax = (b.get("record") or {}).get("rev_growth_max")
+    for name in ("base", "bear", "bull"):
+        keys = None if name == "base" else set(out.get(name) or {})
+        sc = merged(out, name)
+        g = float(sc["terminal_g"])
+        if (keys is None or "terminal_g" in keys) and g_anchor is not None and g > g_anchor and not span_ok(name, "terminal_g"):
+            unsupported((name, "terminal_g"), f"V3g terminal_g {g:.4f} above the long-run growth anchor {g_anchor:.4f} with no supported "
+                                              f"reason quoting filed items of two fiscal years")
+        if r - g < SPREAD_MIN:
+            res["annotations"].append(f"terminal_spread_thin: {name} r - g_T = {r - g:.4f}")
+        if gmax is not None:
+            growths = [("rev_growth", x) for x in sc["rev_growth"]] + [("normalized", float(sc["normalized"]["rev_growth"]))]
+            if name == "base":
+                growths += [("investment_path", yr["revenue_growth"]) for yr in (ip or [])]
+            for k, x in growths:
+                if (keys is None or k in keys) and x > gmax and not span_ok(name, k):
+                    unsupported((name, k), f"V3g revenue growth {x:.4f} above the filed record's maximum {gmax:.4f} with no supported "
+                                           f"reason quoting filed items of two fiscal years")
     # compute every scenario; V1 recompute; V2 seam; V9 monotone values
     for name in ("bear", "base", "bull"):
         try:
@@ -342,6 +411,9 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
         if name == "base" and not inp["H"] and v["seam_ratio"] is not None and not SEAM_BAND[0] <= v["seam_ratio"] <= SEAM_BAND[1]:
             res["annotations"].append(f"V2 flow_seam_out_of_band: {v['seam_ratio']:.3f}")
     vv = res["values"]
+    for name, v in vv.items():
+        if not v > 0:
+            res["annotations"].append(f"value_not_positive: {name} {v:.4f}")
     if len(vv) == 3 and not vv["bear"] <= vv["base"] <= vv["bull"]:
         unsupported(("scenarios", "values"), f"V9: values not monotone {vv}")
     if res["unsupported"]:

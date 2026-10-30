@@ -334,4 +334,99 @@ def test_record_items_and_bar(ctx):
 def test_fiscal_year_mapping():
     assert checks.fiscal_year_of("2025-09-30", ENDS) == "2025-12-31"
     assert checks.fiscal_year_of("2024-12-31", ENDS) == "2024-12-31"
-    assert checks.fiscal_year_of("2026-03-31", ENDS) is None
+    assert checks.fiscal_year_of("2026-03-31", ENDS) == "2026-12-31"      # the 10-Q after FY0 (N1)
+    assert checks.fiscal_year_of("2027-06-30", ENDS) is None
+
+
+
+# ---- CROSS_CHECK_Q2 -----------------------------------------------------------------------------------------------------------------
+
+REAL = {"K0": ("annual_section", "2025-12-31", "Price increases lifted our operating margin to 17.5% in our largest segment."),
+        "Q9": ("quarterly_section", "2026-03-31", "The operating margin of the largest segment was 17.8% in the quarter after price increases.")}
+
+
+@pytest.fixture(scope="module")
+def ctx_real(ctx):
+    b, bar, items = ctx
+    items = dict(items)
+    items.update({k: {"fact_id": k, "kind": kd, "period": p, "text": t} for k, (kd, p, t) in REAL.items()})
+    return b, bar, items
+
+
+def test_n1_v3_passes_on_the_real_packet_layout(ctx_real):
+    # the FY0 10-K section and the 10-Q filed after it: two fiscal years (2025, 2026)
+    out = _premium(clean(), ["K0", "Q9"], ["operating margin to 17.5%", "was 17.8% in the quarter"], ["17.5%", "17.8%"])
+    assert "base.long_run_op_margin" not in run(ctx_real, out)["unsupported"]
+
+
+def test_n2_span_counts_quoted_items_only(ctx_real):
+    # cites two filed items but quotes only the [Y] record: no span
+    out = _premium(clean(), ["K0", "Q9", Y25], [M16], ["16.0%"])
+    out["reasons"][-1]["claim"] = "The operating margin was 16.0% and can rise with price increases."
+    assert any("V3" in w for w in unsup(run(ctx_real, out), "base.long_run_op_margin"))
+
+
+def test_n3_v7_decline_words_do_not_support_positive_terminal_growth(ctx):
+    out = without(_shrinking(clean()), "base.terminal_g")
+    out["reasons"].append(reason("base.terminal_g", "Revenue declined as the market shrinks; terminal growth stays positive.", ["A1"],
+                                 ["We expect the market for our products to grow with the economy"]))
+    assert any(w.startswith("V7") for w in unsup(run(ctx, out), "base.terminal_g"))
+
+
+def test_n4_scenario_margin_outside_the_record_needs_v3(ctx):
+    out = without(clean(), "bull.op_margin")
+    out["bull"] = {"long_run_op_margin": 0.60}
+    out["reasons"].append(reason("bull.long_run_op_margin", "The margin could rise far above the record with pricing.", [Y25], [M16], ["16.0%"]))
+    res = run(ctx, out)
+    assert any("V3" in w for w in unsup(res, "bull.long_run_op_margin"))
+
+
+def test_n4_negative_scenario_value_is_annotated(ctx):
+    out = without(clean(), "bear.op_margin")
+    out["bear"] = {"op_margin": [-0.40, -0.40], "long_run_op_margin": -0.30}
+    out["reasons"].append(reason("bear.op_margin", "In a collapse the margin could fall far below the 15.0% of the first year.", [Y21], [M15],
+                                 ["15.0%"]))
+    out["reasons"].append(reason("bear.long_run_op_margin", "A collapsed market could keep the margin far below the record low of 15.0%.",
+                                 [Y21], [M15], ["15.0%"]))
+    res = run(ctx, out)
+    assert any(a.startswith("value_not_positive") for a in res["annotations"])
+
+
+def test_n5_v10_reads_year_margin_reasons_and_skips_named_years(ctx):
+    out = without(clean(), "base.op_margin")
+    out["reasons"].append(reason("base.op_margin", "The near-term margin is set below the median of the filed record of 15.0% to 16.0%.",
+                                 [Y21, Y25], [M15, M16], ["15.0%", "16.0%"]))
+    assert any(w.startswith("V10") for w in unsup(run(ctx, out), "base.op_margin"))
+    out = without(clean(), "base.op_margin")
+    out["reasons"].append(reason("base.op_margin", "In 2021 the operating margin of 15.0% was below the median; it is now 16.0%.",
+                                 [Y21, Y25], [M15, M16], ["15.0%", "16.0%"]))
+    assert "base.op_margin" not in run(ctx, out)["unsupported"]
+
+
+def test_n6_capex_path_outside_the_record_needs_a_span(ctx):
+    out = clean()
+    out["base"]["capex_path"] = [0.0, 0.0, 0.0, 0.0, 0.0]
+    out["reasons"].append(reason("base.capex_path", "Capital spending stops while existing plants run.", ["C1"],
+                                 ["We plan to build two new plants"]))
+    assert any("outside the filed record" in w for w in unsup(run(ctx, out), "base.capex_path"))
+
+
+def test_n7_terminal_growth_near_the_rate_is_annotated(ctx):
+    b, bar, items = ctx
+    out = clean()
+    out["base"]["terminal_g"] = 0.08
+    res = checks.check(out, items, "TEST", set(), dict(b, g_anchor=0.0375), bar, R, ENDS)
+    assert any(w.startswith("V3g terminal_g") for w in res["unsupported"]["base.terminal_g"])
+    assert any(a.startswith("terminal_spread_thin") for a in res["annotations"])
+
+
+def test_v3g_growth_above_the_filed_record_needs_a_span(ctx):
+    out = clean()
+    out["base"]["normalized"]["rev_growth"] = 0.15                    # the record's maximum growth is 6.25%
+    assert any(w.startswith("V3g revenue growth") for w in run(ctx, out)["unsupported"]["base.normalized"])
+
+
+def test_equity_return_not_above_terminal_growth_is_refused(ctx):
+    out = clean()
+    out["base"]["terminal_ronic"] = 0.025                             # below g_T 3%
+    assert any("ronic_not_above_growth" in w for w in run(ctx, out)["unsupported"]["base.desk"])
