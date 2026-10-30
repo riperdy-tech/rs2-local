@@ -1,39 +1,42 @@
 """forecast_fin.py - the financial route's typed forecast to the desk (WO_Q6 §2; O3 retained equity).
 
-record_items: the filed annual record as packet items (kind "filed_record", fact_id "Y<end>"): book equity, net income and the ROE on
-opening equity, so the model can cite the record and the contract can check the figures it quotes.
+record_items: the filed annual record as packet items (kind "filed_record", fact_id "Y<end>"): book equity, preferred stock, common
+equity, income to common and the ROE on opening common equity, so the model can cite the record and the contract can check its figures.
 record_bar: forecast.record_bar on the filed ROE record.
 build_path: years 1..5 of one scenario under forecast.build_path's rules (years 1-2 typed, years 3..N blended to the normalized ROE by the
 transition, years after N held), with book growth in the place of revenue growth and ROE in the place of the margin.
-assemble: one scenario to desk.value_financial's input, driver "book". R_1 is the filed FY0 closing book equity (the opening equity of
-year 1) and R_{t+1} = R_t (1 + g_t) for t = 1..4. Stated limit: the year-5 book growth does not enter; the desk's fade starts from
-R_5 / R_4 - 1, year 4's growth (stamp book_growth_year5_unused).
+assemble: one scenario to desk.value_financial's input, driver "book". R_1 is the filed FY0 closing common book equity (the opening
+equity of year 1), R_{t+1} = R_t (1 + g_t) for t = 1..4, and g_5 goes to the desk as g5 (R_6 = R_5 (1 + g_5); CROSS_CHECK_Q3 3): g_t is
+the growth of book equity during year t, as the prompt defines it.
 value: desk.value_financial rolled forward from the fiscal-year end to T at r, as desk.value_operating does (ruling 7).
 """
 from qwen_c.value import desk, forecast, inputs
 
-FORECAST_FIN_VERSION = "m3q.forecast.fin.v1"
+FORECAST_FIN_VERSION = "m3q.forecast.fin.v2"   # v2 2026-10-30 CROSS_CHECK_Q3 3: g5 carried to the desk
 
 
 def _money(v):
     return f"${v / 1e6:,.1f} million"
 
 
-def record_items(f, years=5):
-    """[{fact_id, kind, period, form, source, text}] for the last `years` fiscal years with filed book equity."""
-    eq = {v["end"]: v for v in (f.get("equity") or {}).get("values", [])}
-    ni = {v["end"]: v for v in (f.get("net_income") or {}).get("values", [])}
-    ends = sorted(eq)
+def record_items(f, b, years=5):
+    """[{fact_id, kind, period, form, source, text}] for the last `years` fiscal years of the base's common-equity record (b =
+    inputs.base_financial): the filed book equity, any preferred stock taken out, common equity, income to common and the ROE on opening
+    common equity, the same figures the checks and [V0] use (CROSS_CHECK_Q3 6)."""
+    filed = {v["end"]: v for v in (f.get("equity") or {}).get("values", [])}
+    pref = {v["end"]: v["value"] for v in (f.get("preferred_equity") or {}).get("values", [])}
+    rec = b["record"]
+    eq, ni, roe = rec["common_equity"], rec["income_to_common"], rec["roe"]
     out = []
-    for i, end in enumerate(ends):
-        if i < len(ends) - years:
-            continue
-        e = eq[end]
+    for end in sorted(eq)[-years:]:
+        e = filed[end]
         parts = [f"book equity at year end {_money(e['value'])}"]
+        if "preferred_subtracted_at_carrying_value" in b["stamps"]:
+            parts += [f"preferred stock {_money(pref[end])}", f"common equity {_money(eq[end])}"]
         if end in ni:
-            parts.append(f"net income {_money(ni[end]['value'])}")
-            if i > 0 and eq[ends[i - 1]]["value"] > 0:
-                parts.append(f"return on opening equity {100 * ni[end]['value'] / eq[ends[i - 1]]['value']:.1f}%")
+            parts.append(f"income to common {_money(ni[end])}")
+        if end in roe:
+            parts.append(f"return on opening equity {100 * roe[end]:.1f}%")
         text = f"Filed annual record, fiscal year ended {end} ({e.get('form')}, accession {e.get('accn')}): " + "; ".join(parts) + "."
         out.append({"fact_id": f"Y{end}", "kind": "filed_record", "period": end, "form": e.get("form"),
                     "source": {"accession": e.get("accn"), "concepts": "companyfacts"}, "text": text})
@@ -69,7 +72,7 @@ def assemble(sc, b, bar, *, r):
     roe_t = float(sc["long_run_roe"])
     return {"revenue": R, "margin": [y["roe"] for y in path], "r": float(r), "g_T": float(sc["terminal_g"]), "F": int(sc["fade_years"]),
             "ronic0": b["roe0"], "ronic_T": roe_t, "m_long": roe_t, "shares": b["shares"], "excess_cash": b["excess_cash"],
-            "driver": "book", "stub_days": b["stub_days"], "_path": path, "_normalized_roe": roe_n}
+            "driver": "book", "g5": path[4]["book_growth"], "stub_days": b["stub_days"], "_path": path, "_normalized_roe": roe_n}
 
 
 def value(inp):

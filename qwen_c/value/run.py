@@ -28,7 +28,7 @@ def _statements(packet):
 MAX_STUB_DAYS = 800
 NUM_PREDICT = 24576    # smokes 1-2: 12,288 and 16,384 ran out in thinking; prompt ~35k + 24.5k is well inside NUM_CTX
 ROUTED = ("operating", "commodity")      # ruling 17: every other family not routed below is a named no_call
-FINANCIAL = ("financial", "mortgage_reit")   # WO_Q6: the financial route (O3; O6 for mortgage REITs)
+FINANCIAL = ("financial",)   # WO_Q6: the financial route (O3). mortgage_reit is not routed until a name is covered (CROSS_CHECK_Q3 7)
 
 
 def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow_after_T=False):
@@ -66,7 +66,7 @@ def _prepare_financial(f, T, sector, allow_after_T):
     if b["stub_days"] > MAX_STUB_DAYS:
         raise desk.DeskRefusal("base_year_too_old", f"the base fiscal year ended {b['stub_days']} days before T")
     bar = forecast_fin.record_bar(b["record"]["roe"])
-    record = forecast_fin.record_items(f)
+    record = forecast_fin.record_items(f, b)
     r, prov = coe.cost_of_equity(sector, T, allow_after_T=allow_after_T)
     b["g_anchor"] = prov["g_anchor"]
     fy_ends = [v["end"] for v in f["equity"]["values"]]

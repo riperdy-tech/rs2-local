@@ -265,29 +265,75 @@ def bridge_x_margin(b, op_margins, revenues, amort=None):
 
 
 def base_financial(f):
-    """The measured base for value_financial (O3). The driver is opening book equity: "revenue" R_t = book equity at the start of year t and
-    the "margin" m_t = ROE on it, so E_t = R_t m_t and the route's E_t (1 - g_{t+1} / ROE_t) is earnings less the growth of book equity, the
-    retained-equity identity. Needs >= MIN_POOL_YEARS fiscal-year equity balances, positive E_0 and opening equity, and diluted shares."""
-    eq, ni = _by_end(f, "equity"), _by_end(f, "net_income")
-    ends = sorted(eq)[-(POOL_YEARS + 1):]
+    """The measured base for value_financial (O3). The driver is opening common book equity: "revenue" R_t = common book equity at the
+    start of year t and the "margin" m_t = ROE on it, so E_t = R_t m_t and Flow_t = E_t - (R_{t+1} - R_t), the retained-equity identity.
+    Common means after preferred stock: its carrying value comes out of book, and its dividends out of net income (CROSS_CHECK_Q3 6).
+    The operating base's data rules apply (CROSS_CHECK_Q3 5): staleness on the route's own series, the newest annual report, an
+    unreconciled ProfitLoss refused, net income per diluted share reconciled with filed diluted EPS, and the per-share stamps."""
+    eq_all, ni_all = _by_end(f, "equity"), _by_end(f, "net_income")
+    pref, nic, pdiv = _by_end(f, "preferred_equity"), _by_end(f, "ni_common"), _by_end(f, "preferred_dividends")
+    ends = sorted(eq_all)[-(POOL_YEARS + 1):]
     if len(ends) < MIN_POOL_YEARS:
         raise DeskRefusal("history_short", f"{len(ends)} fiscal-year equity balances; at least {MIN_POOL_YEARS}")
-    stale = {c: d for c, d in (f.get("_stale") or {}).items() if c in ("net_income", "equity")}
-    if stale:
-        raise DeskRefusal("facts_stale", f"{stale}")
     e0 = ends[-1]
+    ni_last = max(ni_all, default=None)                       # a bank files no revenue concept, so facts._stale cannot see it
+    if ni_last != e0:
+        raise DeskRefusal("facts_stale", f"equity ends {e0}, net income ends {ni_last}")
+    if f.get("_latest_annual_period") and f["_latest_annual_period"] > e0:
+        raise DeskRefusal("base_year_not_latest_annual", f"the newest eligible annual report is for {f['_latest_annual_period']}, the facts end {e0}")
+    for v in (f.get("net_income") or {}).get("values", []):
+        if v["end"] in ends and v.get("stamp") == "profitloss_basis_unverified":
+            raise DeskRefusal("profitloss_basis_unverified", f"ProfitLoss for {v['end']} reconciles with diluted EPS on neither basis")
+    stamps = ["financial_driver_book_equity", "shares_weighted_average_diluted", "financial_classification_unverified"]
+    if any((v.get("form") or "").startswith(("20-F", "40-F")) for v in f["equity"]["values"]):
+        stamps.append("per_share_basis_unverified")                         # ruling 18: no ADS ratio is applied
+    else:
+        stamps.append("split_after_fy0_unchecked")
+    # preferred stock (CROSS_CHECK_Q3 6): filed in any year used, it must be filed in every one, with its dividends or income to common
+    has_pref = any(pref.get(e, 0.0) > 0 for e in ends)
+    if has_pref:
+        missing = [e for e in ends if e not in pref]
+        if missing:
+            raise DeskRefusal("preferred_series_incomplete", f"preferred stock filed in some years, not for {missing}")
+        stamps.append("preferred_subtracted_at_carrying_value")
+    eq = {e: eq_all[e] - (pref[e] if has_pref else 0.0) for e in ends}
+    ni = {}
+    for e in ends[1:]:
+        if e not in ni_all:
+            continue
+        if not has_pref:
+            ni[e] = ni_all[e]
+        elif e in nic:
+            ni[e] = nic[e]
+        elif e in pdiv:
+            ni[e] = ni_all[e] - pdiv[e]
+        else:
+            raise DeskRefusal("preferred_dividends_unavailable", f"preferred stock is filed but neither income to common nor preferred dividends for {e}")
     if e0 not in ni:
         raise DeskRefusal("input_missing", f"net_income for the latest fiscal year {e0}")
     opening = eq[ends[-2]]
     if not (ni[e0] > 0 and opening > 0):
-        raise DeskRefusal("e0_not_positive", f"E_0 = {ni[e0]:.6g}, opening equity {opening:.6g}")
+        raise DeskRefusal("e0_not_positive", f"E_0 = {ni[e0]:.6g}, opening common equity {opening:.6g}")
     shares = _by_end(f, "diluted_shares").get(e0)
     if not (shares and shares > 0):
         raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
+    eps = _by_end(f, "eps_diluted").get(e0)
+    if eps:
+        implied = ni[e0] / shares
+        if abs(implied / eps - 1) > SHARES_TOL and abs(implied - eps) > EPS_ROUNDING:
+            raise DeskRefusal("shares_scale_unverified", f"income to common / diluted shares {implied:.6g} against filed diluted EPS {eps:.6g}")
+    else:
+        stamps.append("shares_unreconciled_no_eps")
+    aoci = _by_end(f, "aoci").get(e0)
+    if aoci is not None and eq_all[e0]:
+        stamps.append(f"aoci_in_book_not_separated:{aoci / eq_all[e0]:+.3f}")   # CROSS_CHECK_Q3 11: its share of book
     roe_hist = {ends[i]: ni[ends[i]] / eq[ends[i - 1]] for i in range(1, len(ends)) if ends[i] in ni and eq[ends[i - 1]] > 0}
-    # R_0 = book equity at the start of the base year, R_1 = at its end (the start of year 1): E_1 = R_1 ROE_1
+    growth = {ends[i]: eq[ends[i]] / eq[ends[i - 1]] - 1 for i in range(1, len(ends)) if eq[ends[i - 1]] > 0}
+    # V3g bounds (CROSS_CHECK_Q3 2, 4): the highest growth net of issuance (growth above that year's ROE is new capital), the lowest as filed
+    retained = [min(g, roe_hist[e]) for e, g in growth.items() if e in roe_hist]
+    # R_0 = common book equity at the start of the base year, R_1 = at its end (the start of year 1): E_1 = R_1 ROE_1
     return {"version": INPUTS_VERSION, "route": "financial", "fy0": e0, "R0": opening, "R1": eq[e0], "e0": ni[e0],
             "roe0": ni[e0] / opening, "book_hist": [eq[e] for e in ends], "shares": shares, "excess_cash": 0.0,
-            "record": {"roe": roe_hist,                                  # WO_Q6: V3g on book growth, as rev_growth_max on the operating route
-                       "book_growth_max": max(eq[ends[i]] / eq[ends[i - 1]] - 1 for i in range(1, len(ends)) if eq[ends[i - 1]] > 0)},
-            "stamps": ["financial_driver_book_equity", "preferred_not_separated", "shares_weighted_average_diluted"]}
+            "record": {"roe": roe_hist, "book_growth": growth, "common_equity": eq, "income_to_common": ni, "book_growth_max": max(retained) if retained else None,
+                       "book_growth_min": min(growth.values()) if growth else None},
+            "stamps": stamps}

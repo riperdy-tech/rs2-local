@@ -51,6 +51,7 @@ _DOWN = r"below|lower than|under|beneath|less than"
 _REF = (r"(?:the\s+)?(?:company'?s\s+|its\s+)?(?:filed\s+|historical\s+|\d+[- ]year\s+|(?:three|four|five|six|seven|eight|nine|ten)[- ]year\s+)?"
         r"(?:record\s+)?(median|average|mean|maximum|max|high|minimum|min|low|record|last year|latest year)")
 _RETURN_TO_GROWTH = re.compile(r"\b(grow|grows|growing|recover|recovers|recovery|rebound|return to growth|returns to growth|expand|expands|expansion)\b", re.I)
+_GREW = re.compile(r"(?<!not )(?<!no )\b(grew|grow|grows|growing|growth|increase[sd]?|rose|rise[sn]?|expand(?:s|ed|ing)?)\b", re.I)
 _YEAR_NAMED = re.compile(r"\b(?:19|20)\d{2}\b")
 _DIRECTION = re.compile(r"(\b(?:not|no|never)\b\s+(?:\w+\s+){0,2}?)?\b(" + _UP + "|" + _DOWN + r")\s+" + _REF, re.I)
 
@@ -194,10 +195,10 @@ def fiscal_year_of(period, fy_ends):
     return nxt if p <= nxt else None
 
 
-def reasons_by_input(out, items, ticker, statements, fy_ends=(), keywords=None):
+def reasons_by_input(out, items, ticker, statements, fy_ends=(), route="operating"):
     """{(scenario, input): [{"i", "reason", "support", "ok", "why", "kinds", "span_years"}]}. ok = the reason counts (see module doc).
-    `keywords`: the input classes of the keyword rule (default _KEYWORDS, the operating route's)."""
-    keywords = _KEYWORDS if keywords is None else keywords
+    `route` picks the keyword classes and the input's own printed value (CROSS_CHECK_Q3 9)."""
+    keywords = _FIN_KEYWORDS if route == "financial" else _KEYWORDS
     texts = {k: _sq(v["text"]) for k, v in items.items()}                   # smoke 2: " and ' match alike (local to valuation)
     got, seen_claims = {}, {}
     for i, rz in enumerate(out.get("reasons") or []):
@@ -205,7 +206,7 @@ def reasons_by_input(out, items, ticker, statements, fy_ends=(), keywords=None):
         claim = {"claim": rz.get("claim", ""), "fact_ids": rz.get("fact_ids") or [], "quotes": [_sq(q) for q in rz.get("quotes") or []],
                  "numbers": rz.get("numbers") or []}
         # smoke 1: the reason may state its own input's value; that figure is supplied as a cited text, never as evidence for spans
-        own = input_value_text(out, key)
+        own = input_value_text(out, key, route)
         chk = contract.check_claim(dict(claim, fact_ids=claim["fact_ids"] + ["_OWN"]) if own else claim,
                                    dict(texts, _OWN=own) if own else texts, ticker, statements)
         cited = [items[a] for a in claim["fact_ids"] if a in items]
@@ -232,13 +233,13 @@ def _sq(s):
     return (s or "").replace('"', "'")
 
 
-def input_value_text(out, key):
+def input_value_text(out, key, route="operating"):
     """The printed forms of the input `key` = (scenario, input) value, so a reason can state the value it argues for: each number as a
     fraction and as a percentage (one decimal and none). '' when the input is not numeric."""
     sc = merged(out, key[0]) if key[0] in ("base", "bear", "bull") and isinstance(out.get("base"), dict) else {}
     v = sc.get(key[1])
     if isinstance(v, dict):
-        v = [v.get("delta_pts"), v.get("book_growth") if "book_growth" in v else v.get("rev_growth")]     # WO_Q6: the financial route
+        v = [v.get("delta_pts"), v.get("book_growth" if route == "financial" else "rev_growth")]      # CROSS_CHECK_Q3 9: by route
     vals = [x for x in (v if isinstance(v, list) else [v]) if _num(x)]
     forms = []
     for x in vals:
@@ -305,7 +306,7 @@ FIN_JUDGMENT = ("book_growth", "roe", "normalized", "fade_years", "long_run_roe"
 FIN_ROE_INPUTS = ("roe", "normalized", "long_run_roe")
 FIN_REPLACEABLE = FIN_JUDGMENT + ("transition", "transition_year")
 FIN_ORDERED = ("book_growth", "roe", "normalized", "long_run_roe", "terminal_g")
-FIN_STAMPS = ["capital_constraint_not_modeled", "book_growth_year5_unused"]       # WO_Q6 §4; forecast_fin's stated limit
+FIN_STAMPS = ["capital_constraint_not_modeled"]                                   # WO_Q6 §4
 _FIN_KEYWORDS = {
     "book_growth": r"growth|grow|book|equity|capital|retain|loan|deposit|premium|asset|balance sheet|dividend|buyback|repurchase",
     "roe": r"return|roe|earn|profit|income|margin|spread|interest|credit|loss|underwrit|combined ratio",
@@ -367,7 +368,7 @@ def shape_fin(out, r):
 
 
 def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
-    by = reasons_by_input(out, items, ticker, statements, fy_ends, keywords=_FIN_KEYWORDS)
+    by = reasons_by_input(out, items, ticker, statements, fy_ends, route="financial")
     res["refused_reasons"] = sorted(x["i"] for rs in by.values() for x in rs if not x["ok"])
 
     def unsupported(key, why):
@@ -395,8 +396,9 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
         sc = merged(out, name)
         _, rn_s = forecast_fin.build_path(sc, bar)
         vals = {"normalized": rn_s, "long_run_roe": float(sc["long_run_roe"]), "roe": sum(sc["roe"]) / 2}
-        for k, v in vals.items():
-            if k != "roe" and (keys is None or k in keys) and not bar["min"] <= v <= bar["max"] and not span_ok(name, k):
+        roes = [(k, v) for k, v in vals.items() if k != "roe"] + [("roe", float(x)) for x in sc["roe"]]    # CROSS_CHECK_Q3 1
+        for k, v in roes:
+            if (keys is None or k in keys) and not bar["min"] <= v <= bar["max"] and not span_ok(name, k):
                 unsupported((name, k), f"V3 unsupported_premium: ROE {v:.4f} outside the filed record [{bar['min']:.4f}, {bar['max']:.4f}] "
                                        f"with no supported reason quoting filed items of two fiscal years")
         if keys is not None:
@@ -415,6 +417,33 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
         # ronic_not_above_growth: a long-run ROE at or below terminal growth makes retention destroy value
         if float(sc["long_run_roe"]) <= float(sc["terminal_g"]):
             unsupported((name, "long_run_roe"), f"long_run_roe {float(sc['long_run_roe']):.4f} is not above terminal_g {float(sc['terminal_g']):.4f}")
+        # CROSS_CHECK_Q3 2: book growth above the same year's ROE is new capital (issuance): it needs a two-fiscal-year span
+        growths = [("book_growth", float(g), float(m)) for g, m in zip(sc["book_growth"], sc["roe"])] +                   [("normalized", float(sc["normalized"]["book_growth"]), rn_s)]
+        for k, g, m in growths:
+            if (keys is None or k in keys) and g > m and not span_ok(name, k):
+                unsupported((name, k), f"implied issuance: book growth {g:.4f} above the year's ROE {m:.4f} with no supported reason "
+                                       f"quoting filed items of two fiscal years")
+        # CROSS_CHECK_Q3 4: book growth below the filed record's lowest, and a negative terminal growth, release book: a two-year span
+        gmin = (b.get("record") or {}).get("book_growth_min")
+        for k, g, _ in growths:
+            if (keys is None or k in keys) and gmin is not None and g < gmin and not span_ok(name, k):
+                unsupported((name, k), f"V3g book growth {g:.4f} below the filed record's lowest {gmin:.4f} with no supported reason "
+                                       f"quoting filed items of two fiscal years")
+        g_t = float(sc["terminal_g"])
+        if (keys is None or "terminal_g" in keys) and g_t < 0 and not span_ok(name, "terminal_g"):
+            unsupported((name, "terminal_g"), f"terminal_g {g_t:.4f} below zero with no supported reason quoting filed items of two fiscal years")
+        if g_t < 0 and float(sc["long_run_roe"]) < r:
+            res["annotations"].append(f"book_release_terminal: {name} terminal_g {g_t:.4f} with long_run_roe {float(sc['long_run_roe']):.4f} below r")
+        # V10 on growth reasons: a reason saying the book grew cannot support a shrinking input
+        for k, v in [("book_growth", min(float(x) for x in sc["book_growth"])), ("normalized", float(sc["normalized"]["book_growth"])),
+                     ("terminal_g", g_t)]:
+            if (keys is not None and k not in keys) or v >= 0:
+                continue
+            for x in by.get((name, k), []):
+                claim = x["reason"].get("claim") or ""
+                if _GREW.search(claim) and (k != "normalized" or re.search(r"book|equity", claim, re.I)):
+                    unsupported((name, k), f"V10 reason contradicts its input: says the book grows but the input is {v:.4f}")
+                    res["refused_reasons"] = sorted(set(res["refused_reasons"]) | {x["i"]})
     # V7: shrinking book equity with positive terminal growth needs a supported return-to-growth reason on terminal_g
     shrink = sum(1 for g in (path[0]["book_growth"], path[1]["book_growth"], float(base["normalized"]["book_growth"])) if g < 0)
     if shrink >= 2 and base["terminal_g"] > 0 and not any(_RETURN_TO_GROWTH.search(x["reason"]["claim"])
@@ -476,6 +505,16 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
         _recompute_fin(inp, v)
         res["results"][name] = v
         res["values"][name] = v["value_per_share"]
+        if name == "base":
+            # CROSS_CHECK_Q3 2: the terminal value's share and the implied P/B, against the P/B of a perpetuity at the record's highest ROE
+            # (B13 ruling 2026-10-30: annotated; a bound is decided on E3's evidence)
+            g_t = float(inp["g_T"])
+            pb = v["value_per_share"] / (b["R1"] / b["shares"])
+            pb_ref = (bar["max"] - g_t) / (r - g_t)
+            res["diagnostics"] = {"tv_share": v["tv_pv"] / v["equity_value"] if v["equity_value"] else None, "implied_pb": pb,
+                                  "pb_record_max_perpetuity": pb_ref}
+            if pb > pb_ref:
+                res["annotations"].append(f"implied_pb_above_record_max_perpetuity: {pb:.2f} against {pb_ref:.2f}")
         if name == "base" and v["seam_ratio"] is not None and not SEAM_BAND[0] <= v["seam_ratio"] <= SEAM_BAND[1]:
             res["annotations"].append(f"V2 flow_seam_out_of_band: {v['seam_ratio']:.3f}")
     vv = res["values"]
@@ -490,15 +529,30 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
 
 
 def _recompute_fin(inp, v):
-    """V1 for the financial route: the explicit-year flows as earnings less the growth of book equity, recomputed from the inputs, and
-    value per share."""
+    """V1 for the financial route (CROSS_CHECK_Q3 8): every flow, the terminal value and the equity value recomputed from the inputs, on
+    the prompt's definitions (g_t the book growth during year t, faded from g5 to g_T over years 6..5+F; the ROE faded from year 5's to
+    long_run_roe over the same years), independently of desk.value_financial; then value per share."""
     def same(a, c):
         return abs(a - c) <= 1e-9 * max(1.0, abs(a), abs(c))
-    R, m = inp["revenue"], inp["margin"]
-    for t in range(1, 5):
-        flow = R[t] * m[t - 1] - (R[t + 1] - R[t])
-        if not same(flow, v["flows_all"][t - 1]):
-            raise AssertionError(f"V1: the year-{t} financial flow {v['flows_all'][t - 1]} != {flow} recomputed")
+    F, r, g_t, roe_l, g5 = int(inp["F"]), float(inp["r"]), float(inp["g_T"]), float(inp["m_long"]), float(inp["g5"])
+    n = 5 + F
+    book = {t: float(inp["revenue"][t]) for t in range(1, 6)}
+    roe = {t: float(inp["margin"][t - 1]) for t in range(1, 6)}
+    growth = {5: g5}
+    for t in range(6, n + 2):
+        k = min(1.0, (t - 5) / F)
+        growth[t] = g5 + (g_t - g5) * k
+        roe[t] = roe[5] + (roe_l - roe[5]) * k
+    for t in range(6, n + 3):
+        book[t] = book[t - 1] * (1 + growth[t - 1])
+    flows = [book[t] * roe[t] - (book[t + 1] - book[t]) for t in range(1, n + 1)]
+    for t, (a, c) in enumerate(zip(flows, v["flows_all"]), 1):
+        if not same(a, c):
+            raise AssertionError(f"V1: the year-{t} financial flow {c} != {a} recomputed")
+    tv = book[n + 1] * roe[n + 1] * (1 - g_t / roe[n + 1]) / (r - g_t)
+    eq = sum(f / (1 + r) ** t for t, f in enumerate(flows, 1)) + tv / (1 + r) ** n
+    if not (same(tv, v["tv"]) and same(eq, v["equity_value"])):
+        raise AssertionError(f"V1: the financial equity value {v['equity_value']} != {eq} recomputed")
     if not same(v["value_per_share"], (v["equity_value"] * v["rollforward_factor"] + inp["excess_cash"]) / inp["shares"]):
         raise AssertionError("V1: value per share")
 
@@ -537,7 +591,9 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
         sc = merged(out, name)
         _, mn_s = forecast.build_path(sc, bar, b["R0"])
         vals = {"normalized": mn_s, "long_run_op_margin": float(sc["long_run_op_margin"]), "op_margin": sum(sc["op_margin"]) / 2}
-        margins = [(k, v) for k, v in vals.items() if k != "op_margin"]
+        # CROSS_CHECK_Q3 1 (operating twin): each typed explicit-year margin, not only the normalized and long-run ones (a hold or step
+        # transition carries the year-2 value to year 4)
+        margins = [(k, v) for k, v in vals.items() if k != "op_margin"] + [("op_margin", float(x)) for x in sc["op_margin"]]
         if name == "base":
             margins += [("investment_path", yr["op_margin"]) for yr in (ip or [])]
         for k, v in margins:                                                 # V3: outside the record needs a two-fiscal-year span

@@ -72,7 +72,7 @@ INSTRUCTION = (
 
 # WO_Q6: the financial route (banks, insurers, mortgage REITs; O3 retained equity). Its own text and version; the operating text above
 # is unchanged. Changing any text here: bump VALUATION_PROMPT_FIN_VERSION and re-pin its hash in tests/test_value_task.py.
-VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v1"
+VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v2"   # v2 2026-10-30 CROSS_CHECK_Q3 1-4: common equity; growth during a year; issuance and release rules
 
 _SHAPE_FIN = """```json
 {"task": "valuation_inputs_financial",
@@ -93,13 +93,16 @@ INSTRUCTION_FIN = (
     "TASK valuation_inputs_financial. The company is a financial (a bank, an insurer or a mortgage REIT): code values it from its book "
     "equity and the return it earns on that equity. State the forecast inputs from which code will compute the company's value. You do "
     "not compute a value, a price or a recommendation; you choose each input and give the evidence for it.\n"
-    "INPUTS. book_growth and roe are years 1 and 2: the growth of book equity as a fraction, and the return on equity (net income over "
-    "book equity at the start of the year, as the [Y] items print it). normalized is the year (3, 4 or 5) by which the return on equity "
+    "Book equity here is common equity: preferred stock is taken out of book, and its dividends out of net income.\n"
+    "INPUTS. book_growth and roe are years 1 and 2: the growth of book equity during the year as a fraction, and the return on equity "
+    "(net income over book equity at the start of the year, as the [Y] items print it). normalized is the year (3, 4 or 5) by which the return on equity "
     "reaches a normalized level: its baseline is one statistic of the filed return-on-equity record in [V0] (min, p25, median, p75, max "
     "or last), delta_pts is percentage points added to it (0 means the baseline itself), and book_growth is that year's growth of book "
     "equity. transition is linear, step_at_year or hold_then_linear (the last two name transition_year, 3 up to the normalized year). "
     "fade_years is how many years after year 5 book growth takes to reach terminal_g and the return on equity to reach long_run_roe. "
-    "long_run_roe must be above terminal_g, and terminal_g below the cost of equity in [V0]. Capital rules (bank capital ratios, "
+    "long_run_roe must be above terminal_g, and terminal_g below the cost of equity in [V0]. Book growth above the same year's return "
+    "on equity means issuing new shares; book growth below the record's lowest, or a negative terminal_g, means releasing book. Each "
+    "needs a reason that quotes filed statements or filing sections of at least two different fiscal years. Capital rules (bank capital ratios, "
     "insurance reserves) are not modelled: a book growth the company's capital cannot support belongs in the reasons and the unknowns.\n"
     "SCENARIOS. bear and bull list only the inputs that differ from base. A bear input is not above base and a bull input not below "
     "it, unless a reason for that scenario input explains why. prob gives the three probabilities, summing to 1.\n"
@@ -108,7 +111,8 @@ INSTRUCTION_FIN = (
     "at least one exact quote; one reason serves one input. In a reason write only figures a cited item prints, and the input's own "
     "value; never a figure you computed (a growth rate or ratio the items do not print). [V0] may be cited. Inside a JSON "
     "string write any quotation mark the source text prints as a single quote ('); a reason is one or two sentences. A return on "
-    "equity outside the filed record's minimum and maximum, or a book growth above the record's highest, needs a reason that quotes "
+    "equity in any year outside the filed record's minimum and maximum, or a book growth above the record's highest, needs a reason "
+    "that quotes "
     "filed statements or filing sections of at least two different fiscal years; the [Y] record items alone cannot support it. A "
     "return-on-equity reason must cite at least one [Y], statement or filing section; an adjusted or company-defined figure may support "
     "it but not alone. When the evidence cannot support an input, choose the input the filed record supports and say so in "
@@ -121,11 +125,19 @@ def render_base_fin(b, bar, r, coe_prov):
     lines = [f"[V0] Measured by code from the filings (not a forecast). Base fiscal year ended {b['fy0']}.",
              f"Filed return-on-equity record (net income over opening book equity): min {bar['min']:.4f}, p25 {bar['p25']:.4f}, "
              f"median {bar['median']:.4f}, p75 {bar['p75']:.4f}, max {bar['max']:.4f}, last {bar['last']:.4f}.",
-             f"Book equity at the end of the base year {b['R1']:,.0f}; net income in the base year {b['e0']:,.0f}; highest filed yearly "
-             f"growth of book equity {b['record']['book_growth_max']:.4f}.",
+             f"Common book equity at the end of the base year {b['R1']:,.0f}; income to common in the base year {b['e0']:,.0f}.",
+             _book_growth_line(b["record"]),
              f"Cost of equity {r:.4f} (risk-free {coe_prov['rf']:.4f}, long-run growth anchor {coe_prov['g_anchor']:.4f}, "
              f"loading {coe_prov['loading_adjusted']:.3f}, equity premium {coe_prov['closure_erp']:.4f})."]
     return "\n".join(lines)
+
+
+def _book_growth_line(rec):
+    hi, lo = rec.get("book_growth_max"), rec.get("book_growth_min")
+    if hi is None or lo is None:
+        return "Filed yearly growth of book equity: not measurable."
+    return (f"Filed yearly growth of book equity: lowest {lo:.4f}; highest net of new shares (each year's growth, at most that "
+            f"year's return on equity) {hi:.4f}.")
 
 
 def base_item(b, bar, r, coe_prov):

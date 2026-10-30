@@ -19,13 +19,16 @@ M = 1e6
 
 
 # ------------------------------------------------------------------ the production path against truth
-@pytest.mark.parametrize("name", ["F_insurer", "F2_bank"])
-def test_production_path_is_within_3_percent_of_truth(name):
+@pytest.mark.parametrize("name", ["F_insurer", "F2_bank", "F3_grower"])
+def test_production_path_reproduces_truth(name):
+    # PREREG_q6_fin v1.1: an ideal analyst reproduces the simulator within 0.01% (CROSS_CHECK_Q3 3: F3_grower has g4 != g5, ROE_5 != ROE_T)
     c = json.loads((HERE / "fixtures_value" / "fin_truth.json").read_text(encoding="utf-8"))[name]
     b = dict(inputs.base_financial(c["facts"]), stub_days=0)
     bar = forecast_fin.record_bar(b["record"]["roe"])
-    v = forecast_fin.value(forecast_fin.assemble(c["scenario"], b, bar, r=c["r"]))
-    assert abs(v["value_per_share"] / c["truth"] - 1) <= 0.03
+    inp = forecast_fin.assemble(c["scenario"], b, bar, r=c["r"])
+    v = forecast_fin.value(inp)
+    assert abs(v["value_per_share"] / c["truth"] - 1) <= 0.0001
+    checks._recompute_fin(inp, v)                                         # V1 over every flow and the equity value (finding 8)
 
 
 def test_rollforward_and_the_book_path():
@@ -68,7 +71,7 @@ def ctx():
     f = bank_facts()
     b = dict(inputs.base_financial(f), stub_days=0, g_anchor=0.04)
     bar = forecast_fin.record_bar(b["record"]["roe"])
-    items = {i["fact_id"]: i for i in forecast_fin.record_items(f)}
+    items = {i["fact_id"]: i for i in forecast_fin.record_items(f, b)}
     items.update({k: {"fact_id": k, "kind": kd, "period": p, "text": t} for k, (kd, p, t) in ITEMS.items()})
     return b, bar, items
 
@@ -219,11 +222,11 @@ def test_an_unbuilt_family_is_still_refused_by_name():
     assert e.value.code == "family_not_routed"
 
 
-PINNED_FIN = "1b3316117e34b309d1c3bee4b07f456b27b9d2890ed7b0034b2e840f3b375894"
+PINNED_FIN = "4aa468495ebd31f55610ee6bd191f54a9bf0965f5939b0b71484121af4df2bd5"
 
 
 def test_the_financial_prompt_is_pinned_and_the_operating_one_untouched():
-    b = {"route": "financial", "fy0": "2025-12-31", "R1": 128e6, "e0": 12.8e6, "record": {"book_growth_max": 0.0545}}
+    b = {"route": "financial", "fy0": "2025-12-31", "R1": 128e6, "e0": 12.8e6, "record": {"book_growth_max": 0.0545, "book_growth_min": 0.0476}}
     bar = {"min": 0.10, "p25": 0.10, "median": 0.1034, "p75": 0.1045, "max": 0.1049, "last": 0.1049}
     prov = {"rf": 0.0505, "g_anchor": 0.0375, "loading_adjusted": 1.25, "closure_erp": 0.0417}
     pk = {"ticker": "T", "decision_time_utc": "2026-10-30T13:00:00Z", "cik": "1", "evidence": []}
@@ -239,5 +242,5 @@ def test_memo_renders_a_financial_result(ctx):
     res = run_check(out, ctx)
     result = {"ticker": "TB", "T": "2026-03-01T13:00:00Z", "status": res["status"], "inputs": out, "checks": res,
               "values": res["values"], "cost_of_equity": R, "base": b}
-    text = memo.render(result, checks.reasons_by_input(out, items, "TB", set(), ENDS, keywords=checks._FIN_KEYWORDS))
+    text = memo.render(result, checks.reasons_by_input(out, items, "TB", set(), ENDS, route="financial"))
     assert "Return on equity, years 1-2 | 10.4%, 10.4%" in text and "Tax" not in text

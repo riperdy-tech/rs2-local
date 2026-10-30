@@ -14,7 +14,7 @@ RONIC_t moves on 1/RONIC from RONIC_0 to RONIC_T; returns on capital become equi
 """
 import math
 
-DESK_VERSION = "m3q.desk.v2"   # v2 2026-10-30: financial route on the clean-surplus identity (CROSS_CHECK_Q 25), driver required
+DESK_VERSION = "m3q.desk.v3"   # v3 2026-10-30 CROSS_CHECK_Q3 3: driver "book" carries the year-5 book growth g5 and fades growth over years 6..5+F   # v2 2026-10-30: financial route on the clean-surplus identity (CROSS_CHECK_Q 25), driver required
 FADE_CONVENTION = "revenue"          # B1, ruled by the truth test RR_Q3 (2026-10-30)
 
 
@@ -235,7 +235,14 @@ def value_financial(inp):
     if not inp["shares"] > 0:
         raise DeskRefusal("shares_unavailable", "a positive share count is required")
     n = 5 + f_years
-    g5 = rev[5] / rev[4] - 1.0
+    driver = inp.get("driver")
+    if driver not in ("book", "revenue"):                            # required: never defaulted
+        raise DeskRefusal("input_invalid", f"driver {driver!r}")
+    # driver "book" (CROSS_CHECK_Q3 3): g5 is the analyst's year-5 book growth (R_6 = R_5 (1 + g5)); growth in year t >= 6 fades from g5 to
+    # g_T by year n, aligned with the ROE fade. driver "revenue": as before, g5 = R_5 / R_4 - 1 and R_t = R_{t-1} (1 + g_at(t)).
+    if driver == "book" and "g5" not in inp:
+        raise DeskRefusal("input_missing", "driver book needs g5, the year-5 book growth")
+    g5 = float(inp["g5"]) if driver == "book" else rev[5] / rev[4] - 1.0
 
     def g_at(t):
         return gt if t > n else g5 + (gt - g5) * (t - 5) / f_years
@@ -244,13 +251,10 @@ def value_financial(inp):
     # year t. driver "book" (inputs.base_financial): R_t IS the book equity and m_t the ROE, so ROE_t = m_t. driver "revenue" (premiums, the
     # reference's insurer): ROE_t is ROE_0 through year 5, then moves to ROE_T on 1/ROE over the fade. A constant ROE gives the reference's
     # E_t (1 - g_{t+1} / ROE) in both.
-    driver = inp.get("driver")
-    if driver not in ("book", "revenue"):                            # required: never defaulted
-        raise DeskRefusal("input_invalid", f"driver {driver!r}")
     R = {t: rev[t] for t in range(1, 6)}
     m = {t: mg[t - 1] for t in range(1, 6)}
     for t in range(6, n + 3):
-        R[t] = R[t - 1] * (1.0 + g_at(t))
+        R[t] = R[t - 1] * (1.0 + (g5 if t == 6 else g_at(t - 1))) if driver == "book" else R[t - 1] * (1.0 + g_at(t))
         m[t] = mg[4] + (m_long - mg[4]) * min(1.0, (t - 5) / f_years)
     roe = (lambda t: m[t]) if driver == "book" else (lambda t: ronic0 if t <= 5 else ronic_at(ronic0, ronic_t, (t - 5) / f_years))
     E = {t: R[t] * m[t] for t in R}
