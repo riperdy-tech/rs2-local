@@ -18,7 +18,7 @@ import re
 from qwen_c import contract
 from qwen_c.value import desk, forecast, forecast_fin
 
-CHECKS_VERSION = "m3q.checks.v7"   # v7 2026-10-31 CROSS_CHECK_Q3d 1-3, O-1   # v6 2026-10-31 CROSS_CHECK_Q3c: the record-neutral reference (B13), the per-share tolerance   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
+CHECKS_VERSION = "m3q.checks.v8"   # v8 2026-10-31 (financial smoke S2): why names the failing figures   # v7 2026-10-31 CROSS_CHECK_Q3d 1-3, O-1   # v6 2026-10-31 CROSS_CHECK_Q3c: the record-neutral reference (B13), the per-share tolerance   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 MARGIN_SOURCES = ("record", "pricing_or_mix", "investment_in_explicit_years", "investment_after_year5", "decline")
@@ -212,7 +212,8 @@ def reasons_by_input(out, items, ticker, statements, fy_ends=(), route="operatin
         cited = [items[a] for a in claim["fact_ids"] if a in items]
         why = None
         if chk["support"] != contract.SUPPORTED:
-            why = f"contract: {chk['support']}"
+            bad = [f["detail"] for f in chk["support_failures"] if f["check"] == chk["support"]]
+            why = f"contract: {chk['support']}" + (f" ({'; '.join(str(d)[:80] for d in bad[:4])})" if bad else "")
         elif not claim["quotes"]:
             why = "no quote: a reason must quote the evidence it rests on"
         elif key[1] in keywords and not re.search(keywords[key[1]], claim["claim"], re.I):

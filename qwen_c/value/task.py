@@ -11,7 +11,7 @@ import json
 
 from qwen_c import tasks
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v5"   # v5 2026-10-30 (smoke 2): inner quotation marks; keep reasons short   # v4 2026-10-30 (smoke 1): the figures rule for reasons; [V0] is citable   # v3 2026-10-30 (CROSS_CHECK_Q2 N8): [V0] names the D&A rule the desk uses   # v2 2026-10-30 (CROSS_CHECK_Q 26, operator decision C5 default): price-blind [S0];
+VALUATION_PROMPT_VERSION = "m3q.prompt.v6"   # v6 2026-10-31 (financial smoke S1): how to write a year   # v5 2026-10-30 (smoke 2): inner quotation marks; keep reasons short   # v4 2026-10-30 (smoke 1): the figures rule for reasons; [V0] is citable   # v3 2026-10-30 (CROSS_CHECK_Q2 N8): [V0] names the D&A rule the desk uses   # v2 2026-10-30 (CROSS_CHECK_Q 26, operator decision C5 default): price-blind [S0];
 #                                              reasons must quote; scenario inputs need their own reasons; capex_path (O7)
 PRICE_LINES = ("price:", "marketCap:", "price as-of")
 NL = "\n"
@@ -61,7 +61,7 @@ INSTRUCTION = (
     "REASONS. Every base input needs at least one reason whose \"input\" names it, for example \"base.normalized\"; every scenario "
     "input needs its own, for example \"bear.op_margin\". A reason is a claim under the rules above, about the input it names, with "
     "at least one exact quote; one reason serves one input. In a reason write only figures a cited item prints, and the input's own "
-    "value; never a figure you computed (a growth rate, margin or ratio the items do not print). [V0] may be cited. Inside a JSON "
+    "value; never a figure you computed (a growth rate, margin or ratio the items do not print). [V0] may be cited. Write a year after a word that marks it as a year (\"in 2025\", \"fiscal 2025\"), never as a bare adjective (\"the 2025 return\"). Inside a JSON "
     "string write any quotation mark the source text prints as a single quote ('); a reason is one or two sentences. A margin outside the filed "
     "record's minimum and maximum needs a reason that quotes filed statements or filing sections of at least two different fiscal "
     "years; the [Y] record items alone cannot support it. A margin "
@@ -72,7 +72,7 @@ INSTRUCTION = (
 
 # WO_Q6: the financial route (banks, insurers, mortgage REITs; O3 retained equity). Its own text and version; the operating text above
 # is unchanged. Changing any text here: bump VALUATION_PROMPT_FIN_VERSION and re-pin its hash in tests/test_value_task.py.
-VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v3"   # v3 2026-10-31 CROSS_CHECK_Q3b N7: release means shrinking book; no mortgage REITs   # v2 2026-10-30 CROSS_CHECK_Q3 1-4: common equity; growth during a year; issuance and release rules
+VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v4"   # v4 2026-10-31 (financial smoke S1): how to write a year   # v3 2026-10-31 CROSS_CHECK_Q3b N7: release means shrinking book; no mortgage REITs   # v2 2026-10-30 CROSS_CHECK_Q3 1-4: common equity; growth during a year; issuance and release rules
 
 _SHAPE_FIN = """```json
 {"task": "valuation_inputs_financial",
@@ -110,7 +110,7 @@ INSTRUCTION_FIN = (
     "REASONS. Every base input needs at least one reason whose \"input\" names it, for example \"base.normalized\"; every scenario "
     "input needs its own, for example \"bear.roe\". A reason is a claim under the rules above, about the input it names, with "
     "at least one exact quote; one reason serves one input. In a reason write only figures a cited item prints, and the input's own "
-    "value; never a figure you computed (a growth rate or ratio the items do not print). [V0] may be cited. Inside a JSON "
+    "value; never a figure you computed (a growth rate or ratio the items do not print). [V0] may be cited. Write a year after a word that marks it as a year (\"in 2025\", \"fiscal 2025\"), never as a bare adjective (\"the 2025 return\"). Inside a JSON "
     "string write any quotation mark the source text prints as a single quote ('); a reason is one or two sentences. A return on "
     "equity in any year outside the filed record's minimum and maximum, or a book growth above the record's highest, needs a reason "
     "that quotes "
