@@ -79,3 +79,24 @@ def test_Q3c6_record_items_before_a_preferreds_first_filing():
     b = inputs.base_financial(f)
     items = forecast_fin.record_items(f, b)
     assert "preferred stock $0.0 million" in items[0]["text"] and "common equity $118.0 million" in items[-1]["text"]
+
+
+def test_Q3d1_a_non_positive_reference_is_one_annotation(ctx):
+    res = {"values": {"bear": 1.0, "base": 2.0, "bull": 3.0}, "annotations": []}
+    checks._annotate_neutral(res, (-8.0, "test"))
+    assert len(res["annotations"]) == 1 and res["annotations"][0].startswith("record_neutral_not_positive")
+
+
+def test_Q3d3_a_wrong_rollforward_factor_is_caught(ctx):
+    b, bar, _ = ctx
+    inp = dict(forecast_fin.assemble(clean()["base"], b, bar, r=R), stub_days=200)
+    v = forecast_fin.value(inp)
+    checks._recompute_fin(inp, v, b)
+    with pytest.raises(AssertionError):
+        checks._recompute_fin(inp, dict(v, rollforward_factor=1.0, value_per_share=v["equity_value"] / inp["shares"]), b)
+
+
+def test_O1_terminal_growth_above_anchor_is_annotated(ctx):
+    out = clean()
+    out["base"]["terminal_g"] = 0.045
+    assert any(a.startswith("terminal_g_above_anchor: base") for a in run_check(out, ctx)["annotations"])

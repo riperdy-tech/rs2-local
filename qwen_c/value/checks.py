@@ -18,7 +18,7 @@ import re
 from qwen_c import contract
 from qwen_c.value import desk, forecast, forecast_fin
 
-CHECKS_VERSION = "m3q.checks.v6"   # v6 2026-10-31 CROSS_CHECK_Q3c: the record-neutral reference (B13), the per-share tolerance   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
+CHECKS_VERSION = "m3q.checks.v7"   # v7 2026-10-31 CROSS_CHECK_Q3d 1-3, O-1   # v6 2026-10-31 CROSS_CHECK_Q3c: the record-neutral reference (B13), the per-share tolerance   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 MARGIN_SOURCES = ("record", "pricing_or_mix", "investment_in_explicit_years", "investment_after_year5", "decline")
@@ -495,6 +495,8 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
         keys = None if name == "base" else set(out.get(name) or {})
         sc = merged(out, name)
         g = float(sc["terminal_g"])
+        if g_anchor is not None and g > g_anchor:                          # Q3d O-1: annotated, supported or not
+            res["annotations"].append(f"terminal_g_above_anchor: {name} {g:.4f} against {g_anchor:.4f}")
         if (keys is None or "terminal_g" in keys) and g_anchor is not None and g > g_anchor and not span_ok(name, "terminal_g"):
             unsupported((name, "terminal_g"), f"V3g terminal_g {g:.4f} above the long-run growth anchor {g_anchor:.4f} with no supported "
                                               f"reason quoting filed items of two fiscal years")
@@ -549,7 +551,8 @@ def _neutral_fin(b, bar, r):
     sc = {"book_growth": [g, g], "roe": [med, med], "normalized": {"year": 3, "baseline": "median", "delta_pts": 0.0, "book_growth": g},
           "transition": "linear", "transition_year": None, "fade_years": NEUTRAL_FADE, "long_run_roe": med, "terminal_g": g}
     try:
-        return forecast_fin.value(forecast_fin.assemble(sc, b, bar, r=r))["value_per_share"], f"roe {med:.4f}, growth {g:.4f}"
+        return (forecast_fin.value(forecast_fin.assemble(sc, b, bar, r=r))["value_per_share"],
+                f"roe {med:.4f}, growth {g:.4f}, r {r:.4f}, F {NEUTRAL_FADE}")
     except desk.DeskRefusal as e:
         return None, f"record_neutral_unavailable: {e.code}"
 
@@ -561,12 +564,13 @@ def _neutral_op(b, bar, r):
     if ga is None:
         return None, "record_neutral_unavailable: no growth anchor"
     med = bar["median"]
-    ronic = b["ronic0"] if b.get("ronic0") and b["ronic0"] > ga else r
+    ronic = r                                                             # Q3d-2: growth at the cost of capital adds nothing
     sc = {"rev_growth": [ga, ga], "op_margin": [med, med], "normalized": {"year": 3, "baseline": "median", "delta_pts": 0.0, "rev_growth": ga},
           "transition": "linear", "transition_year": None, "fade_years": NEUTRAL_FADE, "long_run_op_margin": med, "terminal_ronic": ronic,
           "terminal_g": ga, "margin_source": "record", "capex_path": None, "investment_path": None}
     try:
-        return desk.value_operating(forecast.assemble(sc, b, bar, r=r))["value_per_share"], f"margin {med:.4f}, growth {ga:.4f}"
+        return (desk.value_operating(forecast.assemble(sc, b, bar, r=r))["value_per_share"],
+                f"margin {med:.4f}, growth {ga:.4f}, terminal RONIC = r {r:.4f}, F {NEUTRAL_FADE}")
     except desk.DeskRefusal as e:
         return None, f"record_neutral_unavailable: {e.code}"
 
@@ -577,6 +581,9 @@ def _annotate_neutral(res, neutral):
     res.setdefault("diagnostics", {})["record_neutral"] = {"value": value, "inputs": how}
     if value is None:
         res["annotations"].append(how)
+        return
+    if not value > 0:                                                     # Q3d-1: one annotation; the ratio means nothing
+        res["annotations"].append(f"record_neutral_not_positive: {value:.4f} ({how}); the scenarios are not compared")
         return
     for name, v in res["values"].items():
         ratio = v / value if value > 0 else None
@@ -618,6 +625,8 @@ def _recompute_fin(inp, v, b=None):
     eq = sum(f / (1 + r) ** t for t, f in enumerate(flows, 1)) + tv / (1 + r) ** n
     if not (same(tv, v["tv"]) and same(eq, v["equity_value"])):
         raise AssertionError(f"V1: the financial equity value {v['equity_value']} != {eq} recomputed")
+    if not abs(v["rollforward_factor"] - (1 + r) ** (float(inp["stub_days"]) / 365.0)) <= 1e-12:     # Q3d-3
+        raise AssertionError("V1: the roll-forward factor")
     vps = (v["equity_value"] * v["rollforward_factor"] + inp["excess_cash"]) / inp["shares"]
     if not abs(v["value_per_share"] - vps) <= 1e-9 * max(1.0, abs(vps)):     # Q3c-5: per share, not book-scaled
         raise AssertionError("V1: value per share")
@@ -746,6 +755,8 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
         keys = None if name == "base" else set(out.get(name) or {})
         sc = merged(out, name)
         g = float(sc["terminal_g"])
+        if g_anchor is not None and g > g_anchor:                          # Q3d O-1: annotated, supported or not
+            res["annotations"].append(f"terminal_g_above_anchor: {name} {g:.4f} against {g_anchor:.4f}")
         if (keys is None or "terminal_g" in keys) and g_anchor is not None and g > g_anchor and not span_ok(name, "terminal_g"):
             unsupported((name, "terminal_g"), f"V3g terminal_g {g:.4f} above the long-run growth anchor {g_anchor:.4f} with no supported "
                                               f"reason quoting filed items of two fiscal years")
@@ -807,5 +818,7 @@ def _recompute(inp, v):
             raise AssertionError(f"V1: the year-{t} levels flow {v['flows_all'][t - 1]} != {flow} recomputed")
     if not same(v["pv_levels"] + v["pv_flows"] + v["tv_pv"] + v["shield_after_n_pv"], v["equity_value"]):
         raise AssertionError("V1: the equity sum")
-    if not same(v["value_per_share"], (v["equity_value"] * v.get("rollforward_factor", 1.0) + inp["excess_cash"]) / inp["shares"]):
+    if not abs(v["rollforward_factor"] - (1 + inp["r"]) ** (float(inp["stub_days"]) / 365.0)) <= 1e-12:     # Q3d-3
+        raise AssertionError("V1: the roll-forward factor")
+    if not same(v["value_per_share"], (v["equity_value"] * v["rollforward_factor"] + inp["excess_cash"]) / inp["shares"]):
         raise AssertionError("V1: value per share")
