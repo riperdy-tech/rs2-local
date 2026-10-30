@@ -1,6 +1,6 @@
 # RR_N (DEV): Qwen material-event detection, the DEV half (2026-10-29/30)
 
-**Status:** DRAFT. The sections that do not depend on model output were written during the run. Sections 5–8 are filled in from `n6/score_dev.json` (`n6_tables.py`) after the run.
+**Status:** sections 5–8 were filled 2026-10-30 from `n6/score_dev.json` (`n6_score.py`, `n6_tables.py`, `n6_taxonomy.py`), after all 213 run rows. FFAI T2 seed 3000 failed twice, on output length, and stands as `run_incomplete`. The S4/S5 adjudication is complete: 207 rulings, 0 claims unadjudicated.
 
 ## 1. What was measured
 
@@ -47,7 +47,7 @@ Does qwen_c's `material_events` task report a material event the SEC record show
 - **ALTS, AMS:** the going-concern text is in the financial-statement notes, which the packet does not carry.
 - **QVCGA:** the Item 2.04 text is cut off by the 4,000-character 8-K body cap.
 
-Builder v6 (WO_N6, prepared and not applied to DEV) targets both.
+Builder v7 (WO_N6, then the CROSS_CHECK_O 6a trim fix; AUDIT_N6 and its addendum; not applied to the DEV runs) carries all three in an offline rebuild of the 84 DEV packets, with no case lost against v5 (`n7/regression_v7.json`: exact 37 to 43, absent 7 to 2). The DEV regression rerun uses v7.
 
 ## 4. The runs
 
@@ -58,13 +58,60 @@ Builder v6 (WO_N6, prepared and not applied to DEV) targets both.
 - **Scale:** 212 tasks, through the scheduled task RS2-M3N-DEV-Runner, outside any Claude session.
 - **The smoke run** (FATBP plus control GNK) found a contract false negative: "Chapter 11" counted as an unlisted figure. It was fixed before the DEV run (`626e086`), and the smoke runs were set aside.
 
-## 5. Results
+## 5. Results (DEV, 23 events, 24 controls)
 
-*To be filled from n6_tables.py.*
+| Measure | seed 1000 | seed 3000 |
+|---|---|---|
+| **Model recall, strict, T1** (passage in packet; own-class claim on a qualifying item, `supported`) | 12/20 = 0.60 [0.39, 0.78] | 14/21 = 0.67 [0.45, 0.83] |
+| **Model recall, lenient, T1** (own-class claim, any support) | **19/20 = 0.95 [0.76, 0.99]** | 20/21 = 0.95 [0.77, 0.99] |
+| System recall, strict, T1 (all 23) | 12/23 = 0.52 [0.33, 0.71] | 14/23 = 0.61 [0.41, 0.78] |
+| Control false-alarm rate, clean on all classes | 1/9 = 0.11 [0.02, 0.43] | 3/9 = 0.33 [0.12, 0.65] |
+| Support rate, all material_events claims, T1 | 89/140 = 0.64 | 90/144 = 0.62 |
+| Support rate, detecting claims, T1 | 12/19 = 0.63 | 14/20 = 0.70 |
+| Early warning at T0 (`risks` names the class) | 10/16 = 0.62 | 9/16 = 0.56 |
+| Precision (S6, seed 1000, adjudicated) | 108/133 = 0.81 [0.74, 0.87] | — |
+| **Reference bar 18/20 = 0.90** (strict, seed 1000) | **not met: 0.60** | |
+
+**Seed spread:** both seeds agree on 17 of the 20 detectable events (κ = 0.68).
+
+**Lag (seed 1000):**
+- 12 detected at T1, a median of 2 XNYS sessions after first public;
+- 2 detected at T2 only (ORIQU, QVCGA);
+- 7 missed at both;
+- 2 not in the packet.
+
+**Per class:** small strata (2–3 events), so they are descriptive only. C5 and C7 are 3/3 and 2/2. C2 is 0/1 detectable (2 of its 3 events are not in the packet). False alarms on controls concentrate in C6 (2/17) and C1 (1–2/19).
+
+**The headline:** the model names the right event almost every time (0.95 lenient). Strict recall is lower because most detecting claims **fail the code's support check**, not because the model misses the event. See §8.
 
 ## 6. Baseline B against Qwen
 
-*To be filled.*
+**Baseline B on DEV.** It is deterministic: the PREREG regular expressions over the same frozen packets. It does not
+depend on the model, so this half was computed before the GPU run ended.
+
+| Measure | B |
+|---|---|
+| Model recall at T1 (the passage is in the packet) | 19/20 = 0.95 [0.76, 0.99] |
+| System recall at T1 (all DEV events) | 19/23 = 0.83 [0.63, 0.93] |
+| T1 outcomes | 19 detected, 3 not in the packet (ALTS, AMS, QVCGA), 1 missed in evidence (SYNA) |
+| T2 outcomes | 18 detected, 4 not in the packet, 1 missed in evidence |
+| False-alarm rate on controls clean in all classes | 1/9 = 0.11 [0.02, 0.43] |
+
+**Read these with a built-in bias.**
+- B's recall here is not a fair comparison with Qwen's. The truth events were discovered partly with full-text and
+  keyword searches of the same kind as B's patterns.
+- "In the packet, equivalent" is itself defined by a B-pattern hit (amendment 6, S1).
+- An event B's patterns do not match was less likely to be found, and cannot be "equivalent".
+- B's recall is therefore biased upward by construction. The fairer comparisons are:
+  - false alarms on controls;
+  - what each says beyond a pattern hit: status, date, whether the event is in force;
+  - the McNemar table on the events both could see.
+
+**Against Qwen (seed 1000, the 20 detectable events):**
+- B detects 8 events Qwen misses strictly; Qwen detects 1 that B misses (McNemar p = 0.039).
+- Read with §8: all of Qwen's strict misses except LSTA are contract false negatives, and leniently Qwen detects 19/20, the same count as B.
+- On controls, B's false-alarm rate (0.11) equals Qwen's seed 1000 (0.11) and is below its seed 3000 (0.33).
+- The difference that matters is the extra a claim carries: status, date and whether the event is in force. B carries none of these.
 
 ## 7. Adjudication of other-class and control claims (S4, S5)
 
@@ -80,9 +127,75 @@ Builder v6 (WO_N6, prepared and not applied to DEV) targets both.
   - regaining compliance labelled as a delisting notice.
 - **`past_event`** means an event that occurred, but more than about 180 days before T or since cured. It is not a false alarm, and is reported as stale.
 
-## 8. Failure taxonomy (SPEC §7)
+## 8. Failure taxonomy (SPEC §7; `n6_taxonomy.py`, `n6/taxonomy_dev.json`)
 
-*To be filled:* packet gap; section not found; model miss in evidence; wrong class; contract false negative; false alarm from boilerplate; false alarm from a past or another entity's event.
+| Category | T1 s1000 | T1 s3000 | T2 s1000 | T2 s3000 |
+|---|---|---|---|---|
+| **contract false negative** (own-class claim on the evidence, failed a support check) | **7** | 6 | 6 | 6 |
+| passage not carried (filing in the packet, passage outside the carried text) | 3 | 2 | 4 | 3 |
+| model missed it in evidence | 1 | 1 | 0 | 1 |
+| wrong class | 0 | 0 | 1 | 0 |
+| run incomplete (output-length cap) | 0 | 0 | 0 | 1 |
+
+**Contract false negatives, by check, over all 25 failing detecting claims:** `number_not_listed` 21, `quote_not_found` 3,
+`number_not_found` 1. The unlisted tokens are of two kinds:
+1. **Designators,** not quantities:
+   - "10" of "10-Q";
+   - "8" of "8-K";
+   - "820" of "ASC 820";
+   - "26-465" of a bankruptcy case number;
+   - "5250(f)" of a listing rule.
+
+   The `626e086` exemption covers "Chapter 11", "Item 1.03" and "Rule 5550", but not form names, accounting-standard
+   codes or case numbers.
+2. **Real figures the claim states that sit inside the claim's own verbatim quote,** which passed the quote check:
+   "30 consecutive trading days", "80%". The quote already proves that the figure is printed in the cited item.
+
+**Passage not carried:**
+- ALTS, AMS: going concern in the notes;
+- QVCGA: Item 2.04 past the 8-K cap;
+- FFAI T2, BWEN T2.
+
+Builder v7 carries ALTS, AMS and QVCGA (`n7/regression_v7.json`).
+
+**False alarms** (S4/S5 adjudication: 38 false alarms, 19 past events, 8 unclear). By reason:
+- **a past or another entity's event** (stale doubt, an expired agreement, a cured notice): counted as `past_event`, 19;
+- **mislabelled type:**
+  - a guidance cut as a withdrawal;
+  - the company's own termination as a contract loss;
+  - a cost programme as a restructuring;
+  - an expired or non-binding offer as an acquisition;
+  - regaining compliance as a delisting;
+  - a cancelled merger as pending;
+- **boilerplate risk-factor text:** none counted as an acting false alarm. Supported claims cite filed facts.
+
+**Systemic fixes this taxonomy calls for (§7):**
+- (a) Contract v3: extend the designator exemption, and count a figure printed inside one of the claim's own passing
+  quotes as listed. It is measured offline on the stored DEV analyses before any FRESH run.
+- (b) Builder v7, already done.
+- (c) The output-length cap (`num_predict` 12,288) for long packets. It is recorded; any change needs its own test.
+
+## 8a. Contract v3, offline recheck on the stored DEV analyses (2026-10-30; `n6_recheck_v3.py`, `n6/score_dev_v3.json`)
+
+Contract `m3m.analysis.v3` (rs2-local `15207e4`, `d2f3f15`) was re-applied to the same stored model outputs. No model was rerun, so this
+measures the contract alone. DEV is the set the fix was diagnosed on, so these numbers are optimistic by construction; FRESH tests them.
+
+| Measure | v2 seed 1000 | v3 seed 1000 | v2 seed 3000 | v3 seed 3000 |
+|---|---|---|---|---|
+| Strict model recall (T1) | 12/20 | 18/20 = 0.90 (0.70–0.97) | 14/21 | 18/21 = 0.86 (0.65–0.95) |
+| Lenient model recall | 19/20 | 19/20 | 20/21 | 20/21 |
+| System recall (all 23 events) | — | 18/23 = 0.78 | — | 18/23 = 0.78 |
+| Clean-control false alarms | 1/9 | 1/9 | 3/9 | 3/9 |
+| Precision (adjudicated, seed 1000) | 0.81 | 108/133 = 0.81 | — | — |
+
+- **Seed agreement:** 19/20, κ 0.68 → 0.77.
+- **Baseline B against Qwen (seed 1000):** B 19/20, Qwen 18/20. Discordant pairs 2 (B only) and 1 (Qwen only), McNemar p = 1.0.
+- **Still missed at T1 and T2:**
+  - ALTS and AMS (C2): the event is not in the packet;
+  - LSTA and LMNR (C6): rule-literal criticals of low materiality (§9);
+  - ACNT at seed 3000.
+- **Reference bar 0.90:** met at the point estimate for seed 1000 only. The lower bounds sit near 0.65–0.70.
+- **No new false alarms:** v3 widens what counts as listed, and control false alarms did not move at either seed.
 
 ## 9. Limits
 

@@ -1,5 +1,5 @@
 {
-  "prereg": "m3o.v1.3",
+  "prereg": "m3o.v1.4",
   "written_utc": "2026-10-29T13:30:00Z",
   "spec": "SPEC_m3o_integration.md",
   "disclosure": "Written during the 3N DEV run, before any 3N score. Seen: the A0 10-27 mark (RR_L7); 157 DEV other-class/control material_events claims during S4/S5 adjudication; partial scorer output used only for validation. No rule was fitted to any of it.",
@@ -69,11 +69,11 @@
   "analysis": {
     "model": "rs2-analyst-deep-mtp5-v33",
     "prompt": "m3m.prompt.v3",
-    "contract": "m3m.analysis.v2 (with the designator exemption, rs2-local 626e086)",
+    "contract": "m3m.analysis.v3 (rs2-local review-2026-10/m3n-v6 d2f3f15)",
     "tasks": "all seven SPEC_m3m tasks plus material_events",
     "seed_base": 1000,
     "runs_per_name": 1,
-    "builder": "v7 (rs2-local review-2026-10/m3n-v6 4bc9425; AUDIT_N6 addendum); one version per formation",
+    "builder": "v7 (rs2-local review-2026-10/m3n-v6, at d2f3f15 with contract v3); one version per formation",
     "regime": "verified (contemporaneous formations); archival_sec_acceptance_v1 (retrospective 2026-09-30, amendment_3)"
   },
   "labels": {
@@ -114,5 +114,6 @@
     "every_line": "engine version and sha256, input sha256s; Qwen-derived lines also the qwen_c git commit (manifest) and builder_code (packet)"
   },
   "amendment_2": "2026-10-29 ~14:45Z, before any formation analysis: builder is v7 (rs2-local 4bc9425, going-concern notes outside TOTAL_CAP) because the CROSS_CHECK_O 6a regression test failed on v6 (event 8-Ks of PTHS and EONR pushed out); v7 passes it (m3n/n7/regression_v7.json). No action rule changed.",
-  "amendment_3": "2026-10-29 ~14:45Z+, before any formation analysis: the retrospective 2026-09-30 formation uses regime archival_sec_acceptance_v1 (frame = last stocks.json commit at or before T on the pinned ref; CIK from that commit cik_map), because its output commit b9497ef fails the publication pair check (missing embedded Reverse record for NNOX; pre-3094 fix), so the verified regime refuses it. Packets never read reverse_scores.json. Its runs use their own worktree/ledger root (wt-m3o-retro) so they are never a prior for contemporaneous runs. Contemporaneous formations keep regime verified."
+  "amendment_3": "2026-10-29 ~14:45Z+, before any formation analysis: the retrospective 2026-09-30 formation uses regime archival_sec_acceptance_v1 (frame = last stocks.json commit at or before T on the pinned ref; CIK from that commit cik_map), because its output commit b9497ef fails the publication pair check (missing embedded Reverse record for NNOX; pre-3094 fix), so the verified regime refuses it. Packets never read reverse_scores.json. Its runs use their own worktree/ledger root (wt-m3o-retro) so they are never a prior for contemporaneous runs. Contemporaneous formations keep regime verified.",
+  "amendment_4": "2026-10-30, before any formation analysis: contract m3m.analysis.v3 (rs2-local d2f3f15: form names, ASC/ASU codes and case numbers are designators; a figure printed inside the claim's own verified quote counts as listed), from the 3N DEV failure taxonomy (RR_N_DEV §8). Offline DEV recheck: strict recall 12/20 -> 18/20, control false alarms unchanged. Q1 still needs support == supported. No action rule changed."
 }

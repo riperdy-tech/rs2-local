@@ -12,7 +12,7 @@ A monitoring run is `python -m qwen_c.runner <packet> --tasks material_events,th
 
 ## Steps
 
-1. **The executor** `m3p_monitor.py run [--limit N]`:
+1. **The executor** `m3p_monitor.py run [--limit N]` (built and audited: WO_P3b1, AUDIT_P3b1):
    - It takes the queue's top entry and builds its packet (the newest verified screener commit at or before the
      trigger time, and the trigger's effective time as T).
    - It runs qwen_c in `wt-m3o` and calls `resolve(run_dir)`.
@@ -30,6 +30,13 @@ A monitoring run is `python -m qwen_c.runner <packet> --tasks material_events,th
    - Run the failure tests live: Ollama down, a killed run, a duplicate trigger.
 5. **Missed-event review:** at the end of the week, search EDGAR independently for the monitored names' critical 8-K
    items and NT filings. Was each one caught, and when?
+
+## Operating rules (AUDIT_P3b1)
+
+- **Never run the executor while WO_O2 or WO_O3 runs** use the same run root. The crash scan would re-queue an
+  in-progress formation run.
+- **Run `m3l_verifier/check_new_runs.py` before each executor pass,** so `verified_commit` sees the newest verified
+  screener commit.
 
 ## Limits
 

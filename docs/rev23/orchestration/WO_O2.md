@@ -39,9 +39,14 @@ and before 3N FRESH (SPEC_m3o §9).
 5. **Before the fill open:**
    - Rerun `o2_decide.py`. If the decision run has changed (a later verified run before the open), the names analysed at
      the earlier T are re-queued at the new T and stay `analysis_pending` until they are rerun.
-   - Freeze the map: hash it, and record the hash in LOG with the UTC time. That time precedes the open.
+   - Freeze the map: hash it, and record the hash in LOG with the UTC time.
+   - **Witness (SPEC_m3s WO_S4).** Before 14:30Z, commit a one-line file
+     `docs/rev23/witness/formation_2026-10-30.txt` (the map's sha256, the run id, T, and the count of complete, pending
+     and incomplete names) to rs2-local `docs/rev23-records` and push it. GitHub's push time is then an independent
+     witness that the analyses preceded the fill (PLAN W.4). The file holds hashes only.
 6. **After the fill:** `forward_ledger.py` appends the formation. Its run id and book must equal the map's; a
-   difference is a stop. Then `m3o_engine.py` (WO_O1) writes the formation's lines.
+   difference is a stop. Then fetch the universe prices (`m3o/universe.py fetch 2026-10-30`; AUDIT_S1), and only then
+   run `m3o_engine.py` (WO_O1), which writes the formation's lines and the marks with U.
 7. **Remove the scheduled task** when the batch is done.
 
 ## Acceptance
@@ -49,7 +54,7 @@ and before 3N FRESH (SPEC_m3o §9).
 | Test | Pass |
 |---|---|
 | Every book name has a map row | the count equals the book, excluded names included with their reason |
-| Analyses precede the fill | the map hash is logged before 14:30Z 11-02; each `run_dir`'s manifest `finished_at` is before it, or the name is pending |
+| Analyses precede the fill | the map hash is pushed (GitHub push time) before 14:30Z 11-02; each `run_dir`'s manifest `finished_at` is before it, or the name is pending |
 | Decision run agrees | forward_ledger's formation equals the map's run id and book |
 | Records recompute | every run's manifest and analysis sha256 recompute (as M-REC) |
 | Nothing else changed | no screener, overlay, `rn_depth`, KIS or schedule change other than the temporary task, which is then removed |
