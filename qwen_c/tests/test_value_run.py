@@ -78,12 +78,6 @@ def test_refusal_before_any_call_is_a_no_call(setup, monkeypatch):
     assert res["status"] == "no_call" and res["reason"] == "tax_unavailable" and not seen
 
 
-def test_financial_family_is_refused_by_name():
-    with pytest.raises(desk.DeskRefusal) as e:
-        run.prepare({"decision_time_utc": "2026-10-30T13:00:00Z"}, "1", "Banks", 1.0, online=False, family="financial")
-    assert e.value.code == "family_not_routed"
-
-
 def test_memo_prints_code_numbers_and_only_supported_reasons(setup, monkeypatch):
     from qwen_c.value import checks, memo
     p, out = setup

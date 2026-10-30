@@ -1,0 +1,338 @@
+{
+ "F_insurer": {
+  "facts": {
+   "equity": {
+    "values": [
+     {
+      "end": "2020-12-31",
+      "value": 54.08546600530648,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-5"
+     },
+     {
+      "end": "2021-12-31",
+      "value": 55.9784573154922,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-4"
+     },
+     {
+      "end": "2022-12-31",
+      "value": 57.93770332153442,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-3"
+     },
+     {
+      "end": "2023-12-31",
+      "value": 59.96552293778812,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-2"
+     },
+     {
+      "end": "2024-12-31",
+      "value": 62.0643162406107,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-1"
+     },
+     {
+      "end": "2025-12-31",
+      "value": 64.23656730903207,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A0"
+     }
+    ]
+   },
+   "net_income": {
+    "values": [
+     {
+      "end": "2020-12-31",
+      "value": 6.270778667281911,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-5"
+     },
+     {
+      "end": "2021-12-31",
+      "value": 6.490255920636777,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-4"
+     },
+     {
+      "end": "2022-12-31",
+      "value": 6.717414877859063,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-3"
+     },
+     {
+      "end": "2023-12-31",
+      "value": 6.9525243985841305,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-2"
+     },
+     {
+      "end": "2024-12-31",
+      "value": 7.195862752534574,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-1"
+     },
+     {
+      "end": "2025-12-31",
+      "value": 7.447717948873284,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A0"
+     }
+    ]
+   },
+   "diluted_shares": {
+    "values": [
+     {
+      "end": "2020-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-5"
+     },
+     {
+      "end": "2021-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-4"
+     },
+     {
+      "end": "2022-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-3"
+     },
+     {
+      "end": "2023-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-2"
+     },
+     {
+      "end": "2024-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-1"
+     },
+     {
+      "end": "2025-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A0"
+     }
+    ]
+   },
+   "_absent": {},
+   "_stale": {},
+   "_latest_annual_period": "2025-12-31"
+  },
+  "scenario": {
+   "book_growth": [
+    0.08,
+    0.08
+   ],
+   "roe": [
+    0.12,
+    0.12
+   ],
+   "normalized": {
+    "year": 5,
+    "baseline": "last",
+    "delta_pts": 0.0,
+    "book_growth": 0.08
+   },
+   "transition": "linear",
+   "transition_year": null,
+   "fade_years": 10,
+   "long_run_roe": 0.12,
+   "terminal_g": 0.035
+  },
+  "r": 0.09,
+  "truth": 112.26642490153836
+ },
+ "F2_bank": {
+  "facts": {
+   "equity": {
+    "values": [
+     {
+      "end": "2020-12-31",
+      "value": 861.9466194733862,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-5"
+     },
+     {
+      "end": "2021-12-31",
+      "value": 913.6634166417895,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-4"
+     },
+     {
+      "end": "2022-12-31",
+      "value": 968.4832216402968,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-3"
+     },
+     {
+      "end": "2023-12-31",
+      "value": 1026.5922149387147,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-2"
+     },
+     {
+      "end": "2024-12-31",
+      "value": 1088.1877478350377,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-1"
+     },
+     {
+      "end": "2025-12-31",
+      "value": 1153.4790127051401,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A0"
+     }
+    ]
+   },
+   "net_income": {
+    "values": [
+     {
+      "end": "2020-12-31",
+      "value": 73.18414693641958,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-5"
+     },
+     {
+      "end": "2021-12-31",
+      "value": 77.57519575260476,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-4"
+     },
+     {
+      "end": "2022-12-31",
+      "value": 82.22970749776105,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-3"
+     },
+     {
+      "end": "2023-12-31",
+      "value": 87.16348994762672,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-2"
+     },
+     {
+      "end": "2024-12-31",
+      "value": 92.39329934448432,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-1"
+     },
+     {
+      "end": "2025-12-31",
+      "value": 97.9368973051534,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A0"
+     }
+    ]
+   },
+   "diluted_shares": {
+    "values": [
+     {
+      "end": "2020-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-5"
+     },
+     {
+      "end": "2021-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-4"
+     },
+     {
+      "end": "2022-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-3"
+     },
+     {
+      "end": "2023-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-2"
+     },
+     {
+      "end": "2024-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A-1"
+     },
+     {
+      "end": "2025-12-31",
+      "value": 1.0,
+      "tag": "T",
+      "form": "10-K",
+      "accn": "A0"
+     }
+    ]
+   },
+   "_absent": {},
+   "_stale": {},
+   "_latest_annual_period": "2025-12-31"
+  },
+  "scenario": {
+   "book_growth": [
+    0.06,
+    0.06
+   ],
+   "roe": [
+    0.096,
+    0.102
+   ],
+   "normalized": {
+    "year": 5,
+    "baseline": "last",
+    "delta_pts": 3.0,
+    "book_growth": 0.06
+   },
+   "transition": "linear",
+   "transition_year": null,
+   "fade_years": 10,
+   "long_run_roe": 0.12,
+   "terminal_g": 0.03
+  },
+  "r": 0.1,
+  "truth": 1494.1452278143245
+ }
+}

@@ -20,7 +20,7 @@ from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION
 
-INPUTS_VERSION = "m3q.inputs.v5"   # v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v6"   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -288,5 +288,6 @@ def base_financial(f):
     # R_0 = book equity at the start of the base year, R_1 = at its end (the start of year 1): E_1 = R_1 ROE_1
     return {"version": INPUTS_VERSION, "route": "financial", "fy0": e0, "R0": opening, "R1": eq[e0], "e0": ni[e0],
             "roe0": ni[e0] / opening, "book_hist": [eq[e] for e in ends], "shares": shares, "excess_cash": 0.0,
-            "record": {"roe": roe_hist},
+            "record": {"roe": roe_hist,                                  # WO_Q6: V3g on book growth, as rev_growth_max on the operating route
+                       "book_growth_max": max(eq[ends[i]] / eq[ends[i - 1]] - 1 for i in range(1, len(ends)) if eq[ends[i - 1]] > 0)},
             "stamps": ["financial_driver_book_equity", "preferred_not_separated", "shares_weighted_average_diluted"]}

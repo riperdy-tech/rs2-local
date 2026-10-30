@@ -3,8 +3,8 @@ record -> the valuation_inputs prompt -> the model -> checks V1-V11 -> at most o
 
 The model call, the reply parsing and the overflow checks are qwen_c.runner's own (call, parse_reply, reply_problem), so a valuation
 fails the way an analysis task fails. Everything the model was told and returned is kept under cache/m3q/runs/<run>/ (prompts/, raw/),
-and result.json carries the checks, the values and every version. Operating route only: a financial company (O3) is refused by name
-until its forecast assembly exists (inputs.base_financial is built; the ROE-path task and checks are not).
+and result.json carries the checks, the values and every version. A financial company (a bank, an insurer, a mortgage REIT) takes the
+financial route (WO_Q6, O3): inputs.base_financial, the ROE-path task, forecast_fin and checks(route="financial").
 
     python -m qwen_c.value.run <packet.json> --cik <cik> --sector <MRI sector> --market-cap <USD> [--seed 1000] [--family operating]
 """
@@ -15,7 +15,7 @@ from datetime import date, timedelta
 
 import rs2_data
 from qwen_c import runner
-from qwen_c.value import checks, coe, desk, facts, forecast, inputs, task
+from qwen_c.value import checks, coe, desk, facts, forecast, forecast_fin, inputs, task
 
 RUNS = runner.ROOT / "cache" / "m3q" / "runs"
 REPAIR_SEED_OFFSET = 50000
@@ -27,16 +27,19 @@ def _statements(packet):
 
 MAX_STUB_DAYS = 800
 NUM_PREDICT = 24576    # smokes 1-2: 12,288 and 16,384 ran out in thinking; prompt ~35k + 24.5k is well inside NUM_CTX
-ROUTED = ("operating", "commodity")      # ruling 17: every other family (financial until its task exists) is a named no_call
+ROUTED = ("operating", "commodity")      # ruling 17: every other family not routed below is a named no_call
+FINANCIAL = ("financial", "mortgage_reit")   # WO_Q6: the financial route (O3; O6 for mortgage REITs)
 
 
 def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow_after_T=False):
     """Everything code owns, before any model call: (facts, base, bar, record items, r, coe provenance, fiscal-year ends).
     `family` is required (the census's), never defaulted. Raises DeskRefusal."""
-    if family not in ROUTED:
-        raise desk.DeskRefusal("family_not_routed", f"family {family!r}: only {ROUTED} are valued by this runner")
+    if family not in ROUTED + FINANCIAL:
+        raise desk.DeskRefusal("family_not_routed", f"family {family!r}: only {ROUTED + FINANCIAL} are valued by this runner")
     T = runner._parse_t(packet["decision_time_utc"])
     f = facts.build(cik, T, online=online, root=root)
+    if family in FINANCIAL:
+        return _prepare_financial(f, T, sector, allow_after_T)
     fy0 = max(v["end"] for v in (f.get("revenue") or {}).get("values", [])) if f.get("revenue") else None
     if fy0 is None:
         raise desk.DeskRefusal("history_short", "no filed revenue")
@@ -53,6 +56,20 @@ def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow
     r, prov = coe.cost_of_equity(sector, T, allow_after_T=allow_after_T)
     b["g_anchor"] = prov["g_anchor"]                                      # N7: the long-run growth anchor the checks annotate against
     fy_ends = [v["end"] for v in f["revenue"]["values"]]
+    return f, b, bar, record, r, prov, fy_ends
+
+
+def _prepare_financial(f, T, sector, allow_after_T):
+    """prepare() for the financial route: no market value, bill rate or operating bridge is needed."""
+    b = inputs.base_financial(f)
+    b["stub_days"] = (T.date() - date.fromisoformat(b["fy0"])).days
+    if b["stub_days"] > MAX_STUB_DAYS:
+        raise desk.DeskRefusal("base_year_too_old", f"the base fiscal year ended {b['stub_days']} days before T")
+    bar = forecast_fin.record_bar(b["record"]["roe"])
+    record = forecast_fin.record_items(f)
+    r, prov = coe.cost_of_equity(sector, T, allow_after_T=allow_after_T)
+    b["g_anchor"] = prov["g_anchor"]
+    fy_ends = [v["end"] for v in f["equity"]["values"]]
     return f, b, bar, record, r, prov, fy_ends
 
 
@@ -81,7 +98,8 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
     result = {"ticker": packet["ticker"], "T": packet["decision_time_utc"], "packet_sha256": runner.sha256_bytes(src), "seed": seed,
               "versions": {"desk": desk.DESK_VERSION, "facts": facts.FACTS_VERSION, "inputs": inputs.INPUTS_VERSION,
                            "forecast": forecast.FORECAST_VERSION, "checks": checks.CHECKS_VERSION, "coe": coe.COE_VERSION,
-                           "prompt": task.VALUATION_PROMPT_VERSION, "contract": runner.contract.CONTRACT, "model": runner.MODEL,
+                           "prompt": task.VALUATION_PROMPT_FIN_VERSION if family in FINANCIAL else task.VALUATION_PROMPT_VERSION,
+                           "forecast_fin": forecast_fin.FORECAST_FIN_VERSION, "contract": runner.contract.CONTRACT, "model": runner.MODEL,
                            "git": runner.git_state()},
               "authority": "diagnostic_only"}
     try:
@@ -106,7 +124,8 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
         att = {"attempt": n, "seed": s, "outcome": outcome, "detail": detail, "seconds": secs}
         if outcome == "reply":
             try:
-                res = checks.check(obj, items, packet["ticker"], _statements(packet), b, bar, r, fy_ends)
+                res = checks.check(obj, items, packet["ticker"], _statements(packet), b, bar, r, fy_ends,
+                                   route="financial" if family in FINANCIAL else "operating")
             except AssertionError as e:                                   # N11: an engine defect is recorded, never a crash
                 att.update(outcome="engine_defect", detail=str(e))
                 attempts.append(att)
@@ -141,7 +160,7 @@ def main(argv=None):
     ap.add_argument("--sector", required=True)
     ap.add_argument("--market-cap", type=float, required=True)
     ap.add_argument("--seed", type=int, default=runner.SEED_BASE)
-    ap.add_argument("--family", required=True, help="the census family; only operating and commodity are valued")
+    ap.add_argument("--family", required=True, help="the census family; operating, commodity, financial and mortgage_reit are valued")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--allow-anchor-after-T", action="store_true", help="the E2 regression on consumed dates only")
     a = ap.parse_args(argv)

@@ -70,9 +70,68 @@ INSTRUCTION = (
     "Reply in this shape:\n" + _SHAPE)
 
 
+# WO_Q6: the financial route (banks, insurers, mortgage REITs; O3 retained equity). Its own text and version; the operating text above
+# is unchanged. Changing any text here: bump VALUATION_PROMPT_FIN_VERSION and re-pin its hash in tests/test_value_task.py.
+VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v1"
+
+_SHAPE_FIN = """```json
+{"task": "valuation_inputs_financial",
+ "base": {"book_growth": [0.06, 0.06], "roe": [0.100, 0.105],
+          "normalized": {"year": 4, "baseline": "median", "delta_pts": 0.5, "book_growth": 0.05},
+          "transition": "linear", "transition_year": null,
+          "fade_years": 10, "long_run_roe": 0.11, "terminal_g": 0.03},
+ "bear": {"roe": [0.08, 0.08]},
+ "bull": {"roe": [0.12, 0.12]},
+ "prob": {"bear": 0.25, "base": 0.5, "bull": 0.25},
+ "reasons": [{"input": "base.roe", "claim": "one short statement", "fact_ids": ["Y2025-12-31"],
+              "quotes": ["an exact extract from a cited item"], "numbers": ["each figure in the claim, as printed"],
+              "confidence_basis": "stated in the cited item, or inferred, and from what"}],
+ "unknowns": ["what the evidence cannot answer"]}
+```"""
+
+INSTRUCTION_FIN = (
+    "TASK valuation_inputs_financial. The company is a financial (a bank, an insurer or a mortgage REIT): code values it from its book "
+    "equity and the return it earns on that equity. State the forecast inputs from which code will compute the company's value. You do "
+    "not compute a value, a price or a recommendation; you choose each input and give the evidence for it.\n"
+    "INPUTS. book_growth and roe are years 1 and 2: the growth of book equity as a fraction, and the return on equity (net income over "
+    "book equity at the start of the year, as the [Y] items print it). normalized is the year (3, 4 or 5) by which the return on equity "
+    "reaches a normalized level: its baseline is one statistic of the filed return-on-equity record in [V0] (min, p25, median, p75, max "
+    "or last), delta_pts is percentage points added to it (0 means the baseline itself), and book_growth is that year's growth of book "
+    "equity. transition is linear, step_at_year or hold_then_linear (the last two name transition_year, 3 up to the normalized year). "
+    "fade_years is how many years after year 5 book growth takes to reach terminal_g and the return on equity to reach long_run_roe. "
+    "long_run_roe must be above terminal_g, and terminal_g below the cost of equity in [V0]. Capital rules (bank capital ratios, "
+    "insurance reserves) are not modelled: a book growth the company's capital cannot support belongs in the reasons and the unknowns.\n"
+    "SCENARIOS. bear and bull list only the inputs that differ from base. A bear input is not above base and a bull input not below "
+    "it, unless a reason for that scenario input explains why. prob gives the three probabilities, summing to 1.\n"
+    "REASONS. Every base input needs at least one reason whose \"input\" names it, for example \"base.normalized\"; every scenario "
+    "input needs its own, for example \"bear.roe\". A reason is a claim under the rules above, about the input it names, with "
+    "at least one exact quote; one reason serves one input. In a reason write only figures a cited item prints, and the input's own "
+    "value; never a figure you computed (a growth rate or ratio the items do not print). [V0] may be cited. Inside a JSON "
+    "string write any quotation mark the source text prints as a single quote ('); a reason is one or two sentences. A return on "
+    "equity outside the filed record's minimum and maximum, or a book growth above the record's highest, needs a reason that quotes "
+    "filed statements or filing sections of at least two different fiscal years; the [Y] record items alone cannot support it. A "
+    "return-on-equity reason must cite at least one [Y], statement or filing section; an adjusted or company-defined figure may support "
+    "it but not alone. When the evidence cannot support an input, choose the input the filed record supports and say so in "
+    "\"unknowns\".\n"
+    "Reply in this shape:\n" + _SHAPE_FIN)
+
+
+def render_base_fin(b, bar, r, coe_prov):
+    """[V0] for the financial route: the filed return-on-equity record, book equity and the cost of equity."""
+    lines = [f"[V0] Measured by code from the filings (not a forecast). Base fiscal year ended {b['fy0']}.",
+             f"Filed return-on-equity record (net income over opening book equity): min {bar['min']:.4f}, p25 {bar['p25']:.4f}, "
+             f"median {bar['median']:.4f}, p75 {bar['p75']:.4f}, max {bar['max']:.4f}, last {bar['last']:.4f}.",
+             f"Book equity at the end of the base year {b['R1']:,.0f}; net income in the base year {b['e0']:,.0f}; highest filed yearly "
+             f"growth of book equity {b['record']['book_growth_max']:.4f}.",
+             f"Cost of equity {r:.4f} (risk-free {coe_prov['rf']:.4f}, long-run growth anchor {coe_prov['g_anchor']:.4f}, "
+             f"loading {coe_prov['loading_adjusted']:.3f}, equity premium {coe_prov['closure_erp']:.4f})."]
+    return "\n".join(lines)
+
+
 def base_item(b, bar, r, coe_prov):
     """[V0] as a citable evidence item (kind code_base: it never carries V3's span or V4's basis)."""
-    return {"fact_id": "V0", "kind": "code_base", "period": b["fy0"], "text": render_base(b, bar, r, coe_prov)}
+    render = render_base_fin if b.get("route") == "financial" else render_base
+    return {"fact_id": "V0", "kind": "code_base", "period": b["fy0"], "text": render(b, bar, r, coe_prov)}
 
 
 def render_base(b, bar, r, coe_prov):
@@ -90,6 +149,8 @@ def render_base(b, bar, r, coe_prov):
 
 def user_message(packet, record, b, bar, r, coe_prov):
     recs = "\n\n".join(f"[{i['fact_id']}] {i['text']}" for i in record)
+    if b.get("route") == "financial":                                     # WO_Q6
+        return "\n\n".join([tasks.render_packet(mask_price(packet)), recs, render_base_fin(b, bar, r, coe_prov), INSTRUCTION_FIN])
     return "\n\n".join([tasks.render_packet(mask_price(packet)), recs, render_base(b, bar, r, coe_prov), INSTRUCTION])
 
 
