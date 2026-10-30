@@ -84,3 +84,18 @@ def test_financial_family_is_refused_by_name():
     with pytest.raises(desk.DeskRefusal) as e:
         run.prepare({"decision_time_utc": "2026-10-30T13:00:00Z"}, "1", "Banks", 1.0, online=False, family="financial")
     assert e.value.code == "route_not_built_in_runner"
+
+
+def test_memo_prints_code_numbers_and_only_supported_reasons(setup, monkeypatch):
+    from qwen_c.value import checks, memo
+    p, out = setup
+    bad = C.clean()
+    bad["reasons"].append(C.reason("base.rev_growth", "Revenue will double.", ["G1"], ["revenue will double"], []))
+    monkeypatch.setattr(runner, "call", fake([bad], []))
+    res = run.value(p, "1", "Technology", 180e6, out_root=out, url="http://x")
+    pk = json.loads(p.read_text(encoding="utf-8"))
+    items = {e["fact_id"]: e for e in pk["evidence"]}
+    items.update({i["fact_id"]: i for i in forecast.record_items(C.facts())})
+    text = memo.render(res, checks.reasons_by_input(res["inputs"], items, "TEST", set()))
+    assert "diagnostic only" in text and f"{res['values']['base']:,.2f}" in text
+    assert "Revenue will double" not in text and "The company expects revenue growth of 5% in 2026." in text
