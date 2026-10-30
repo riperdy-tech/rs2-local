@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
 
-FACTS_VERSION = "m3q.facts.v3"   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v4"   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -81,6 +81,7 @@ CONCEPTS = {
     "preferred_equity": ("instant", [("us-gaap", "PreferredStockValue", "USD"), ("us-gaap", "PreferredStockValueOutstanding", "USD"),
                                      ("us-gaap", "PreferredStockIncludingAdditionalPaidInCapital", "USD"),
                                      ("us-gaap", "PreferredStockIncludingAdditionalPaidInCapitalNetOfDiscount", "USD")]),
+    "preferred_liquidation": ("instant", [("us-gaap", "PreferredStockLiquidationPreferenceValue", "USD")]),
     "ni_common": ("flow", [("us-gaap", "NetIncomeLossAvailableToCommonStockholdersBasic", "USD"),
                            ("us-gaap", "NetIncomeLossAvailableToCommonStockholdersDiluted", "USD")]),
     "preferred_dividends": ("flow", [("us-gaap", "PreferredStockDividendsIncomeStatementImpact", "USD"),

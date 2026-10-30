@@ -14,7 +14,7 @@ RONIC_t moves on 1/RONIC from RONIC_0 to RONIC_T; returns on capital become equi
 """
 import math
 
-DESK_VERSION = "m3q.desk.v3"   # v3 2026-10-30 CROSS_CHECK_Q3 3: driver "book" carries the year-5 book growth g5 and fades growth over years 6..5+F   # v2 2026-10-30: financial route on the clean-surplus identity (CROSS_CHECK_Q 25), driver required
+DESK_VERSION = "m3q.desk.v4"   # v4 2026-10-31 CROSS_CHECK_Q3b N1: driver book takes BV_t = R_t (no division by ROE)   # v3 2026-10-30 CROSS_CHECK_Q3 3: driver "book" carries the year-5 book growth g5 and fades growth over years 6..5+F   # v2 2026-10-30: financial route on the clean-surplus identity (CROSS_CHECK_Q 25), driver required
 FADE_CONVENTION = "revenue"          # B1, ruled by the truth test RR_Q3 (2026-10-30)
 
 
@@ -258,10 +258,10 @@ def value_financial(inp):
         m[t] = mg[4] + (m_long - mg[4]) * min(1.0, (t - 5) / f_years)
     roe = (lambda t: m[t]) if driver == "book" else (lambda t: ronic0 if t <= 5 else ronic_at(ronic0, ronic_t, (t - 5) / f_years))
     E = {t: R[t] * m[t] for t in R}
-    bv = {t: E[t] / roe(t) for t in R}
+    bv = dict(R) if driver == "book" else {t: E[t] / roe(t) for t in R}
     flows = [E[t] - (bv[t + 1] - bv[t]) for t in range(1, n + 1)]
     xs = [E[t] for t in range(1, n + 1)]
-    tv = E[n + 1] * (1.0 - gt / roe(n + 1)) / (r - gt)
+    tv = (E[n + 1] - gt * R[n + 1] if driver == "book" else E[n + 1] * (1.0 - gt / roe(n + 1))) / (r - gt)
     tv_pv = tv / (1 + r) ** n
     pv_all = sum(f / (1 + r) ** t for t, f in enumerate(flows, 1))
     equity = pv_all + tv_pv

@@ -160,7 +160,7 @@ def main(argv=None):
     ap.add_argument("--sector", required=True)
     ap.add_argument("--market-cap", type=float, required=True)
     ap.add_argument("--seed", type=int, default=runner.SEED_BASE)
-    ap.add_argument("--family", required=True, help="the census family; operating, commodity, financial and mortgage_reit are valued")
+    ap.add_argument("--family", required=True, help="the census family; operating, commodity and financial are valued")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--allow-anchor-after-T", action="store_true", help="the E2 regression on consumed dates only")
     a = ap.parse_args(argv)

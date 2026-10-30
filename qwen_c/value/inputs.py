@@ -20,7 +20,7 @@ from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION
 
-INPUTS_VERSION = "m3q.inputs.v6"   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v7"   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -264,6 +264,22 @@ def bridge_x_margin(b, op_margins, revenues, amort=None):
     return [(m * r + a - k_int * r / b["R0"] - k_other) * (1 - b["tau"]) / r for m, r, a in zip(op_margins, revenues, amort)]
 
 
+def _year_chain(ends):
+    """The fiscal-year ends chained back from the latest, each 350-380 days before the next (a stray quarter or a changed year-end
+    is skipped; the chain stops at a gap)."""
+    from datetime import date
+    if not ends:
+        return []
+    out = [ends[-1]]
+    for e in reversed(ends[:-1]):
+        gap = (date.fromisoformat(out[0]) - date.fromisoformat(e)).days
+        if 350 <= gap <= 380:
+            out.insert(0, e)
+        elif gap > 380:
+            break
+    return out
+
+
 def base_financial(f):
     """The measured base for value_financial (O3). The driver is opening common book equity: "revenue" R_t = common book equity at the
     start of year t and the "margin" m_t = ROE on it, so E_t = R_t m_t and Flow_t = E_t - (R_{t+1} - R_t), the retained-equity identity.
@@ -271,8 +287,13 @@ def base_financial(f):
     The operating base's data rules apply (CROSS_CHECK_Q3 5): staleness on the route's own series, the newest annual report, an
     unreconciled ProfitLoss refused, net income per diluted share reconciled with filed diluted EPS, and the per-share stamps."""
     eq_all, ni_all = _by_end(f, "equity"), _by_end(f, "net_income")
-    pref, nic, pdiv = _by_end(f, "preferred_equity"), _by_end(f, "ni_common"), _by_end(f, "preferred_dividends")
-    ends = sorted(eq_all)[-(POOL_YEARS + 1):]
+    carry, liq = _by_end(f, "preferred_equity"), _by_end(f, "preferred_liquidation")
+    nic, pdiv = _by_end(f, "ni_common"), _by_end(f, "preferred_dividends")
+    # Q3b N5: a preferred carried in APIC (filed PreferredStockValue 0 or par) is taken at its liquidation preference, stamped
+    pref = {e: (carry[e] if carry.get(e, 0.0) > 0 else liq[e]) for e in set(carry) | set(liq)
+            if carry.get(e, 0.0) > 0 or e in liq}
+    at_liq = any(not carry.get(e, 0.0) > 0 and liq.get(e, 0.0) > 0 for e in pref)
+    ends = _year_chain(sorted(eq_all))[-(POOL_YEARS + 1):]               # Q3b N8: year-ends 350-380 days apart
     if len(ends) < MIN_POOL_YEARS:
         raise DeskRefusal("history_short", f"{len(ends)} fiscal-year equity balances; at least {MIN_POOL_YEARS}")
     e0 = ends[-1]
@@ -282,7 +303,7 @@ def base_financial(f):
     if f.get("_latest_annual_period") and f["_latest_annual_period"] > e0:
         raise DeskRefusal("base_year_not_latest_annual", f"the newest eligible annual report is for {f['_latest_annual_period']}, the facts end {e0}")
     for v in (f.get("net_income") or {}).get("values", []):
-        if v["end"] in ends and v.get("stamp") == "profitloss_basis_unverified":
+        if v["end"] in ends[1:] and v.get("stamp") == "profitloss_basis_unverified":           # Q3b N4: ends[0] is the opening balance
             raise DeskRefusal("profitloss_basis_unverified", f"ProfitLoss for {v['end']} reconciles with diluted EPS on neither basis")
     stamps = ["financial_driver_book_equity", "shares_weighted_average_diluted", "financial_classification_unverified"]
     if any((v.get("form") or "").startswith(("20-F", "40-F")) for v in f["equity"]["values"]):
@@ -291,17 +312,23 @@ def base_financial(f):
         stamps.append("split_after_fy0_unchecked")
     # preferred stock (CROSS_CHECK_Q3 6): filed in any year used, it must be filed in every one, with its dividends or income to common
     has_pref = any(pref.get(e, 0.0) > 0 for e in ends)
+    first = None
     if has_pref:
-        missing = [e for e in ends if e not in pref]
+        # years before the first filed preferred hold none (an issue in the record); a year missing after it is refused (Q3b b4: BFH)
+        first = min(e for e in ends if e in pref)
+        missing = [e for e in ends if e >= first and e not in pref]
         if missing:
-            raise DeskRefusal("preferred_series_incomplete", f"preferred stock filed in some years, not for {missing}")
-        stamps.append("preferred_subtracted_at_carrying_value")
+            raise DeskRefusal("preferred_series_incomplete", f"preferred stock filed from {first}, not for {missing}")
+        if first > ends[0]:
+            stamps.append(f"preferred_first_filed:{first}")
+        pref = {e: pref.get(e, 0.0) for e in ends}
+        stamps.append("preferred_subtracted_at_liquidation_preference" if at_liq else "preferred_subtracted_at_carrying_value")
     eq = {e: eq_all[e] - (pref[e] if has_pref else 0.0) for e in ends}
     ni = {}
     for e in ends[1:]:
         if e not in ni_all:
             continue
-        if not has_pref:
+        if not has_pref or (e < first and e not in nic and e not in pdiv):     # before the issue: no preferred, no dividends
             ni[e] = ni_all[e]
         elif e in nic:
             ni[e] = nic[e]

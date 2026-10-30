@@ -18,7 +18,7 @@ import re
 from qwen_c import contract
 from qwen_c.value import desk, forecast, forecast_fin
 
-CHECKS_VERSION = "m3q.checks.v4"   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
+CHECKS_VERSION = "m3q.checks.v5"   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 MARGIN_SOURCES = ("record", "pricing_or_mix", "investment_in_explicit_years", "investment_after_year5", "decline")
@@ -306,7 +306,9 @@ FIN_JUDGMENT = ("book_growth", "roe", "normalized", "fade_years", "long_run_roe"
 FIN_ROE_INPUTS = ("roe", "normalized", "long_run_roe")
 FIN_REPLACEABLE = FIN_JUDGMENT + ("transition", "transition_year")
 FIN_ORDERED = ("book_growth", "roe", "normalized", "long_run_roe", "terminal_g")
-FIN_STAMPS = ["capital_constraint_not_modeled"]                                   # WO_Q6 §4
+FIN_STAMPS = ["capital_constraint_not_modeled"]
+RELEASE_SHARE = 0.25          # Q3b N2: a cumulative release of more than a quarter of book over years 1-5 is annotated
+PEAK_QUANTILE = "p75"         # Q3b N3: a normalized or long-run value at or above the record's p75 is annotated                                   # WO_Q6 §4
 _FIN_KEYWORDS = {
     "book_growth": r"growth|grow|book|equity|capital|retain|loan|deposit|premium|asset|balance sheet|dividend|buyback|repurchase",
     "roe": r"return|roe|earn|profit|income|margin|spread|interest|credit|loss|underwrit|combined ratio",
@@ -425,10 +427,17 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
                                        f"quoting filed items of two fiscal years")
         # CROSS_CHECK_Q3 4: book growth below the filed record's lowest, and a negative terminal growth, release book: a two-year span
         gmin = (b.get("record") or {}).get("book_growth_min")
+        gmin = None if gmin is None else min(gmin, 0.0)                       # Q3b N7: a slowdown is not a release
         for k, g, _ in growths:
             if (keys is None or k in keys) and gmin is not None and g < gmin and not span_ok(name, k):
                 unsupported((name, k), f"V3g book growth {g:.4f} below the filed record's lowest {gmin:.4f} with no supported reason "
                                        f"quoting filed items of two fiscal years")
+        path_s, _ = forecast_fin.build_path(sc, bar)
+        kept = 1.0
+        for y in path_s:
+            kept *= 1 + y["book_growth"]
+        if kept < 1 - RELEASE_SHARE and min(y["roe"] for y in path_s) < r:      # Q3b N2
+            res["annotations"].append(f"book_release_cumulative: {name} keeps {kept:.3f} of book over years 1-5 with an ROE below r")
         g_t = float(sc["terminal_g"])
         if (keys is None or "terminal_g" in keys) and g_t < 0 and not span_ok(name, "terminal_g"):
             unsupported((name, "terminal_g"), f"terminal_g {g_t:.4f} below zero with no supported reason quoting filed items of two fiscal years")
@@ -502,7 +511,7 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
         except desk.DeskRefusal as e:
             res["unsupported"].setdefault(f"{name}.desk", []).append(f"desk refusal {e.code}: {e}")
             continue
-        _recompute_fin(inp, v)
+        _recompute_fin(inp, v, b)
         res["results"][name] = v
         res["values"][name] = v["value_per_share"]
         if name == "base":
@@ -510,11 +519,14 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
             # (B13 ruling 2026-10-30: annotated; a bound is decided on E3's evidence)
             g_t = float(inp["g_T"])
             pb = v["value_per_share"] / (b["R1"] / b["shares"])
-            pb_ref = (bar["max"] - g_t) / (r - g_t)
+            pb_ref = (bar["median"] - g_t) / (r - g_t)
             res["diagnostics"] = {"tv_share": v["tv_pv"] / v["equity_value"] if v["equity_value"] else None, "implied_pb": pb,
-                                  "pb_record_max_perpetuity": pb_ref}
+                                  "pb_record_median_perpetuity": pb_ref}
             if pb > pb_ref:
-                res["annotations"].append(f"implied_pb_above_record_max_perpetuity: {pb:.2f} against {pb_ref:.2f}")
+                res["annotations"].append(f"implied_pb_above_record_median_perpetuity: {pb:.2f} against {pb_ref:.2f}")
+            for k, x in (("normalized", roe_n), ("long_run_roe", float(base["long_run_roe"]))):
+                if x >= bar[PEAK_QUANTILE]:
+                    res["annotations"].append(f"roe_at_record_peak: {k} {x:.4f} at or above the record's {PEAK_QUANTILE} {bar[PEAK_QUANTILE]:.4f}")
         if name == "base" and v["seam_ratio"] is not None and not SEAM_BAND[0] <= v["seam_ratio"] <= SEAM_BAND[1]:
             res["annotations"].append(f"V2 flow_seam_out_of_band: {v['seam_ratio']:.3f}")
     vv = res["values"]
@@ -528,16 +540,19 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
     return res
 
 
-def _recompute_fin(inp, v):
+def _recompute_fin(inp, v, b=None):
     """V1 for the financial route (CROSS_CHECK_Q3 8): every flow, the terminal value and the equity value recomputed from the inputs, on
     the prompt's definitions (g_t the book growth during year t, faded from g5 to g_T over years 6..5+F; the ROE faded from year 5's to
     long_run_roe over the same years), independently of desk.value_financial; then value per share."""
-    def same(a, c):
-        return abs(a - c) <= 1e-9 * max(1.0, abs(a), abs(c))
-    F, r, g_t, roe_l, g5 = int(inp["F"]), float(inp["r"]), float(inp["g_T"]), float(inp["m_long"]), float(inp["g5"])
+    F, r, g_t, roe_l = int(inp["F"]), float(inp["r"]), float(inp["g_T"]), float(inp["m_long"])
     n = 5 + F
-    book = {t: float(inp["revenue"][t]) for t in range(1, 6)}
-    roe = {t: float(inp["margin"][t - 1]) for t in range(1, 6)}
+    # N9: the explicit years from the reply's path and the filed R_1, not from assemble's revenue list
+    path = inp["_path"]
+    book = {1: float(b["R1"] if b is not None else inp["revenue"][1])}
+    for t in range(2, 6):
+        book[t] = book[t - 1] * (1 + float(path[t - 2]["book_growth"]))
+    roe = {t: float(path[t - 1]["roe"]) for t in range(1, 6)}
+    g5 = float(path[4]["book_growth"])
     growth = {5: g5}
     for t in range(6, n + 2):
         k = min(1.0, (t - 5) / F)
@@ -545,11 +560,15 @@ def _recompute_fin(inp, v):
         roe[t] = roe[5] + (roe_l - roe[5]) * k
     for t in range(6, n + 3):
         book[t] = book[t - 1] * (1 + growth[t - 1])
+    scale = max(book.values())                                            # N1: a flow is a difference of book-sized numbers
+
+    def same(a, c):
+        return abs(a - c) <= 1e-9 * max(1.0, abs(a), abs(c), scale)
     flows = [book[t] * roe[t] - (book[t + 1] - book[t]) for t in range(1, n + 1)]
     for t, (a, c) in enumerate(zip(flows, v["flows_all"]), 1):
         if not same(a, c):
             raise AssertionError(f"V1: the year-{t} financial flow {c} != {a} recomputed")
-    tv = book[n + 1] * roe[n + 1] * (1 - g_t / roe[n + 1]) / (r - g_t)
+    tv = book[n + 1] * (roe[n + 1] - g_t) / (r - g_t)
     eq = sum(f / (1 + r) ** t for t, f in enumerate(flows, 1)) + tv / (1 + r) ** n
     if not (same(tv, v["tv"]) and same(eq, v["equity_value"])):
         raise AssertionError(f"V1: the financial equity value {v['equity_value']} != {eq} recomputed")
@@ -667,6 +686,9 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
     d = abs(float(base["normalized"]["delta_pts"]))
     if 0 < d < 0.05 or d > 50:
         res["annotations"].append(f"delta_pts_scale_suspect: {base['normalized']['delta_pts']}")
+    for k, x in (("normalized", m_n), ("long_run_op_margin", m_l)):           # Q3b N3: the operating analogue of roe_at_record_peak
+        if x >= bar[PEAK_QUANTILE]:
+            res["annotations"].append(f"margin_at_record_peak: {k} {x:.4f} at or above the record's {PEAK_QUANTILE} {bar[PEAK_QUANTILE]:.4f}")
     # V3g (the CROSS_CHECK_Q2 re-run): revenue growth above the filed record's maximum, and terminal growth above the MRI long-run growth
     # anchor, need a supported reason quoting filed items of two fiscal years, as a margin outside the record does
     g_anchor = b.get("g_anchor")

@@ -72,7 +72,7 @@ INSTRUCTION = (
 
 # WO_Q6: the financial route (banks, insurers, mortgage REITs; O3 retained equity). Its own text and version; the operating text above
 # is unchanged. Changing any text here: bump VALUATION_PROMPT_FIN_VERSION and re-pin its hash in tests/test_value_task.py.
-VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v2"   # v2 2026-10-30 CROSS_CHECK_Q3 1-4: common equity; growth during a year; issuance and release rules
+VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v3"   # v3 2026-10-31 CROSS_CHECK_Q3b N7: release means shrinking book; no mortgage REITs   # v2 2026-10-30 CROSS_CHECK_Q3 1-4: common equity; growth during a year; issuance and release rules
 
 _SHAPE_FIN = """```json
 {"task": "valuation_inputs_financial",
@@ -90,7 +90,7 @@ _SHAPE_FIN = """```json
 ```"""
 
 INSTRUCTION_FIN = (
-    "TASK valuation_inputs_financial. The company is a financial (a bank, an insurer or a mortgage REIT): code values it from its book "
+    "TASK valuation_inputs_financial. The company is a financial (a bank or an insurer): code values it from its book "
     "equity and the return it earns on that equity. State the forecast inputs from which code will compute the company's value. You do "
     "not compute a value, a price or a recommendation; you choose each input and give the evidence for it.\n"
     "Book equity here is common equity: preferred stock is taken out of book, and its dividends out of net income.\n"
@@ -101,7 +101,8 @@ INSTRUCTION_FIN = (
     "equity. transition is linear, step_at_year or hold_then_linear (the last two name transition_year, 3 up to the normalized year). "
     "fade_years is how many years after year 5 book growth takes to reach terminal_g and the return on equity to reach long_run_roe. "
     "long_run_roe must be above terminal_g, and terminal_g below the cost of equity in [V0]. Book growth above the same year's return "
-    "on equity means issuing new shares; book growth below the record's lowest, or a negative terminal_g, means releasing book. Each "
+    "on equity means issuing new shares; book equity shrinking faster than in the record's worst year, or a negative terminal_g, "
+    "means releasing book. Each "
     "needs a reason that quotes filed statements or filing sections of at least two different fiscal years. Capital rules (bank capital ratios, "
     "insurance reserves) are not modelled: a book growth the company's capital cannot support belongs in the reasons and the unknowns.\n"
     "SCENARIOS. bear and bull list only the inputs that differ from base. A bear input is not above base and a bull input not below "
@@ -123,7 +124,7 @@ INSTRUCTION_FIN = (
 def render_base_fin(b, bar, r, coe_prov):
     """[V0] for the financial route: the filed return-on-equity record, book equity and the cost of equity."""
     lines = [f"[V0] Measured by code from the filings (not a forecast). Base fiscal year ended {b['fy0']}.",
-             f"Filed return-on-equity record (net income over opening book equity): min {bar['min']:.4f}, p25 {bar['p25']:.4f}, "
+             f"Filed return-on-equity record (income to common over opening common equity): min {bar['min']:.4f}, p25 {bar['p25']:.4f}, "
              f"median {bar['median']:.4f}, p75 {bar['p75']:.4f}, max {bar['max']:.4f}, last {bar['last']:.4f}.",
              f"Common book equity at the end of the base year {b['R1']:,.0f}; income to common in the base year {b['e0']:,.0f}.",
              _book_growth_line(b["record"]),

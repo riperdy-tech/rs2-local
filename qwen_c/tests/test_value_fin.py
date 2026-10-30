@@ -222,7 +222,7 @@ def test_an_unbuilt_family_is_still_refused_by_name():
     assert e.value.code == "family_not_routed"
 
 
-PINNED_FIN = "4aa468495ebd31f55610ee6bd191f54a9bf0965f5939b0b71484121af4df2bd5"
+PINNED_FIN = "83b035e5d964a584dfeb3df78401d5b00db3977f682649dbe5928c7a66f1246f"
 
 
 def test_the_financial_prompt_is_pinned_and_the_operating_one_untouched():

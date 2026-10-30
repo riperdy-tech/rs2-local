@@ -4,7 +4,7 @@ The memo carries the authority line: diagnostic only (B9).
 """
 from qwen_c import contract
 
-MEMO_VERSION = "m3q.memo.v2"   # v2 2026-10-30 WO_Q6: the financial route's inputs table
+MEMO_VERSION = "m3q.memo.v3"   # v3 2026-10-31 Q3b N3: diagnostics printed;   # v2 2026-10-30 WO_Q6: the financial route's inputs table
 
 
 def _pct(x):
@@ -35,6 +35,10 @@ def render(result, reasons_by_input):
         lines.append("")
     if chk.get("annotations"):
         lines += ["Annotations: " + "; ".join(chk["annotations"]), ""]
+    d = chk.get("diagnostics")
+    if d:                                                                 # CROSS_CHECK_Q3b N3: the implied P/B and the TV share
+        lines += [f"Implied P/B {d['implied_pb']:.2f} (a perpetuity at the record's median ROE: {d['pb_record_median_perpetuity']:.2f}); "
+                  f"terminal value {_pct(d['tv_share'] or 0)} of the value.", ""]
     return "\n".join(lines)
 
 
