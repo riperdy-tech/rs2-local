@@ -17,6 +17,7 @@ INPUTS_VERSION = "m3q.inputs.v1"
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
+PERSISTENT_SPREAD = 0.05
 
 
 def _by_end(f, concept):
@@ -25,7 +26,8 @@ def _by_end(f, concept):
 
 def tax_rate(f):
     """V8: the latest measured provision / pretax income if inside [0, 0.35]; else the median of the measured in-band years (at least 3 of
-    the last 8); else refused. Returns (tau, stamp)."""
+    the last 8); else, a persistent rate (>= 3 measured years, all >= 0, within 5 points): their median; else refused. Returns
+    (tau, stamp)."""
     tax, pre = _by_end(f, "tax_provision"), _by_end(f, "pretax_income")
     years = sorted(set(tax) & set(pre))
     rates = [(e, tax[e] / pre[e]) for e in years if pre[e] > 0]
@@ -34,6 +36,11 @@ def tax_rate(f):
     band = [t for _, t in rates[-8:] if TAX_BAND[0] <= t <= TAX_BAND[1]]
     if len(band) >= 3:
         return statistics.median(band), "tax_rate_multi_year_median"
+    # a persistent rate outside the band is the company's economics, not a distortion: >= 3 measured positive-pretax years among the last
+    # 8, all at or above 0, within PERSISTENT_SPREAD of each other (RR_Q2_Q4 decision 1)
+    recent = [t for _, t in rates[-8:]]
+    if len(recent) >= 3 and min(recent) >= 0 and max(recent) - min(recent) <= PERSISTENT_SPREAD and max(recent) < 1:
+        return statistics.median(recent), "tax_rate_persistent_outside_band"
     raise DeskRefusal("tax_unavailable", f"no in-band measured tax rate (latest {rates[-1][1] if rates else None}); never a stamped default")
 
 
@@ -117,3 +124,31 @@ def bridge_x_margin(b, op_margins, revenues):
         raise DeskRefusal("bridge_unavailable", "operating income for the base year is not filed")
     k0 = b["oi0"] - b["x0"] / (1 - b["tau"])
     return [(m * r - k0) * (1 - b["tau"]) / r for m, r in zip(op_margins, revenues)]
+
+
+def base_financial(f):
+    """The measured base for value_financial (O3). The driver is opening book equity: "revenue" R_t = book equity at the start of year t and
+    the "margin" m_t = ROE on it, so E_t = R_t m_t and the route's E_t (1 - g_{t+1} / ROE_t) is earnings less the growth of book equity, the
+    retained-equity identity. Needs >= MIN_POOL_YEARS fiscal-year equity balances, positive E_0 and opening equity, and diluted shares."""
+    eq, ni = _by_end(f, "equity"), _by_end(f, "net_income")
+    ends = sorted(eq)[-(POOL_YEARS + 1):]
+    if len(ends) < MIN_POOL_YEARS:
+        raise DeskRefusal("history_short", f"{len(ends)} fiscal-year equity balances; at least {MIN_POOL_YEARS}")
+    stale = {c: d for c, d in (f.get("_stale") or {}).items() if c in ("net_income", "equity")}
+    if stale:
+        raise DeskRefusal("facts_stale", f"{stale}")
+    e0 = ends[-1]
+    if e0 not in ni:
+        raise DeskRefusal("input_missing", f"net_income for the latest fiscal year {e0}")
+    opening = eq[ends[-2]]
+    if not (ni[e0] > 0 and opening > 0):
+        raise DeskRefusal("e0_not_positive", f"E_0 = {ni[e0]:.6g}, opening equity {opening:.6g}")
+    shares = _by_end(f, "diluted_shares").get(e0)
+    if not (shares and shares > 0):
+        raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
+    roe_hist = {ends[i]: ni[ends[i]] / eq[ends[i - 1]] for i in range(1, len(ends)) if ends[i] in ni and eq[ends[i - 1]] > 0}
+    # R_0 = book equity at the start of the base year, R_1 = at its end (the start of year 1): E_1 = R_1 ROE_1
+    return {"version": INPUTS_VERSION, "route": "financial", "fy0": e0, "R0": opening, "R1": eq[e0], "e0": ni[e0],
+            "roe0": ni[e0] / opening, "book_hist": [eq[e] for e in ends], "shares": shares, "excess_cash": 0.0,
+            "record": {"roe": roe_hist},
+            "stamps": ["financial_driver_book_equity", "preferred_not_separated", "shares_weighted_average_diluted"]}

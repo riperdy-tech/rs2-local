@@ -1,4 +1,6 @@
 """WO_Q5 part 1 (SPEC_m3q §2, V8): qwen_c/value/inputs.py on hand-built facts."""
+import statistics
+
 import pytest
 
 from qwen_c.value import desk, inputs
@@ -95,3 +97,31 @@ def test_bridge_reproduces_the_base_year_and_holds_k0_flat():
 def test_depreciation_only_tag_is_not_reduced_by_amortization():
     b = inputs.base(facts(da=series([3, 3.2, 3.5, 3.7, 4], tag="Depreciation")), market_cap=180.0)
     assert b["d_ratio"] == pytest.approx(sum([3, 3.2, 3.5, 3.7, 4]) / 450)
+
+
+def test_persistent_high_rate_is_used_and_an_erratic_one_refused():
+    f = facts(tax_provision=series([4.0, 4.4, 4.9, 5.0, 5.3]), pretax_income=series([10, 11, 12, 12.5, 13]))   # 40-41%
+    b = inputs.base(f, market_cap=180.0)
+    assert "tax_rate_persistent_outside_band" in b["stamps"] and b["tau"] == pytest.approx(statistics.median([0.4, 0.4, 4.9 / 12, 0.4, 5.3 / 13]))
+    f = facts(tax_provision=series([4.0, 6.0, 4.9, 7.0, 5.3]), pretax_income=series([10, 11, 12, 12.5, 13]))
+    with pytest.raises(desk.DeskRefusal) as e:
+        inputs.base(f, market_cap=180.0)
+    assert e.value.code == "tax_unavailable"
+
+
+def test_financial_base_uses_book_equity_and_the_identity_holds():
+    b = inputs.base_financial(facts())
+    assert b["roe0"] == pytest.approx(10 / 44) and (b["R0"], b["R1"]) == (44, 46) and b["excess_cash"] == 0.0
+    # the route's year-1 flow with ROE flat equals E_1 less the growth of book equity in year 1
+    g, roe = 0.05, b["roe0"]
+    R = [b["R0"], b["R1"]] + [b["R1"] * (1 + g) ** t for t in range(1, 5)]
+    v = desk.value_financial({"revenue": R, "margin": [roe] * 5, "r": 0.10, "g_T": 0.03, "F": 10, "ronic0": roe, "ronic_T": roe,
+                              "m_long": roe, "shares": b["shares"], "excess_cash": 0.0})
+    assert v["flows_all"][0] == pytest.approx(R[1] * roe - (R[2] - R[1]))
+    assert v["flows_all"][1] == pytest.approx(R[2] * roe - (R[3] - R[2]))
+
+
+def test_financial_base_refusals():
+    with pytest.raises(desk.DeskRefusal) as e:
+        inputs.base_financial(facts(net_income=series([1, 1, 1, 1, -2])))
+    assert e.value.code == "e0_not_positive"
