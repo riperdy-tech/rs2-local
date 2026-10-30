@@ -85,6 +85,7 @@ def test_depreciation_only_tag_is_not_reduced_by_amortization():
 def test_debt_components_and_kd():
     b = base()
     assert b["debt0"] == 20 and b["delta"] == pytest.approx(20 / 200) and b["kd"] == pytest.approx(1 / 20)
+    assert "leverage_bridge_unvalidated" in b["stamps"]
 
 
 def test_a_total_tag_is_not_added_to_current_debt():

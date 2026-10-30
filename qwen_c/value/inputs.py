@@ -177,6 +177,8 @@ def base(f, *, market_cap, bill_rate):
     if not (market_cap and market_cap > 0):
         raise DeskRefusal("market_cap_unavailable", "delta needs the market value of equity")
     delta = debt0 / (debt0 + market_cap)
+    if delta > 0:
+        stamps.append("leverage_bridge_unvalidated")                      # B12: K_0 flat interest and market-weight delta (RR_Q3 §7)
     shares = _by_end(f, "diluted_shares").get(e0)
     if not (shares and shares > 0):
         raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
