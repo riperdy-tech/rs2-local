@@ -48,7 +48,7 @@ def test_N3_peak_roe_held_is_annotated(ctx):
     out["base"]["long_run_roe"] = bar["max"]
     res = run_check(out, ctx)
     assert any(a.startswith("roe_at_record_peak: long_run_roe") for a in res["annotations"])
-    assert "pb_record_median_perpetuity" in res["diagnostics"]
+    assert "record_neutral" in res["diagnostics"]
 
 
 def test_N3_operating_peak_margin_is_annotated():

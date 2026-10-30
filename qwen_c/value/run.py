@@ -69,7 +69,7 @@ def _prepare_financial(f, T, sector, allow_after_T):
     record = forecast_fin.record_items(f, b)
     r, prov = coe.cost_of_equity(sector, T, allow_after_T=allow_after_T)
     b["g_anchor"] = prov["g_anchor"]
-    fy_ends = [v["end"] for v in f["equity"]["values"]]
+    fy_ends = sorted(b["record"]["common_equity"])                       # Q3c-8: the chained year-ends, not every instant
     return f, b, bar, record, r, prov, fy_ends
 
 

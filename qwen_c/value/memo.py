@@ -4,7 +4,7 @@ The memo carries the authority line: diagnostic only (B9).
 """
 from qwen_c import contract
 
-MEMO_VERSION = "m3q.memo.v3"   # v3 2026-10-31 Q3b N3: diagnostics printed;   # v2 2026-10-30 WO_Q6: the financial route's inputs table
+MEMO_VERSION = "m3q.memo.v4"   # v4 2026-10-31 Q3c: the record-neutral reference; v3 Q3b N3: diagnostics printed;   # v2 2026-10-30 WO_Q6: the financial route's inputs table
 
 
 def _pct(x):
@@ -36,9 +36,14 @@ def render(result, reasons_by_input):
     if chk.get("annotations"):
         lines += ["Annotations: " + "; ".join(chk["annotations"]), ""]
     d = chk.get("diagnostics")
-    if d:                                                                 # CROSS_CHECK_Q3b N3: the implied P/B and the TV share
-        lines += [f"Implied P/B {d['implied_pb']:.2f} (a perpetuity at the record's median ROE: {d['pb_record_median_perpetuity']:.2f}); "
-                  f"terminal value {_pct(d['tv_share'] or 0)} of the value.", ""]
+    if d:                                                                 # Q3b N3 / Q3c: the record-neutral reference, P/B, TV share
+        rn = d.get("record_neutral") or {}
+        parts = [f"Record-neutral value {rn['value']:,.2f} ({rn.get('inputs')})" if rn.get("value") is not None else "Record-neutral value unavailable"]
+        if d.get("implied_pb") is not None:
+            parts.append(f"implied P/B {d['implied_pb']:.2f}")
+        if d.get("tv_share") is not None:
+            parts.append(f"terminal value {_pct(d['tv_share'])} of the value")
+        lines += ["; ".join(parts) + ".", ""]
     return "\n".join(lines)
 
 

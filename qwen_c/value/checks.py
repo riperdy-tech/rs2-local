@@ -18,7 +18,7 @@ import re
 from qwen_c import contract
 from qwen_c.value import desk, forecast, forecast_fin
 
-CHECKS_VERSION = "m3q.checks.v5"   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
+CHECKS_VERSION = "m3q.checks.v6"   # v6 2026-10-31 CROSS_CHECK_Q3c: the record-neutral reference (B13), the per-share tolerance   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 MARGIN_SOURCES = ("record", "pricing_or_mix", "investment_in_explicit_years", "investment_after_year5", "decline")
@@ -308,7 +308,9 @@ FIN_REPLACEABLE = FIN_JUDGMENT + ("transition", "transition_year")
 FIN_ORDERED = ("book_growth", "roe", "normalized", "long_run_roe", "terminal_g")
 FIN_STAMPS = ["capital_constraint_not_modeled"]
 RELEASE_SHARE = 0.25          # Q3b N2: a cumulative release of more than a quarter of book over years 1-5 is annotated
-PEAK_QUANTILE = "p75"         # Q3b N3: a normalized or long-run value at or above the record's p75 is annotated                                   # WO_Q6 §4
+PEAK_QUANTILE = "p75"         # Q3b N3: a normalized or long-run value at or above the record's p75 is annotated
+NEUTRAL_BAND = (0.5, 2.0)     # Q3c 1-4 (B13): a scenario valued outside 0.5x-2x the record-neutral reply is annotated
+NEUTRAL_FADE = 10                                   # WO_Q6 §4
 _FIN_KEYWORDS = {
     "book_growth": r"growth|grow|book|equity|capital|retain|loan|deposit|premium|asset|balance sheet|dividend|buyback|repurchase",
     "roe": r"return|roe|earn|profit|income|margin|spread|interest|credit|loss|underwrit|combined ratio",
@@ -519,16 +521,13 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
             # (B13 ruling 2026-10-30: annotated; a bound is decided on E3's evidence)
             g_t = float(inp["g_T"])
             pb = v["value_per_share"] / (b["R1"] / b["shares"])
-            pb_ref = (bar["median"] - g_t) / (r - g_t)
-            res["diagnostics"] = {"tv_share": v["tv_pv"] / v["equity_value"] if v["equity_value"] else None, "implied_pb": pb,
-                                  "pb_record_median_perpetuity": pb_ref}
-            if pb > pb_ref:
-                res["annotations"].append(f"implied_pb_above_record_median_perpetuity: {pb:.2f} against {pb_ref:.2f}")
+            res["diagnostics"] = {"tv_share": v["tv_pv"] / v["equity_value"] if v["equity_value"] else None, "implied_pb": pb}
             for k, x in (("normalized", roe_n), ("long_run_roe", float(base["long_run_roe"]))):
                 if x >= bar[PEAK_QUANTILE]:
                     res["annotations"].append(f"roe_at_record_peak: {k} {x:.4f} at or above the record's {PEAK_QUANTILE} {bar[PEAK_QUANTILE]:.4f}")
         if name == "base" and v["seam_ratio"] is not None and not SEAM_BAND[0] <= v["seam_ratio"] <= SEAM_BAND[1]:
             res["annotations"].append(f"V2 flow_seam_out_of_band: {v['seam_ratio']:.3f}")
+    _annotate_neutral(res, _neutral_fin(b, bar, r))
     vv = res["values"]
     for name, v in vv.items():
         if not v > 0:
@@ -538,6 +537,53 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
     if res["unsupported"]:
         res["status"] = "valuation_incomplete"
     return res
+
+
+def _neutral_fin(b, bar, r):
+    """(value, how) of the record-neutral financial reply: ROE at the record median throughout, book growth and terminal growth at the
+    long-run anchor (at most half the median ROE), a ten-year fade. None when it cannot be valued."""
+    med, ga = bar["median"], b.get("g_anchor")
+    if ga is None or not med > 0:
+        return None, "record_neutral_unavailable: no growth anchor or a median ROE <= 0"
+    g = min(ga, 0.5 * med)
+    sc = {"book_growth": [g, g], "roe": [med, med], "normalized": {"year": 3, "baseline": "median", "delta_pts": 0.0, "book_growth": g},
+          "transition": "linear", "transition_year": None, "fade_years": NEUTRAL_FADE, "long_run_roe": med, "terminal_g": g}
+    try:
+        return forecast_fin.value(forecast_fin.assemble(sc, b, bar, r=r))["value_per_share"], f"roe {med:.4f}, growth {g:.4f}"
+    except desk.DeskRefusal as e:
+        return None, f"record_neutral_unavailable: {e.code}"
+
+
+def _neutral_op(b, bar, r):
+    """(value, how) of the record-neutral operating reply: margins at the record median throughout, revenue and terminal growth at the
+    long-run anchor, the base's return on capital as terminal RONIC, a ten-year fade, the pooled capex. None when it cannot be valued."""
+    ga = b.get("g_anchor")
+    if ga is None:
+        return None, "record_neutral_unavailable: no growth anchor"
+    med = bar["median"]
+    ronic = b["ronic0"] if b.get("ronic0") and b["ronic0"] > ga else r
+    sc = {"rev_growth": [ga, ga], "op_margin": [med, med], "normalized": {"year": 3, "baseline": "median", "delta_pts": 0.0, "rev_growth": ga},
+          "transition": "linear", "transition_year": None, "fade_years": NEUTRAL_FADE, "long_run_op_margin": med, "terminal_ronic": ronic,
+          "terminal_g": ga, "margin_source": "record", "capex_path": None, "investment_path": None}
+    try:
+        return desk.value_operating(forecast.assemble(sc, b, bar, r=r))["value_per_share"], f"margin {med:.4f}, growth {ga:.4f}"
+    except desk.DeskRefusal as e:
+        return None, f"record_neutral_unavailable: {e.code}"
+
+
+def _annotate_neutral(res, neutral):
+    """Q3c 1-4 (B13): every scenario's value against the record-neutral reply's, annotated outside NEUTRAL_BAND. Never a gate."""
+    value, how = neutral
+    res.setdefault("diagnostics", {})["record_neutral"] = {"value": value, "inputs": how}
+    if value is None:
+        res["annotations"].append(how)
+        return
+    for name, v in res["values"].items():
+        ratio = v / value if value > 0 else None
+        res["diagnostics"].setdefault("value_over_record_neutral", {})[name] = ratio
+        if ratio is None or not NEUTRAL_BAND[0] <= ratio <= NEUTRAL_BAND[1]:
+            res["annotations"].append(f"value_far_from_record_neutral: {name} {v:.4f} against {value:.4f}"
+                                      + (f" ({ratio:.2f}x)" if ratio is not None else " (neutral not positive)"))
 
 
 def _recompute_fin(inp, v, b=None):
@@ -572,7 +618,8 @@ def _recompute_fin(inp, v, b=None):
     eq = sum(f / (1 + r) ** t for t, f in enumerate(flows, 1)) + tv / (1 + r) ** n
     if not (same(tv, v["tv"]) and same(eq, v["equity_value"])):
         raise AssertionError(f"V1: the financial equity value {v['equity_value']} != {eq} recomputed")
-    if not same(v["value_per_share"], (v["equity_value"] * v["rollforward_factor"] + inp["excess_cash"]) / inp["shares"]):
+    vps = (v["equity_value"] * v["rollforward_factor"] + inp["excess_cash"]) / inp["shares"]
+    if not abs(v["value_per_share"] - vps) <= 1e-9 * max(1.0, abs(vps)):     # Q3c-5: per share, not book-scaled
         raise AssertionError("V1: value per share")
 
 
@@ -732,6 +779,7 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
             res["sensitivity"] = {"value_at_delta_market": alt["value_per_share"], "delta_book": b["delta"], "delta_market": b["delta_market"]}
         except desk.DeskRefusal as e:
             res["sensitivity"] = {"value_at_delta_market": None, "refused": e.code}
+    _annotate_neutral(res, _neutral_op(b, bar, r))
     vv = res["values"]
     for name, v in vv.items():
         if not v > 0:

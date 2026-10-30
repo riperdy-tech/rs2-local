@@ -24,14 +24,14 @@ def record_items(f, b, years=5):
     inputs.base_financial): the filed book equity, any preferred stock taken out, common equity, income to common and the ROE on opening
     common equity, the same figures the checks and [V0] use (CROSS_CHECK_Q3 6)."""
     filed = {v["end"]: v for v in (f.get("equity") or {}).get("values", [])}
-    pref = {v["end"]: v["value"] for v in (f.get("preferred_equity") or {}).get("values", [])}
     rec = b["record"]
+    pref = rec.get("preferred") or {}
     eq, ni, roe = rec["common_equity"], rec["income_to_common"], rec["roe"]
     out = []
     for end in sorted(eq)[-years:]:
         e = filed[end]
         parts = [f"book equity at year end {_money(e['value'])}"]
-        if "preferred_subtracted_at_carrying_value" in b["stamps"]:
+        if any(s.startswith("preferred_subtracted") for s in b["stamps"]):
             parts += [f"preferred stock {_money(pref[end])}", f"common equity {_money(eq[end])}"]
         if end in ni:
             parts.append(f"income to common {_money(ni[end])}")

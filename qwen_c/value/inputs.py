@@ -289,7 +289,8 @@ def base_financial(f):
     eq_all, ni_all = _by_end(f, "equity"), _by_end(f, "net_income")
     carry, liq = _by_end(f, "preferred_equity"), _by_end(f, "preferred_liquidation")
     nic, pdiv = _by_end(f, "ni_common"), _by_end(f, "preferred_dividends")
-    # Q3b N5: a preferred carried in APIC (filed PreferredStockValue 0 or par) is taken at its liquidation preference, stamped
+    # Q3b N5: a preferred carried in APIC (filed PreferredStockValue 0) is taken at its liquidation preference, stamped. Par-valued
+    # carrying, late tagging and redemption inside the record are not handled (Q3c-7, carried: no census name today)
     pref = {e: (carry[e] if carry.get(e, 0.0) > 0 else liq[e]) for e in set(carry) | set(liq)
             if carry.get(e, 0.0) > 0 or e in liq}
     at_liq = any(not carry.get(e, 0.0) > 0 and liq.get(e, 0.0) > 0 for e in pref)
@@ -361,6 +362,7 @@ def base_financial(f):
     # R_0 = common book equity at the start of the base year, R_1 = at its end (the start of year 1): E_1 = R_1 ROE_1
     return {"version": INPUTS_VERSION, "route": "financial", "fy0": e0, "R0": opening, "R1": eq[e0], "e0": ni[e0],
             "roe0": ni[e0] / opening, "book_hist": [eq[e] for e in ends], "shares": shares, "excess_cash": 0.0,
-            "record": {"roe": roe_hist, "book_growth": growth, "common_equity": eq, "income_to_common": ni, "book_growth_max": max(retained) if retained else None,
+            "record": {"roe": roe_hist, "book_growth": growth, "common_equity": eq, "income_to_common": ni,
+                       "preferred": {e: (pref[e] if has_pref else 0.0) for e in ends}, "book_growth_max": max(retained) if retained else None,
                        "book_growth_min": min(growth.values()) if growth else None},
             "stamps": stamps}

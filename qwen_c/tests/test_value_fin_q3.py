@@ -55,7 +55,7 @@ def test_2_book_growth_below_roe_is_not_issuance(ctx):
     res = run_check(clean(), ctx)
     assert not any("implied issuance" in w for w in flags(res, "base.book_growth"))
     d = res["diagnostics"]
-    assert 0 < d["tv_share"] < 1 and d["implied_pb"] > 0 and d["pb_record_median_perpetuity"] > 0
+    assert 0 < d["tv_share"] < 1 and d["implied_pb"] > 0 and d["record_neutral"]["value"] > 0
 
 
 def test_2_v3g_record_is_net_of_issuance():
