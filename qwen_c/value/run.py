@@ -1,0 +1,124 @@
+"""run.py - one valuation of one company (SPEC_m3q §2; WO_Q5b): filed facts -> the measured base -> the cost of equity -> the filed
+record -> the valuation_inputs prompt -> the model -> checks V1-V11 -> at most one repair turn -> result.json.
+
+The model call, the reply parsing and the overflow checks are qwen_c.runner's own (call, parse_reply, reply_problem), so a valuation
+fails the way an analysis task fails. Everything the model was told and returned is kept under cache/m3q/runs/<run>/ (prompts/, raw/),
+and result.json carries the checks, the values and every version. Operating route only: a financial company (O3) is refused by name
+until its forecast assembly exists (inputs.base_financial is built; the ROE-path task and checks are not).
+
+    python -m qwen_c.value.run <packet.json> --cik <cik> --sector <MRI sector> --market-cap <USD> [--seed 1000] [--family operating]
+"""
+import argparse
+import json
+import time
+
+from qwen_c import runner
+from qwen_c.value import checks, coe, desk, facts, forecast, inputs, task
+
+RUNS = runner.ROOT / "cache" / "m3q" / "runs"
+REPAIR_SEED_OFFSET = 50000
+
+
+def _statements(packet):
+    return {e["fact_id"] for e in packet["evidence"] if e.get("kind") == "statement"}
+
+
+def prepare(packet, cik, sector, market_cap, *, online, root=None, allow_after_T=False, family="operating"):
+    """Everything code owns, before any model call: (facts, base, bar, record items, r, coe provenance). Raises DeskRefusal."""
+    if family == "financial":
+        raise desk.DeskRefusal("route_not_built_in_runner", "the financial route's forecast task and checks are not built (WO_Q5b)")
+    T = runner._parse_t(packet["decision_time_utc"])
+    f = facts.build(cik, T, online=online, root=root)
+    b = inputs.base(f, market_cap=market_cap)
+    bar = forecast.record_bar(b["record"]["op_margin"])
+    record = forecast.record_items(f)
+    r, prov = coe.cost_of_equity(sector, T, allow_after_T=allow_after_T)
+    return f, b, bar, record, r, prov
+
+
+def _one_call(msgs, seed, opts, url):
+    """(outcome, object or None, detail, response, seconds)."""
+    body = {"model": runner.MODEL, "stream": False, "think": opts["think"], "messages": msgs,
+            "options": {"num_ctx": opts["num_ctx"], "num_predict": opts["num_predict"], "seed": seed}}
+    t0 = time.monotonic()
+    kind, resp, detail = runner.call(body, url, runner.TASK_TIMEOUT_S)
+    secs = round(time.monotonic() - t0, 3)
+    if kind == "reply":
+        kind, detail = runner.reply_problem(resp, opts["num_ctx"]) or (kind, detail)
+    if kind != "reply":
+        return kind, None, detail, resp, secs
+    obj, perr = runner.parse_reply(((resp or {}).get("message") or {}).get("content"))
+    return ("reply" if perr is None else "malformed"), obj, perr, resp, secs
+
+
+def value(packet_path, cik, sector, market_cap, *, url=None, seed=runner.SEED_BASE, online=True, root=None, out_root=RUNS,
+          allow_after_T=False, family="operating", opts=None):
+    packet, src = runner.load_packet(packet_path)
+    opts = opts or {"num_ctx": runner.NUM_CTX, "num_predict": runner.NUM_PREDICT, "think": runner.THINK}
+    url = url or runner.llm_provider.OLLAMA_URL
+    run_dir = out_root / f"{packet['ticker']}_{runner.t_compact(packet['decision_time_utc'])}_{runner.sha256_bytes(src)[:12]}_{seed}"
+    (run_dir / "raw").mkdir(parents=True, exist_ok=True)
+    result = {"ticker": packet["ticker"], "T": packet["decision_time_utc"], "packet_sha256": runner.sha256_bytes(src), "seed": seed,
+              "versions": {"desk": desk.DESK_VERSION, "facts": facts.FACTS_VERSION, "inputs": inputs.INPUTS_VERSION,
+                           "forecast": forecast.FORECAST_VERSION, "checks": checks.CHECKS_VERSION, "coe": coe.COE_VERSION,
+                           "prompt": task.VALUATION_PROMPT_VERSION, "contract": runner.contract.CONTRACT, "model": runner.MODEL,
+                           "git": runner.git_state()},
+              "authority": "diagnostic_only"}
+    try:
+        f, b, bar, record, r, prov = prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T,
+                                             family=family)
+    except desk.DeskRefusal as e:
+        result.update(status="no_call", reason=e.code, detail=str(e))
+        runner._write_json(run_dir / "result.json", result)
+        return result
+    result.update(base=b, bar=bar, cost_of_equity=r, coe=prov, facts_provenance=f.get("_provenance"))
+    items = {e["fact_id"]: e for e in packet["evidence"]}
+    items.update({i["fact_id"]: i for i in record})
+    retry, attempts, res = None, [], None
+    for n, s in enumerate((seed, seed + REPAIR_SEED_OFFSET), 1):
+        msgs = task.messages(packet, record, b, bar, r, prov, retry=retry)
+        outcome, obj, detail, resp, secs = _one_call(msgs, s, opts, url)
+        runner._write_json(run_dir / "raw" / f"attempt_{n}.json", {"messages": msgs, "response": resp, "outcome": outcome, "detail": detail})
+        att = {"attempt": n, "seed": s, "outcome": outcome, "detail": detail, "seconds": secs}
+        if outcome == "reply":
+            res = checks.check(obj, items, packet["ticker"], _statements(packet), b, bar, r)
+            att["status"] = res["status"]
+            attempts.append(att)
+            if res["status"] == "ok" or n == 2:
+                break
+            content = ((resp or {}).get("message") or {}).get("content") or ""
+            retry = (content, res.get("failures") or res["unsupported"])
+            continue
+        attempts.append(att)
+        if outcome == "malformed" and n == 1:
+            retry = ((((resp or {}).get("message") or {}).get("content") or ""), [f"not valid JSON: {detail}"])
+            continue
+        break
+    result["attempts"] = attempts
+    if res is None:
+        result.update(status=attempts[-1]["outcome"])
+    else:
+        result.update(status=res["status"], checks={k: v for k, v in res.items() if k != "results"},
+                      values=res["values"], inputs=obj)
+    runner._write_json(run_dir / "result.json", result)
+    return result
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("packet")
+    ap.add_argument("--cik", required=True)
+    ap.add_argument("--sector", required=True)
+    ap.add_argument("--market-cap", type=float, required=True)
+    ap.add_argument("--seed", type=int, default=runner.SEED_BASE)
+    ap.add_argument("--family", default="operating")
+    ap.add_argument("--offline", action="store_true")
+    ap.add_argument("--allow-anchor-after-T", action="store_true", help="the E2 regression on consumed dates only")
+    a = ap.parse_args(argv)
+    res = value(a.packet, a.cik, a.sector, a.market_cap, seed=a.seed, online=not a.offline, allow_after_T=a.allow_anchor_after_T,
+                family=a.family)
+    print(json.dumps({k: res.get(k) for k in ("ticker", "status", "reason", "values")}, default=str))
+
+
+if __name__ == "__main__":
+    main()
