@@ -23,7 +23,7 @@ ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 CONCEPTS = {
     "revenue": ("flow", [("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax", "USD"), ("us-gaap", "Revenues", "USD"),
                          ("us-gaap", "SalesRevenueNet", "USD"), ("us-gaap", "RevenueFromContractWithCustomerIncludingAssessedTax", "USD"),
-                         ("ifrs-full", "Revenue", "USD")]),
+                         ("ifrs-full", "Revenue", "USD"), ("ifrs-full", "RevenueFromContractsWithCustomers", "USD")]),
     "operating_income": ("flow", [("us-gaap", "OperatingIncomeLoss", "USD"), ("ifrs-full", "ProfitLossFromOperatingActivities", "USD")]),
     "net_income": ("flow", [("us-gaap", "NetIncomeLoss", "USD"), ("ifrs-full", "ProfitLossAttributableToOwnersOfParent", "USD"),
                             ("us-gaap", "ProfitLoss", "USD")]),
@@ -32,26 +32,47 @@ CONCEPTS = {
                                ("us-gaap", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments", "USD"),
                                ("ifrs-full", "ProfitLossBeforeTax", "USD")]),
     "tax_provision": ("flow", [("us-gaap", "IncomeTaxExpenseBenefit", "USD"), ("ifrs-full", "IncomeTaxExpenseContinuingOperations", "USD")]),
+    # da: total D&A, including the amortization of acquired intangibles, except the tags in DA_EXCLUDES_AMORTIZATION
     "da": ("flow", [("us-gaap", "DepreciationDepletionAndAmortization", "USD"), ("us-gaap", "DepreciationAmortizationAndAccretionNet", "USD"),
-                    ("us-gaap", "DepreciationAndAmortization", "USD"), ("ifrs-full", "DepreciationAndAmortisationExpense", "USD")]),
+                    ("us-gaap", "DepreciationAndAmortization", "USD"), ("ifrs-full", "DepreciationAndAmortisationExpense", "USD"),
+                    ("ifrs-full", "AdjustmentsForDepreciationAndAmortisationExpense", "USD"), ("us-gaap", "Depreciation", "USD"),
+                    ("ifrs-full", "DepreciationExpense", "USD")]),
     "amortization": ("flow", [("us-gaap", "AmortizationOfIntangibleAssets", "USD")]),
     "capex": ("flow", [("us-gaap", "PaymentsToAcquirePropertyPlantAndEquipment", "USD"),
                        ("us-gaap", "PaymentsToAcquireProductiveAssets", "USD"),
-                       ("ifrs-full", "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities", "USD")]),
+                       ("ifrs-full", "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities", "USD"),
+                       ("us-gaap", "PaymentsToAcquireOtherPropertyPlantAndEquipment", "USD"),
+                       ("us-gaap", "PaymentsToAcquireOilAndGasPropertyAndEquipment", "USD"),
+                       ("us-gaap", "PaymentsToExploreAndDevelopOilAndGasProperties", "USD"),
+                       ("ifrs-full", "PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets", "USD"),
+                       ("us-gaap", "PaymentsForCapitalImprovements", "USD"), ("us-gaap", "PaymentsForConstructionInProcess", "USD"),
+                       ("us-gaap", "PaymentsToAcquireRealEstate", "USD")]),
     "interest_expense": ("flow", [("us-gaap", "InterestExpense", "USD"), ("us-gaap", "InterestExpenseNonoperating", "USD")]),
-    "diluted_shares": ("flow", [("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding", "shares")]),
+    "diluted_shares": ("flow", [("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding", "shares"),
+                                ("ifrs-full", "AdjustedWeightedAverageShares", "shares")]),
     "eps_diluted": ("flow", [("us-gaap", "EarningsPerShareDiluted", "USD/shares")]),
-    "assets_current": ("instant", [("us-gaap", "AssetsCurrent", "USD")]),
-    "liabilities_current": ("instant", [("us-gaap", "LiabilitiesCurrent", "USD")]),
+    "assets_current": ("instant", [("us-gaap", "AssetsCurrent", "USD"), ("ifrs-full", "CurrentAssets", "USD")]),
+    "liabilities_current": ("instant", [("us-gaap", "LiabilitiesCurrent", "USD"), ("ifrs-full", "CurrentLiabilities", "USD")]),
     "cash": ("instant", [("us-gaap", "CashAndCashEquivalentsAtCarryingValue", "USD"),
-                         ("us-gaap", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "USD")]),
+                         ("us-gaap", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "USD"),
+                         ("ifrs-full", "CashAndCashEquivalents", "USD")]),
     "debt_current": ("instant", [("us-gaap", "LongTermDebtCurrent", "USD"), ("us-gaap", "DebtCurrent", "USD")]),
     "debt_noncurrent": ("instant", [("us-gaap", "LongTermDebtNoncurrent", "USD"), ("us-gaap", "LongTermDebt", "USD")]),
     "equity": ("instant", [("us-gaap", "StockholdersEquity", "USD"), ("ifrs-full", "EquityAttributableToOwnersOfParent", "USD")]),
     "ppe_net": ("instant", [("us-gaap", "PropertyPlantAndEquipmentNet", "USD"), ("ifrs-full", "PropertyPlantAndEquipment", "USD")]),
     "ppe_gross": ("instant", [("us-gaap", "PropertyPlantAndEquipmentGross", "USD")]),
     "lease_liability": ("instant", [("us-gaap", "OperatingLeaseLiability", "USD")]),
+    # the filed amortization schedule of finite-lived intangibles (the next five years and after), instants at the fiscal-year end
+    "amort_next_1": ("instant", [("us-gaap", "FiniteLivedIntangibleAssetsAmortizationExpenseNextTwelveMonths", "USD")]),
+    "amort_next_2": ("instant", [("us-gaap", "FiniteLivedIntangibleAssetsAmortizationExpenseYearTwo", "USD")]),
+    "amort_next_3": ("instant", [("us-gaap", "FiniteLivedIntangibleAssetsAmortizationExpenseYearThree", "USD")]),
+    "amort_next_4": ("instant", [("us-gaap", "FiniteLivedIntangibleAssetsAmortizationExpenseYearFour", "USD")]),
+    "amort_next_5": ("instant", [("us-gaap", "FiniteLivedIntangibleAssetsAmortizationExpenseYearFive", "USD")]),
+    "amort_after_5": ("instant", [("us-gaap", "FiniteLivedIntangibleAssetsAmortizationExpenseAfterYearFive", "USD")]),
 }
+
+
+DA_EXCLUDES_AMORTIZATION = {"Depreciation", "DepreciationExpense"}     # depreciation alone: nothing to subtract for D&A_org
 
 
 def companyfacts_url(cik):
@@ -149,7 +170,7 @@ def annual_facts(cf, subs, T, years=8):
         else:
             v["stamp"] = "profitloss_basis_unverified"
     latest = max((v["end"] for v in out.get("revenue", {}).get("values", [])), default=None)
-    stale = {c: d["values"][-1]["end"] for c, d in out.items() if latest and d["values"][-1]["end"] < latest and c not in ("nci_income",)}
+    stale = {c: d["values"][-1]["end"] for c, d in out.items() if latest and d["values"][-1]["end"] < latest and c != "nci_income"}
     out["_absent"], out["_stale"] = absent, stale
     return out
 
