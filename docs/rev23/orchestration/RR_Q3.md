@@ -192,3 +192,30 @@ over net debt plus book equity, measured from the filings. Re-run of the product
 - Book δ departs from the approved O5 (market weights). The two causes are coupled: scaling K_0 with market δ is worse than
   either alone. So they were adopted together, and flagged to the operator (decision B12b).
 - `delta_market` stays as a diagnostic on every result.
+
+## 9. B12b: Fable's opinion, the bounds, and the stress test (2026-10-30)
+
+**Opinion** (`OPINION_B12b_fable.md`, requested by the operator): keep book δ with K_0 scaled, but bound it, and stress-test it.
+Under any constant-leverage policy the share of new investment funded by debt is the book ratio. Market weights imply leverage
+drifting down forever when P/B > 1.
+
+**Bounds adopted** (rs2 `136aefd`, inputs v5):
+- δ is capped at 0.75 (`delta_book_capped`);
+- a negative book equity is valued at the cap (`book_equity_negative_delta_at_cap`), not refused;
+- only interest scales with revenue in K_0;
+- the value at market δ is reported on every levered result as a sensitivity.
+- The production-path truth firms are unchanged: G +3.97%, H +2.60%, B1 stands.
+- `b12_leverage.py` no longer separates its candidates, because the production code now does what the harness patched in. It is
+  retired as a comparison tool.
+
+**Stress test** (`PREREG_b12b_stress.json`, sha256 `1ac529d7…c5d`, committed `fffa3dd` before the run; `b12b_stress.py`; the
+simulator gains a Debt/EBITDA policy, and the existing firms are unchanged, as `reference_d2.py` confirms):
+
+| Firm | Book δ (as built) | Market δ (O5) |
+|---|---|---|
+| S1: debt = 3× EBITDA (decides) | **−2.93%** | −15.88% |
+| S2: buyback-depleted, book debt 95% of capital (reported) | −6.45% (the cap binds) | −18.44% |
+
+**By the rule, book δ stands.**
+- S2 shows the cap costs about 6% on an extreme name. That is evidence for calibrating the cap, not a reason to use market weights.
+- **Limit:** a firm targeting a market D/V ratio is circular in this simulator and was not built.

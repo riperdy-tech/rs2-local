@@ -205,3 +205,29 @@ measures the contract alone. DEV is the set the fix was diagnosed on, so these n
 - **Rule-literal criticals of low materiality:** ACNT, XNCR, LMNR and LSTA.
 - **SPAC strata:** SPAC going-concern boilerplate dominates parts of C2.
 - **Clock:** the acceptance clock is 4–5 hours conservative (CROSS_CHECK_N 11). Lag is reported from the true time.
+
+## 8b. DEV regression on the final version (builder v7, contract v3; `n7_run.py`, `n7/runs_dev_v7.jsonl`, 212/212 complete, 2026-10-30)
+
+Scored by `n7_score.py`, which runs `n6_score.py` unchanged on the n7 runs, packets and rulings:
+- 153 S4/S5 rulings were carried by the same cited documents;
+- 91 new rulings, by Claude, in `adjudication/claims_s4s5_v7_new.jsonl`;
+- 0 claims left unadjudicated.
+
+| Measure | Seed 1000 | Seed 3000 |
+|---|---|---|
+| Strict model recall (T1) | 19/23 = 0.83 (0.63–0.93) | 21/23 = 0.91 (0.73–0.98) |
+| System recall (all 23 events) | 19/23 | 21/23 |
+| Lenient model recall | 21/23 | 22/23 |
+| Clean-control false alarms | 2/9 | 4/9 |
+| Early warning (T1 detections before first public) | 9/16 | 9/16 |
+| Precision (adjudicated, seed 1000) | 130/149 = 0.87 (0.81–0.92) | — |
+
+- **Seed agreement:** κ 0.62.
+- **Baseline B:** 22/23. McNemar against Qwen at seed 1000: B-only 4, Qwen-only 1, p = 0.375.
+- **What changed from the v3 offline recheck (§8a):**
+  - Builder v7 puts ALTS and AMS (C2) into the packet, and both are detected, so system recall rises 18 → 19 and 21.
+  - The misses that remain are the rule-literal C6 cases (LSTA, LMNR; §9) and ACNT at seed 1000.
+  - Control false alarms rose by one at each seed: C1, C2, C6 and C7 at seed 1000; C1 twice, C6 twice and C7 at seed 3000.
+  - The new false alarms are cost programmes read as restructurings, a non-renewal at expiry, and a guidance cut read as a
+    withdrawal (the §8 taxonomy).
+- **Caveat:** DEV is the diagnosis set. FRESH decides 3N (SPEC_m3n §7).

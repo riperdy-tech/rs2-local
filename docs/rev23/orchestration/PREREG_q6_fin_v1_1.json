@@ -1,0 +1,16 @@
+{
+ "id": "PREREG_q6_fin",
+ "version": "1.1",
+ "registered_utc": "2026-10-30",
+ "supersedes": "1.0 (scratch/rev23/terminal_d2/PREREG_q6_fin.json, sha256 f7c5029b...; passed at -1.19% and -0.44%, which CROSS_CHECK_Q3 3 traced entirely to a one-year offset in the book-growth path)",
+ "why": "CROSS_CHECK_Q3 3 and 10: after the desk v3 alignment (g5 carried; growth in year t >= 6 fades from g5 to g_T by year 5+F, with the ROE fade), an ideal analyst must reproduce truth exactly. Committed in the records repo before the run (finding 10).",
+ "path": "facts dict -> inputs.base_financial -> forecast_fin.assemble -> forecast_fin.value (desk.value_financial, driver book); stub_days 0; rs2 review-2026-10/m3q at the CROSS_CHECK_Q3 fix commit",
+ "firms": {
+  "F_insurer": "synthetic.py: ROE 12% constant; book growth 8% in years 1-5, then down 0.45 points a year to 3.5% by year 15; r 9%",
+  "F2_bank": "book growth 6% in years 1-5, then down 0.3 points a year to 3% by year 15; ROE 9% through year 0, up 0.6 points a year to 12% in year 5, 12% after; r 10%",
+  "F3_grower": "NEW (g4 != g5, ROE_5 != ROE_T): book growth 4%, 6%, 8%, 10%, 12% in years 1-5, then down 0.9 points a year to 3% by year 15; ROE 12% through year 0, 13% and 13.5% in years 1-2, 14%, 14.5%, 15% in years 3-5, then down 0.4 points a year to 11% by year 15; r 10%"
+ },
+ "ideal_analyst": "book_growth and roe = the true years 1-2 values; normalized year 5, baseline last, delta_pts = (true year-5 ROE - record last) x 100, book_growth = the true year-5 growth; transition linear; fade_years 10; long_run_roe = the true ROE at year 100; terminal_g = the true growth at year 100",
+ "rule": "every firm within +-0.01% of truth (the ideal analyst reproduces the simulator exactly): the financial route stands. Any firm outside: report and diagnose; no GPU run of the financial task.",
+ "no_retuning": "fixed before the first run"
+}

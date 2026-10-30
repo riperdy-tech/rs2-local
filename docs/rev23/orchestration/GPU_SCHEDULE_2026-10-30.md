@@ -15,3 +15,26 @@ gaming rule apply: a run waits when the card is held.
 
 **Conflict rule:** WO_O2 is time-critical (forward evidence), so it pre-empts FRESH. If FRESH has not finished by
 10-31 10:00 KST, it pauses (stopped between runs; the runner resumes) and continues after WO_O2.
+
+## Rev b (2026-10-30 16:00 KST): the GPU calendar to 11-10
+
+**Order rules:**
+- WO_O2 formation runs pre-empt everything (the fill opens 11-02 14:30Z).
+- 3P's executor never runs while a formation runs on the same run root.
+- Every long run gets a smoke turn first.
+- The gaming rule applies throughout: wait whenever the card is held.
+
+| When (KST) | GPU | CPU alongside |
+|---|---|---|
+| 10-30 ~17:15 | DEV regression ends; remove `RS2-M3N-DEVREG-Runner`; **3Q DAR smoke** (one run, mechanics only, ~10 min) | score the regression (the rulings are done) |
+| 10-30 22:30 → | **FRESH**: unseal, build packets (CPU, SEC), smoke one task, then register `RS2-M3N-FRESH-Runner`. About 212 tasks, ~9–10 h, overnight | — |
+| 10-31 ~10:00 | After the 10-30 price refresh (~01:00Z): **WO_O2** decide, packets, smoke. If FRESH is still running, its lock is respected; the formation task starts when FRESH's current task ends. FRESH resumes after the formation (it is resumable) | score FRESH if finished; draft CLOSE_3N |
+| 10-31 → 11-02 | **WO_O2 formation runs** (~60 names × 16–19 min ≈ 16–19 h) | WO_Q6 build (financial route), then its blind review; 3S report scaffolding |
+| 11-02 before 23:30 | Freeze the formation map; push the GitHub witness | forward_ledger, the universe fetch and m3o_engine after the fill |
+| 11-03 | **3Q E3**: value the 10-30 formation names on the price-blind prompt (~2 runs × ~50 callable × ~6 min ≈ 10 h); hash and witness the results before any outcome | E3 blind readers (fresh Opus, inputs masked) once the runs are frozen |
+| 11-04 → 11-10 | **WO_P3b**: smoke, throughput benchmark, then the 7-day live week (gather + executor tasks) | the missed-event review at week end |
+
+**Risks:**
+- FRESH overrunning into the formation window. The formation wins, and FRESH waits.
+- A failed formation smoke. That stops the batch, by rule.
+- E3 must not start before the formation map is frozen, because its names come from it.
