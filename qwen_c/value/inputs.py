@@ -186,7 +186,14 @@ def base(f, *, market_cap, bill_rate):
     else:
         stamps.append("shares_unreconciled_no_eps")
     stamps.append("shares_weighted_average_diluted")
-    return {"version": INPUTS_VERSION, "fy0": e0, "revenue_hist": [rev[e] for e in ends], "R0": rev[e0], "x0": x0, "m0": x0 / rev[e0],
+    # ruling 4: the vintages D&A rule from filed PP&E (prior gross, gross, net, D&A_org of the base year); else pooled, stamped
+    gross, net = _by_end(f, "ppe_gross"), _by_end(f, "ppe_net")
+    da_org0 = da[e0] - (am[e0] if use_amort and da_tag[e0] not in DA_EXCLUDES_AMORTIZATION else 0.0)
+    ppe = ({"gross_prior": gross[prev], "gross": gross[e0], "net": net[e0], "da_org_0": da_org0}
+           if prev in gross and e0 in gross and e0 in net and gross[e0] > 0 and da_org0 > 0 else None)
+    if ppe is None:
+        stamps.append("da_vintages_no_gross_ppe")
+    return {"version": INPUTS_VERSION, "fy0": e0, "ppe": ppe, "revenue_hist": [rev[e] for e in ends], "R0": rev[e0], "x0": x0, "m0": x0 / rev[e0],
             "oi0": oi[e0], "k0": k0, "op_margin0": oi[e0] / rev[e0], "d_ratio": d_ratio, "c_ratio": c_ratio, "w": w, "tau": tau,
             "ronic0": ronic0, "delta": delta, "kd": kd, "debt0": debt0, "debt_basis": how0, "shares": shares, "excess_cash": excess_cash,
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,

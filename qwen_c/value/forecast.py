@@ -91,7 +91,14 @@ def assemble(sc, b, bar, *, r):
     path, m_n = build_path(sc, bar, b["R0"])
     rev = [b["R0"]] + [y["revenue"] for y in path]
     x_m = inputs.bridge_x_margin(b, [y["op_margin"] for y in path], rev[1:])
-    capex = [b["c_ratio"] * R for R in rev[1:]]
+    cp = sc.get("capex_path")                                  # O7 (ruling 4): mode 1 five ratios; mode 2 a year-5 target reached linearly
+    if cp is None:
+        ratios = [b["c_ratio"]] * 5
+    elif isinstance(cp, dict):
+        ratios = [b["c_ratio"] + (float(cp["year5"]) - b["c_ratio"]) * t / 5 for t in range(1, 6)]
+    else:
+        ratios = [float(c) for c in cp]
+    capex = [c * R for c, R in zip(ratios, rev[1:])]
     h = 0
     ip = sc.get("investment_path")
     if ip:
@@ -109,4 +116,4 @@ def assemble(sc, b, bar, *, r):
             "rou_ratio": b["rou_ratio"], "amort_schedule": b["amort_schedule"], "amort_thereafter": b["amort_thereafter"],
             "delta": b["delta"], "kd": b["kd"], "tau": b["tau"], "r": float(r), "g_T": float(sc["terminal_g"]), "F": int(sc["fade_years"]),
             "H": h, "ronic0": b["ronic0"], "ronic_T": ronic_t, "m_long": m_long, "shares": b["shares"], "excess_cash": b["excess_cash"], "stub_days": b["stub_days"],
-            "_path": path, "_normalized_op_margin": m_n}
+            "ppe": b.get("ppe"), "_path": path, "_normalized_op_margin": m_n, "_capex_mode": "pooled" if cp is None else "cited"}
