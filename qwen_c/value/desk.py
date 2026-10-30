@@ -14,7 +14,7 @@ RONIC_t moves on 1/RONIC from RONIC_0 to RONIC_T; returns on capital become equi
 """
 import math
 
-DESK_VERSION = "m3q.desk.v1"
+DESK_VERSION = "m3q.desk.v2"   # v2 2026-10-30: financial route on the clean-surplus identity (CROSS_CHECK_Q 25), driver required
 FADE_CONVENTION = "revenue"          # B1, ruled by the truth test RR_Q3 (2026-10-30)
 
 
@@ -220,7 +220,8 @@ def _tail(levels, x, rev, margin, amort, delta, kd, tau, r, gt, f_years, h, roni
 
 def value_financial(inp):
     """Financial route (O3). inp keys: revenue R_0..R_5; margin m_1..m_5 (E / revenue); r, g_T, F; ronic0 (ROE_0), ronic_T (ROE_T); m_long;
-    shares; excess_cash (0.0 for a financial: its cash is operating)."""
+    shares; excess_cash (0.0 for a financial: its cash is operating); driver ("book": R is opening book equity and m the ROE; "revenue":
+    R is a revenue line and ROE follows ronic0 -> ronic_T)."""
     _check(inp, ("revenue", "margin", "r", "g_T", "F", "ronic0", "ronic_T", "m_long", "shares", "excess_cash"))
     rev, mg = [float(v) for v in inp["revenue"]], [float(v) for v in inp["margin"]]
     if len(rev) != 6 or len(mg) != 5:
@@ -234,25 +235,29 @@ def value_financial(inp):
     if not inp["shares"] > 0:
         raise DeskRefusal("shares_unavailable", "a positive share count is required")
     n = 5 + f_years
-    e = [rev[t] * mg[t - 1] for t in range(1, 6)]
     g5 = rev[5] / rev[4] - 1.0
 
     def g_at(t):
         return gt if t > n else g5 + (gt - g5) * (t - 5) / f_years
 
-    flows = []
-    for t in range(1, 6):
-        g_next = e[t] / e[t - 1] - 1.0 if t < 5 else g_at(6)
-        flows.append(e[t - 1] * (1.0 - g_next / ronic0))
-    rt, xs = rev[5], list(e)
-    for t in range(6, n + 1):
-        frac = (t - 5) / f_years
-        rt *= 1.0 + g_at(t)
-        xt = rt * (mg[4] + (m_long - mg[4]) * frac)
-        flows.append(xt * (1.0 - g_at(t + 1) / ronic_at(ronic0, ronic_t, frac)))
-        xs.append(xt)
-    x_n1 = rt * (1.0 + gt) * m_long
-    tv = x_n1 * (1.0 - gt / ronic_t) / (r - gt)
+    # CROSS_CHECK_Q 25: the clean-surplus identity Flow_t = E_t - (BV_{t+1} - BV_t), BV_t = E_t / ROE_t the book equity at the start of
+    # year t. driver "book" (inputs.base_financial): R_t IS the book equity and m_t the ROE, so ROE_t = m_t. driver "revenue" (premiums, the
+    # reference's insurer): ROE_t is ROE_0 through year 5, then moves to ROE_T on 1/ROE over the fade. A constant ROE gives the reference's
+    # E_t (1 - g_{t+1} / ROE) in both.
+    driver = inp.get("driver")
+    if driver not in ("book", "revenue"):                            # required: never defaulted
+        raise DeskRefusal("input_invalid", f"driver {driver!r}")
+    R = {t: rev[t] for t in range(1, 6)}
+    m = {t: mg[t - 1] for t in range(1, 6)}
+    for t in range(6, n + 3):
+        R[t] = R[t - 1] * (1.0 + g_at(t))
+        m[t] = mg[4] + (m_long - mg[4]) * min(1.0, (t - 5) / f_years)
+    roe = (lambda t: m[t]) if driver == "book" else (lambda t: ronic0 if t <= 5 else ronic_at(ronic0, ronic_t, (t - 5) / f_years))
+    E = {t: R[t] * m[t] for t in R}
+    bv = {t: E[t] / roe(t) for t in R}
+    flows = [E[t] - (bv[t + 1] - bv[t]) for t in range(1, n + 1)]
+    xs = [E[t] for t in range(1, n + 1)]
+    tv = E[n + 1] * (1.0 - gt / roe(n + 1)) / (r - gt)
     tv_pv = tv / (1 + r) ** n
     pv_all = sum(f / (1 + r) ** t for t, f in enumerate(flows, 1))
     equity = pv_all + tv_pv

@@ -127,3 +127,13 @@ def test_rollforward_from_the_fiscal_year_end_to_T():
 def test_a_zero_year5_amortization_still_runs_off_the_balance():
     path, left = desk.amortization_path([1.0, 1.0, 0.5, 0.5, 0.0], 2.0, 10)
     assert path[5:9] == [0.5, 0.5, 0.5, 0.5] and left == 0.0
+
+
+def test_financial_route_keeps_clean_surplus_when_roe_varies():
+    # CROSS_CHECK_Q 25: book equity R_t, ROE m_t; every flow is earnings less the growth of book equity
+    R = [100.0, 104.0, 108.0, 112.0, 116.0, 120.0]
+    roe = [0.10, 0.14, 0.12, 0.16, 0.11]
+    v = desk.value_financial({"revenue": R, "margin": roe, "r": 0.10, "g_T": 0.03, "F": 10, "ronic0": 0.12, "ronic_T": 0.12,
+                              "m_long": 0.12, "shares": 1.0, "excess_cash": 0.0, "driver": "book"})
+    for t in range(1, 5):
+        assert v["flows_all"][t - 1] == pytest.approx(R[t] * roe[t - 1] - (R[t + 1] - R[t]))

@@ -201,7 +201,7 @@ def test_financial_base_uses_book_equity_and_the_identity_holds():
     g = 0.05
     R = [b["R0"], b["R1"]] + [b["R1"] * (1 + g) ** t for t in range(1, 5)]
     v = desk.value_financial({"revenue": R, "margin": [roe] * 5, "r": 0.10, "g_T": 0.03, "F": 10, "ronic0": roe, "ronic_T": roe,
-                              "m_long": roe, "shares": b["shares"], "excess_cash": 0.0})
+                              "m_long": roe, "shares": b["shares"], "excess_cash": 0.0, "driver": "book"})
     assert v["flows_all"][0] == pytest.approx(R[1] * roe - (R[2] - R[1]))
 
 
