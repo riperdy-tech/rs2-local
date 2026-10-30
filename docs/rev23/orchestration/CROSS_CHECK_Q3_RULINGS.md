@@ -136,3 +136,32 @@ The financial task may run a GPU smoke. Before values count as E3 evidence, a na
 | O-2 | **Ruled:** E3 reads `value_far_from_record_neutral` as "far from the record median", never as "implausible". The 2x band is not measured; E3 measures it. |
 
 The financial task may now run its GPU smoke. The v7 diff (`134c213..5df6b85`) is re-checked in the cross-check that precedes the E3 GPU run; after that, values count as E3 evidence, apart from names with a non-positive reference.
+
+## CROSS_CHECK_Q3e (blind check of `134c213..52bb15a` and the CTBI smokes, 2026-10-31): APPROVE with conditions
+
+**Corrections to my earlier statements:**
+- **The Q3d-2 ruling** said terminal RONIC = r adds nothing from growth. That holds only for an unlevered firm. On levered names the
+  desk turns RONIC into an equity return (O5) other than r. The reference was therefore 4.4% below to 28.8% above a true zero-NPV
+  one, and QUAD's reference was refused again.
+- **5df6b85's statement about QUAD was wrong.** It does not get `record_neutral_not_positive`.
+- **The CTBI smoke LOG row was wrong in four ways:**
+  - "year 4" is the input's own value, not another input;
+  - no bare year remained in attempt 2;
+  - three scenario inputs failed for reasons the model was never shown;
+  - `long_run_roe` also failed V3.
+
+**Rulings** (rs2 `review-2026-10/m3q` `8d25d85`, checks v9, prompt v7 / fin.v5; suite 645 passed):
+
+| # | Ruling |
+|---|---|
+| Q3e-1 | **Fixed.** The operating reference takes terminal RONIC = (1−δ)r + δ·kd(1−τ), so its O5 equity return is r. `how` names it. DAR's reference is now 66.774, equal to the reviewer's zero-NPV value. A test on a levered base was added. |
+| Q3e-2 | **Fixed.** `normalized`'s own value prints "year N", "d percentage points" and "100d basis points", with no % form. Both prompts say to name a forecast year in words. Tests were added. A reason that lists "0" for "0 percentage points" still fails, because a unit mismatch can only be fixed in the contract, which is pinned. The repair message now names it. |
+| Q3e-3 | **Fixed.** Scenario lines carry their whys. Every failing check and figure is named. An unlisted figure says "list it if a cited item prints it, otherwise remove it". |
+| Q3e-4 | **Fixed.** The repair turn shows up to four failures per input. |
+| Q3e-5 | **Fixed.** V10 refuses "within the record / range" when the input is outside [min, max]. |
+| Q3e-6 | **Fixed.** Own-value forms are the exact value only (fraction, %, and 2- or 4-decimal forms only when exact). |
+| Q3e-7 | Carried. The O-1 annotation noise, the dead branch at Q3d-1 and the missing tests are cosmetic. |
+| Q3e-8 | **The operating smoke.** One real turn on each route at the new versions (DAR, then CTBI) before E3, under the smoke rule. The CHANGE_REGISTER rows for the m3q versions are added. |
+
+**E3 may run once these smokes pass on mechanics.** B13 counts on levered names from checks v9. QUAD and RNG keep no B13
+evidence if their reference is not positive.
