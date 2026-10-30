@@ -12,7 +12,7 @@ from qwen_c.value import desk, forecast, inputs, run
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
     f = C.facts()
-    b = dict(inputs.base(f, market_cap=180e6), stub_days=0)
+    b = dict(inputs.base(f, market_cap=180e6, bill_rate=0.04), stub_days=0)
     bar = forecast.record_bar(b["record"]["op_margin"])
     record = forecast.record_items(f)
     prov = {"rf": 0.0505, "g_anchor": 0.0375, "loading_adjusted": 1.25, "closure_erp": 0.0417}

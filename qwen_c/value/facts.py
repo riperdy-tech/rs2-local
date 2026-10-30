@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
 
-FACTS_VERSION = "m3q.facts.v1"
+FACTS_VERSION = "m3q.facts.v2"   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -47,7 +47,8 @@ CONCEPTS = {
                        ("ifrs-full", "PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets", "USD"),
                        ("us-gaap", "PaymentsForCapitalImprovements", "USD"), ("us-gaap", "PaymentsForConstructionInProcess", "USD"),
                        ("us-gaap", "PaymentsToAcquireRealEstate", "USD")]),
-    "interest_expense": ("flow", [("us-gaap", "InterestExpense", "USD"), ("us-gaap", "InterestExpenseNonoperating", "USD")]),
+    "interest_expense": ("flow", [("us-gaap", "InterestExpense", "USD"), ("us-gaap", "InterestExpenseNonoperating", "USD"),
+                                  ("us-gaap", "InterestExpenseDebt", "USD"), ("ifrs-full", "FinanceCosts", "USD")]),
     "diluted_shares": ("flow", [("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding", "shares"),
                                 ("ifrs-full", "AdjustedWeightedAverageShares", "shares")]),
     "eps_diluted": ("flow", [("us-gaap", "EarningsPerShareDiluted", "USD/shares")]),
@@ -56,8 +57,23 @@ CONCEPTS = {
     "cash": ("instant", [("us-gaap", "CashAndCashEquivalentsAtCarryingValue", "USD"),
                          ("us-gaap", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "USD"),
                          ("ifrs-full", "CashAndCashEquivalents", "USD")]),
-    "debt_current": ("instant", [("us-gaap", "LongTermDebtCurrent", "USD"), ("us-gaap", "DebtCurrent", "USD")]),
-    "debt_noncurrent": ("instant", [("us-gaap", "LongTermDebtNoncurrent", "USD"), ("us-gaap", "LongTermDebt", "USD")]),
+    # debt (CROSS_CHECK_Q 5, 27; tags from the 156-name census): a total tag if one is filed, else noncurrent + current + short-term.
+    # inputs.debt_total applies the rules on which tag already includes which part.
+    "debt_total": ("instant", [("us-gaap", "DebtAndCapitalLeaseObligations", "USD"), ("us-gaap", "DebtLongtermAndShorttermCombinedAmount", "USD"),
+                               ("us-gaap", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities", "USD"),
+                               ("us-gaap", "LongTermDebt", "USD"), ("ifrs-full", "Borrowings", "USD")]),
+    "debt_noncurrent": ("instant", [("us-gaap", "LongTermDebtNoncurrent", "USD"), ("us-gaap", "LongTermDebtAndCapitalLeaseObligations", "USD"),
+                                    ("us-gaap", "LongTermNotesPayable", "USD"), ("ifrs-full", "LongtermBorrowings", "USD")]),
+    "debt_current": ("instant", [("us-gaap", "DebtCurrent", "USD"), ("us-gaap", "LongTermDebtCurrent", "USD"),
+                                 ("us-gaap", "LongTermDebtAndCapitalLeaseObligationsCurrent", "USD"),
+                                 ("ifrs-full", "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings", "USD"),
+                                 ("ifrs-full", "CurrentPortionOfLongtermBorrowings", "USD")]),
+    "debt_short": ("instant", [("us-gaap", "ShortTermBorrowings", "USD"), ("us-gaap", "LinesOfCreditCurrent", "USD"),
+                               ("us-gaap", "CommercialPaper", "USD"), ("ifrs-full", "ShorttermBorrowings", "USD")]),
+    "st_investments": ("instant", [("us-gaap", "ShortTermInvestments", "USD"), ("us-gaap", "MarketableSecuritiesCurrent", "USD")]),
+    "goodwill": ("instant", [("us-gaap", "Goodwill", "USD"), ("ifrs-full", "Goodwill", "USD")]),
+    "intangibles": ("instant", [("us-gaap", "IntangibleAssetsNetExcludingGoodwill", "USD"), ("us-gaap", "FiniteLivedIntangibleAssetsNet", "USD"),
+                                ("ifrs-full", "IntangibleAssetsOtherThanGoodwill", "USD")]),
     "equity": ("instant", [("us-gaap", "StockholdersEquity", "USD"), ("ifrs-full", "EquityAttributableToOwnersOfParent", "USD")]),
     "ppe_net": ("instant", [("us-gaap", "PropertyPlantAndEquipmentNet", "USD"), ("ifrs-full", "PropertyPlantAndEquipment", "USD")]),
     "ppe_gross": ("instant", [("us-gaap", "PropertyPlantAndEquipmentGross", "USD")]),
@@ -73,6 +89,13 @@ CONCEPTS = {
 
 
 DA_EXCLUDES_AMORTIZATION = {"Depreciation", "DepreciationExpense"}     # depreciation alone: nothing to subtract for D&A_org
+MAX_CONCEPTS = {"revenue"}
+
+
+def latest_annual_period(subs, T):
+    """The report period of the newest annual filing (ANNUAL_FORMS) effective by T, from the submissions, or None (ruling 8)."""
+    rows = [r for r in packet._filing_rows(subs) if r["form"] in ANNUAL_FORMS and r["effective"] and r["effective"] <= T and r.get("report_date")]
+    return max((r["report_date"] for r in rows), default=None)
 
 
 def companyfacts_url(cik):
@@ -141,11 +164,24 @@ def annual_facts(cf, subs, T, years=8):
     facts = cf.get("facts") or {}
     out, absent = {}, {}
     for concept, (kind, tags) in CONCEPTS.items():
-        merged = {}
-        for tax, tag, unit in tags:
+        cands = {}                                                      # end -> [(filed, accn, -priority, value, fact)]
+        for pri, (tax, tag, unit) in enumerate(tags):
             rows = (((facts.get(tax) or {}).get(tag) or {}).get("units") or {}).get(unit) or []
             for e, f in _series(rows, kind, eligible, known, T).items():
-                merged.setdefault(e, dict(f, tag=tag))
+                cands.setdefault(e, []).append((f.get("filed") or "", f.get("accn") or "", -pri, float(f["val"]), dict(f, tag=tag)))
+        merged = {}
+        for e, cs in cands.items():
+            # ruling 28: the latest eligible filing first; within it, tag priority. Revenue (ruling 5c): within it, the largest line, so the
+            # total wins over an ASC 606 subset; the choice is stamped when lines disagree
+            latest = max((c[0], c[1]) for c in cs)
+            same = [c for c in cs if (c[0], c[1]) == latest]
+            if concept in MAX_CONCEPTS:
+                pick = max(same, key=lambda c: (c[3], c[2]))
+                if len({round(c[3]) for c in same}) > 1:
+                    pick[4]["stamp"] = pick[4].get("stamp") or "revenue_largest_of_tags"
+            else:
+                pick = max(same, key=lambda c: c[2])
+            merged[e] = pick[4]
         if not merged:
             absent[concept] = "no eligible annual fact under any listed tag"
             continue
@@ -172,6 +208,7 @@ def annual_facts(cf, subs, T, years=8):
     latest = max((v["end"] for v in out.get("revenue", {}).get("values", [])), default=None)
     stale = {c: d["values"][-1]["end"] for c, d in out.items() if latest and d["values"][-1]["end"] < latest and c != "nci_income"}
     out["_absent"], out["_stale"] = absent, stale
+    out["_latest_annual_period"] = latest_annual_period(subs, T)
     return out
 
 

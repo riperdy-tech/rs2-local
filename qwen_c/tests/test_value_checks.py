@@ -39,7 +39,7 @@ ITEMS = {
 @pytest.fixture(scope="module")
 def ctx():
     f = facts()
-    b = dict(inputs.base(f, market_cap=180 * M), stub_days=0)
+    b = dict(inputs.base(f, market_cap=180 * M, bill_rate=0.04), stub_days=0)
     bar = forecast.record_bar(b["record"]["op_margin"])
     items = {i["fact_id"]: i for i in forecast.record_items(f)}
     items.update({k: {"fact_id": k, "kind": kd, "period": p, "text": t} for k, (kd, p, t) in ITEMS.items()})

@@ -11,8 +11,9 @@ until its forecast assembly exists (inputs.base_financial is built; the ROE-path
 import argparse
 import json
 import time
-from datetime import date
+from datetime import date, timedelta
 
+import rs2_data
 from qwen_c import runner
 from qwen_c.value import checks, coe, desk, facts, forecast, inputs, task
 
@@ -34,7 +35,12 @@ def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow
         raise desk.DeskRefusal("family_not_routed", f"family {family!r}: only {ROUTED} are valued by this runner")
     T = runner._parse_t(packet["decision_time_utc"])
     f = facts.build(cik, T, online=online, root=root)
-    b = inputs.base(f, market_cap=market_cap)
+    fy0 = max(v["end"] for v in (f.get("revenue") or {}).get("values", [])) if f.get("revenue") else None
+    if fy0 is None:
+        raise desk.DeskRefusal("history_short", "no filed revenue")
+    bill, bill_src = rs2_data.bill_rate_mean(str(date.fromisoformat(fy0) - timedelta(days=365)), fy0)
+    b = inputs.base(f, market_cap=market_cap, bill_rate=bill)
+    b["bill_source"] = bill_src
     b["stub_days"] = (T.date() - date.fromisoformat(b["fy0"])).days      # ruling 7: rolled forward from the fiscal-year end to T
     if b.get("oi0") is None:                                              # ruling 24: a data no-call before any model call
         raise desk.DeskRefusal("bridge_unavailable", "operating income for the base year is not filed")

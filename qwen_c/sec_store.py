@@ -29,7 +29,7 @@ RAW_DIR = REPO / "cache" / "m3m" / "raw"
 RECEIPTS = "receipts.jsonl"
 
 ALLOWED_HOSTS = ("sec.gov", "www.sec.gov", "data.sec.gov")
-MUTABLE_PREFIXES = ("https://data.sec.gov/submissions/",)      # documents SEC rewrites in place: each online get is a new fetch
+MUTABLE_PREFIXES = ("https://data.sec.gov/submissions/", "https://data.sec.gov/api/xbrl/companyfacts/")   # rewritten in place by SEC: each online get is a new fetch (companyfacts: CROSS_CHECK_Q 8)
 THROTTLE_S = 0.15
 TIMEOUT_S = 60
 MAX_BYTES = 80_000_000

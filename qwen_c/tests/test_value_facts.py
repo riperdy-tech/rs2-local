@@ -109,3 +109,29 @@ def test_instants_take_fiscal_year_end_balances_only():
 def test_urls():
     assert facts.companyfacts_url(320193) == "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json"
     assert facts.submissions_url("0000320193") == "https://data.sec.gov/submissions/CIK0000320193.json"
+
+
+def test_latest_filing_first_then_tag_priority():
+    # an older filing's high-priority tag loses to the latest filing's lower-priority tag for the same year (ruling 28)
+    g = {"OperatingIncomeLoss": {"units": {"USD": [fy("2024-12-31", 10.0, "0001-25-000010", filed="2025-02-21")]}}}
+    i = {"ProfitLossFromOperatingActivities": {"units": {"USD": [fy("2024-12-31", 11.0, "0001-26-000010")]}}}
+    out = facts.annual_facts({"facts": {"us-gaap": g, "ifrs-full": i}}, subs(), T)
+    assert out["operating_income"]["values"][0]["value"] == 11.0
+
+
+def test_revenue_takes_the_total_line_within_a_filing():
+    g = {"RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [fy("2025-12-31", 936.0, "0001-26-000010")]}},
+         "Revenues": {"units": {"USD": [fy("2025-12-31", 10645.0, "0001-26-000010")]}}}
+    v = facts.annual_facts({"facts": {"us-gaap": g}}, subs(), T)["revenue"]["values"][0]
+    assert (v["value"], v["tag"], v["stamp"]) == (10645.0, "Revenues", "revenue_largest_of_tags")
+
+
+def test_latest_annual_period_from_the_submissions():
+    s = subs()
+    s["filings"]["recent"]["reportDate"] = ["2025-12-31", "2025-12-31", "2024-12-31", "2025-12-31"]
+    assert facts.latest_annual_period(s, T) == "2025-12-31"
+
+
+def test_companyfacts_is_refetched_online():
+    from qwen_c import sec_store
+    assert facts.companyfacts_url(1).startswith(sec_store.MUTABLE_PREFIXES)
