@@ -59,7 +59,7 @@ def amortization_path(schedule, thereafter, n_years):
     Returns (path, left), left = the balance still unamortized after year n."""
     out = [float(a) for a in schedule]
     after = float(thereafter)
-    rate = out[-1] if out else 0.0
+    rate = next((a for a in reversed(out) if a > 0), 0.0)        # A_5 = 0 with a balance left: the last positive amount (ruling 30)
     while len(out) < n_years:
         a = min(rate, max(0.0, after)) if rate > 0 else 0.0
         out.append(a)
@@ -123,10 +123,11 @@ def value_operating(inp):
       revenue R_0..R_{5+H}; margin m_1..m_{5+H} (X / revenue); capex_1..capex_{5+H}; d_ratio (pooled D&A_org / revenue); ppe (optional,
       vintages rule); w (NWC / revenue); p_ratio, rou_ratio (lease principal, ROU depreciation / revenue; 0.0 for none); amort_schedule
       (A_1..A_5), amort_thereafter; delta, kd, tau; r, g_T, F, H (0 unless a cited investment-state path extends the levels leg);
-      ronic0, ronic_T (returns on capital; math.inf allowed); m_long; shares; excess_cash.
+      ronic0, ronic_T (returns on capital; math.inf allowed); m_long; shares; excess_cash; stub_days (fiscal-year end to T: the equity
+      value is rolled forward at r; cash is at its measured amount).
     Returns the per-share value and the whole schedule."""
     _check(inp, ("revenue", "margin", "capex", "d_ratio", "w", "p_ratio", "rou_ratio", "amort_schedule", "amort_thereafter", "delta", "kd",
-                 "tau", "r", "g_T", "F", "H", "ronic0", "ronic_T", "m_long", "shares", "excess_cash"))
+                 "tau", "r", "g_T", "F", "H", "ronic0", "ronic_T", "m_long", "shares", "excess_cash", "stub_days"))
     h, f_years = int(inp["H"]), int(inp["F"])
     e_end = 5 + h
     rev = [float(x) for x in inp["revenue"]]
@@ -143,6 +144,13 @@ def value_operating(inp):
         raise DeskRefusal("rate_not_above_terminal_growth", f"r = {r} must exceed g_T = {gt}")
     if not (inp["ronic0"] > 0 and inp["ronic_T"] > 0):
         raise DeskRefusal("ronic_not_positive", "RONIC_0 and RONIC_T must be positive")
+    for name in ("ronic0", "ronic_T"):                               # ruling 3 (1dcb3b2 refused it): the O5 equity return must be positive
+        eq = equity_ronic(float(inp[name]), delta, kd, tau)
+        if not eq > 0:
+            raise DeskRefusal("equity_ronic_not_positive", f"{name} {inp[name]} at delta {delta}, kd {kd} gives an equity return {eq:.6g}")
+    stub = inp["stub_days"]
+    if not (isinstance(stub, (int, float)) and 0 <= stub <= 800):
+        raise DeskRefusal("input_invalid", "stub_days (fiscal-year end to T) must be in [0, 800]")
     if not inp["shares"] > 0:
         raise DeskRefusal("shares_unavailable", "a positive share count is required")
     x = [rev[t] * mg[t - 1] for t in range(1, e_end + 1)]
@@ -159,8 +167,10 @@ def value_operating(inp):
     pv_levels = sum(f / (1 + r) ** t for t, f in enumerate(levels[:5], 1))
     shield = shield_after(left, amort[-1] if amort else 0.0, tau, r, n)
     equity = pv_levels + tail["pv_flows"] + tail["tv_pv"] + shield
+    factor = (1 + r) ** (float(inp["stub_days"]) / 365.0)          # ruling 7: valued at the fiscal-year end, rolled forward to T at r
     return dict(tail, route="operating", desk=DESK_VERSION, fade_convention=FADE_CONVENTION, da_rule=da_rule, pv_levels=pv_levels,
-                shield_after_n_pv=shield, equity_value=equity, value_per_share=(equity + float(inp["excess_cash"])) / float(inp["shares"]))
+                shield_after_n_pv=shield, equity_value=equity, rollforward_factor=factor, stub_days=inp["stub_days"], da_path=da,
+                amort_path=amort, value_per_share=(equity * factor + float(inp["excess_cash"])) / float(inp["shares"]))
 
 
 def _tail(levels, x, rev, margin, amort, delta, kd, tau, r, gt, f_years, h, ronic0, ronic_t, m_long):

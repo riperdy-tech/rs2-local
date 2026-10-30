@@ -42,7 +42,7 @@ def cost_of_equity(sector, T, *, closure=None, allow_after_T=False):
     missing = [k for k, (v, _) in legs.items() if v is None]
     if missing:
         raise DeskRefusal("coe_unavailable", f"missing {missing}" + (f"; closure: {erp_why}" if erp is None else ""))
-    stamps = []
+    stamps = [f"coe_leg_undated:{k}" for k, (_, d) in legs.items() if d is None]      # ruling 29: the loading carries no date
     late = [k for k, (_, d) in legs.items() if d is not None and d > T.date()]
     if late:
         if not allow_after_T:

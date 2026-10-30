@@ -6,7 +6,7 @@ import re
 from qwen_c import tasks
 from qwen_c.value import checks, task
 
-PINNED = "f1fdce12f3e9e9fb2ffa462fdb079d706c0e063043c7ddad2a72013ce0b5c6b5"
+PINNED = "06bf3ba6173eac2df624cf1ab861e207bd046295526fd530be8d8fa793e478c4"
 
 
 def test_system_is_the_shared_text_and_the_formation_tasks_are_untouched():
@@ -35,6 +35,20 @@ def test_user_message_carries_the_record_and_the_base_then_the_task_last():
     assert msg.rstrip().endswith("```")
 
 
-def test_prompt_text_is_pinned():
-    h = hashlib.sha256((task.VALUATION_PROMPT_VERSION + task.INSTRUCTION).encode("utf-8")).hexdigest()
-    assert h == PINNED, "the valuation prompt changed: bump VALUATION_PROMPT_VERSION and re-pin"
+def _fixed_message():
+    pk = {"ticker": "T", "decision_time_utc": "2026-10-30T13:00:00Z", "cik": "1",
+          "evidence": [{"fact_id": "S0", "kind": "screener_row",
+                        "text": "\n".join(["symbol: T", "price: 12.5", "marketCap: 1000", "price as-of (Last_Updated, zone not stated): x",
+                                           "sector: Tech"])}]}
+    rec = [{"fact_id": "Y2025-12-31", "text": "Filed annual record, fiscal year ended 2025-12-31: revenue $100.0 million."}]
+    return task.user_message(pk, rec, *_base_args())
+
+
+def test_price_blind_masks_the_screener_row():
+    msg = _fixed_message()
+    assert "price:" not in msg and "marketCap" not in msg and "price as-of" not in msg and "sector: Tech" in msg
+
+
+def test_the_whole_user_message_template_is_pinned():
+    h = hashlib.sha256("\n".join([task.VALUATION_PROMPT_VERSION, tasks.SYSTEM, _fixed_message()]).encode("utf-8")).hexdigest()
+    assert h == PINNED, f"the valuation prompt changed: bump VALUATION_PROMPT_VERSION and re-pin ({h})"

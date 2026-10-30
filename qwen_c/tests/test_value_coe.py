@@ -22,7 +22,7 @@ def test_formula_and_provenance(anchors):
     anchors()
     r, prov = coe.cost_of_equity("Technology", T, closure="x")
     assert r == pytest.approx(max(0.05, 0.0375) + 1.25 * 0.0417)
-    assert prov["closure_asof"] == "2026-10-04" and prov["stamps"] == []
+    assert prov["closure_asof"] == "2026-10-04" and prov["stamps"] == ["coe_leg_undated:loading"]
 
 
 def test_growth_anchor_above_rf_is_the_floor(anchors):
@@ -42,7 +42,7 @@ def test_anchor_after_T_refused_unless_allowed_and_then_stamped(anchors):
     with pytest.raises(desk.DeskRefusal) as e:
         coe.cost_of_equity("X", T, closure="x")
     assert e.value.code == "coe_anchor_after_T"
-    assert coe.cost_of_equity("X", T, closure="x", allow_after_T=True)[1]["stamps"] == ["anchor_after_T"]
+    assert "anchor_after_T" in coe.cost_of_equity("X", T, closure="x", allow_after_T=True)[1]["stamps"]
 
 
 def test_closure_path_is_the_main_checkouts_cache():

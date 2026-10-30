@@ -103,10 +103,10 @@ def assemble(sc, b, bar, *, r):
             rev.append(R)
             x_m += inputs.bridge_x_margin(b, [float(yr["op_margin"])], [R])
             capex.append(float(yr["capex_over_revenue"]) * R)
-    m_long = inputs.bridge_x_margin(b, [float(sc["long_run_op_margin"])], [rev[5]])[0]
+    m_long = inputs.bridge_x_margin(b, [float(sc["long_run_op_margin"])], [rev[-1]])[0]     # at the end of the levels leg (ruling 10)
     ronic_t = float("inf") if sc["terminal_ronic"] == "unlimited" else float(sc["terminal_ronic"])
     return {"revenue": rev, "margin": x_m, "capex": capex, "d_ratio": b["d_ratio"], "w": b["w"], "p_ratio": b["p_ratio"],
             "rou_ratio": b["rou_ratio"], "amort_schedule": b["amort_schedule"], "amort_thereafter": b["amort_thereafter"],
             "delta": b["delta"], "kd": b["kd"], "tau": b["tau"], "r": float(r), "g_T": float(sc["terminal_g"]), "F": int(sc["fade_years"]),
-            "H": h, "ronic0": b["ronic0"], "ronic_T": ronic_t, "m_long": m_long, "shares": b["shares"], "excess_cash": b["excess_cash"],
+            "H": h, "ronic0": b["ronic0"], "ronic_T": ronic_t, "m_long": m_long, "shares": b["shares"], "excess_cash": b["excess_cash"], "stub_days": b["stub_days"],
             "_path": path, "_normalized_op_margin": m_n}

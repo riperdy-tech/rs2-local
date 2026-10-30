@@ -11,7 +11,19 @@ import json
 
 from qwen_c import tasks
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v1"
+VALUATION_PROMPT_VERSION = "m3q.prompt.v2"   # v2 2026-10-30 (CROSS_CHECK_Q 26, operator decision C5 default): price-blind [S0];
+#                                              reasons must quote; scenario inputs need their own reasons; capex_path (O7)
+PRICE_LINES = ("price:", "marketCap:", "price as-of")
+NL = "\n"
+
+
+def mask_price(packet):
+    """A copy of the packet whose [S0] screener row has no price, market cap or price as-of line (rev 26's valuation stage was price-blind).
+    Stated limit: a share price printed inside a filing's own text is not masked."""
+    out = dict(packet)
+    out["evidence"] = [dict(e, text=NL.join(l for l in (e.get("text") or "").split(NL) if not l.startswith(PRICE_LINES)))
+                       if e.get("kind") == "screener_row" else e for e in packet.get("evidence") or []]
+    return out
 
 _SHAPE = """```json
 {"task": "valuation_inputs",
@@ -19,7 +31,7 @@ _SHAPE = """```json
           "normalized": {"year": 4, "baseline": "median", "delta_pts": 0.5, "rev_growth": 0.04},
           "transition": "linear", "transition_year": null,
           "fade_years": 10, "long_run_op_margin": 0.150, "terminal_ronic": 0.15, "terminal_g": 0.03,
-          "margin_source": "record", "investment_path": null},
+          "margin_source": "record", "capex_path": null, "investment_path": null},
  "bear": {"op_margin": [0.13, 0.13]},
  "bull": {"op_margin": [0.16, 0.16]},
  "prob": {"bear": 0.25, "base": 0.5, "bull": 0.25},
@@ -44,9 +56,13 @@ INSTRUCTION = (
     "revenue_growth and op_margin.\n"
     "SCENARIOS. bear and bull list only the inputs that differ from base. A bear input is not above base and a bull input not below "
     "it, unless a reason for that scenario input explains why. prob gives the three probabilities, summing to 1.\n"
+    "CAPEX. capex_path is null, or the explicit years' capital expenditure as a fraction of revenue when the evidence states a plan: "
+    "five values for years 1-5, or {\"year5\": x} for a year-5 level; margin_source investment_in_explicit_years needs it.\n"
     "REASONS. Every base input needs at least one reason whose \"input\" names it, for example \"base.normalized\"; every scenario "
-    "input needs its own, for example \"bear.op_margin\". A reason is a claim under the rules above. A margin outside the filed "
-    "record's minimum and maximum needs a reason that cites at least two [Y] or statement items of different fiscal years. A margin "
+    "input needs its own, for example \"bear.op_margin\". A reason is a claim under the rules above, about the input it names, with "
+    "at least one exact quote; one reason serves one input. A margin outside the filed "
+    "record's minimum and maximum needs a reason that quotes filed statements or filing sections of at least two different fiscal "
+    "years; the [Y] record items alone cannot support it. A margin "
     "reason must cite at least one [Y], statement or filing section; an adjusted or company-defined figure may support it but not "
     "alone. When the evidence cannot support an input, choose the input the filed record supports and say so in \"unknowns\".\n"
     "Reply in this shape:\n" + _SHAPE)
@@ -66,7 +82,7 @@ def render_base(b, bar, r, coe_prov):
 
 def user_message(packet, record, b, bar, r, coe_prov):
     recs = "\n\n".join(f"[{i['fact_id']}] {i['text']}" for i in record)
-    return "\n\n".join([tasks.render_packet(packet), recs, render_base(b, bar, r, coe_prov), INSTRUCTION])
+    return "\n\n".join([tasks.render_packet(mask_price(packet)), recs, render_base(b, bar, r, coe_prov), INSTRUCTION])
 
 
 def messages(packet, record, b, bar, r, coe_prov, retry=None):

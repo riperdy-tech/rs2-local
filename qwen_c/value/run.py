@@ -11,6 +11,7 @@ until its forecast assembly exists (inputs.base_financial is built; the ROE-path
 import argparse
 import json
 import time
+from datetime import date
 
 from qwen_c import runner
 from qwen_c.value import checks, coe, desk, facts, forecast, inputs, task
@@ -23,17 +24,25 @@ def _statements(packet):
     return {e["fact_id"] for e in packet["evidence"] if e.get("kind") == "statement"}
 
 
-def prepare(packet, cik, sector, market_cap, *, online, root=None, allow_after_T=False, family="operating"):
-    """Everything code owns, before any model call: (facts, base, bar, record items, r, coe provenance). Raises DeskRefusal."""
-    if family == "financial":
-        raise desk.DeskRefusal("route_not_built_in_runner", "the financial route's forecast task and checks are not built (WO_Q5b)")
+ROUTED = ("operating", "commodity")      # ruling 17: every other family (financial until its task exists) is a named no_call
+
+
+def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow_after_T=False):
+    """Everything code owns, before any model call: (facts, base, bar, record items, r, coe provenance, fiscal-year ends).
+    `family` is required (the census's), never defaulted. Raises DeskRefusal."""
+    if family not in ROUTED:
+        raise desk.DeskRefusal("family_not_routed", f"family {family!r}: only {ROUTED} are valued by this runner")
     T = runner._parse_t(packet["decision_time_utc"])
     f = facts.build(cik, T, online=online, root=root)
     b = inputs.base(f, market_cap=market_cap)
+    b["stub_days"] = (T.date() - date.fromisoformat(b["fy0"])).days      # ruling 7: rolled forward from the fiscal-year end to T
+    if b.get("oi0") is None:                                              # ruling 24: a data no-call before any model call
+        raise desk.DeskRefusal("bridge_unavailable", "operating income for the base year is not filed")
     bar = forecast.record_bar(b["record"]["op_margin"])
     record = forecast.record_items(f)
     r, prov = coe.cost_of_equity(sector, T, allow_after_T=allow_after_T)
-    return f, b, bar, record, r, prov
+    fy_ends = [v["end"] for v in f["revenue"]["values"]]
+    return f, b, bar, record, r, prov, fy_ends
 
 
 def _one_call(msgs, seed, opts, url):
@@ -51,8 +60,8 @@ def _one_call(msgs, seed, opts, url):
     return ("reply" if perr is None else "malformed"), obj, perr, resp, secs
 
 
-def value(packet_path, cik, sector, market_cap, *, url=None, seed=runner.SEED_BASE, online=True, root=None, out_root=RUNS,
-          allow_after_T=False, family="operating", opts=None):
+def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner.SEED_BASE, online=True, root=None, out_root=RUNS,
+          allow_after_T=False, opts=None):
     packet, src = runner.load_packet(packet_path)
     opts = opts or {"num_ctx": runner.NUM_CTX, "num_predict": runner.NUM_PREDICT, "think": runner.THINK}
     url = url or runner.llm_provider.OLLAMA_URL
@@ -65,13 +74,13 @@ def value(packet_path, cik, sector, market_cap, *, url=None, seed=runner.SEED_BA
                            "git": runner.git_state()},
               "authority": "diagnostic_only"}
     try:
-        f, b, bar, record, r, prov = prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T,
-                                             family=family)
+        f, b, bar, record, r, prov, fy_ends = prepare(packet, cik, sector, market_cap, online=online, root=root,
+                                                      allow_after_T=allow_after_T, family=family)
     except desk.DeskRefusal as e:
         result.update(status="no_call", reason=e.code, detail=str(e))
         runner._write_json(run_dir / "result.json", result)
         return result
-    result.update(base=b, bar=bar, cost_of_equity=r, coe=prov, facts_provenance=f.get("_provenance"))
+    result.update(family=family, base=b, bar=bar, cost_of_equity=r, coe=prov, facts_provenance=f.get("_provenance"))
     items = {e["fact_id"]: e for e in packet["evidence"]}
     items.update({i["fact_id"]: i for i in record})
     retry, attempts, res = None, [], None
@@ -81,8 +90,8 @@ def value(packet_path, cik, sector, market_cap, *, url=None, seed=runner.SEED_BA
         runner._write_json(run_dir / "raw" / f"attempt_{n}.json", {"messages": msgs, "response": resp, "outcome": outcome, "detail": detail})
         att = {"attempt": n, "seed": s, "outcome": outcome, "detail": detail, "seconds": secs}
         if outcome == "reply":
-            res = checks.check(obj, items, packet["ticker"], _statements(packet), b, bar, r)
-            att["status"] = res["status"]
+            res = checks.check(obj, items, packet["ticker"], _statements(packet), b, bar, r, fy_ends)
+            att.update(status=res["status"], inputs=obj, checks={k: v for k, v in res.items() if k != "results"}, values=res["values"])
             attempts.append(att)
             if res["status"] == "ok" or n == 2:
                 break
@@ -94,12 +103,13 @@ def value(packet_path, cik, sector, market_cap, *, url=None, seed=runner.SEED_BA
             retry = ((((resp or {}).get("message") or {}).get("content") or ""), [f"not valid JSON: {detail}"])
             continue
         break
-    result["attempts"] = attempts
-    if res is None:
-        result.update(status=attempts[-1]["outcome"])
-    else:
-        result.update(status=res["status"], checks={k: v for k, v in res.items() if k != "results"},
-                      values=res["values"], inputs=obj)
+    result["attempts"] = attempts                                     # ruling 23: every attempt keeps its inputs, checks and values
+    last = attempts[-1]
+    result["status"] = last.get("status") or last["outcome"]
+    checked = [a for a in attempts if "checks" in a]
+    if checked:
+        result.update(checks=checked[-1]["checks"], values=checked[-1]["values"], inputs=checked[-1]["inputs"],
+                      checked_attempt=checked[-1]["attempt"])
     runner._write_json(run_dir / "result.json", result)
     return result
 
@@ -111,7 +121,7 @@ def main(argv=None):
     ap.add_argument("--sector", required=True)
     ap.add_argument("--market-cap", type=float, required=True)
     ap.add_argument("--seed", type=int, default=runner.SEED_BASE)
-    ap.add_argument("--family", default="operating")
+    ap.add_argument("--family", required=True, help="the census family; only operating and commodity are valued")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--allow-anchor-after-T", action="store_true", help="the E2 regression on consumed dates only")
     a = ap.parse_args(argv)

@@ -12,15 +12,13 @@ from qwen_c.value import desk, forecast, inputs, run
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
     f = C.facts()
-    b = inputs.base(f, market_cap=180e6)
+    b = dict(inputs.base(f, market_cap=180e6), stub_days=0)
     bar = forecast.record_bar(b["record"]["op_margin"])
     record = forecast.record_items(f)
     prov = {"rf": 0.0505, "g_anchor": 0.0375, "loading_adjusted": 1.25, "closure_erp": 0.0417}
-    monkeypatch.setattr(run, "prepare", lambda *a, **k: (f, b, bar, record, C.R, prov))
+    monkeypatch.setattr(run, "prepare", lambda *a, **k: (f, b, bar, record, C.R, prov, C.ENDS))
     pk = {"contract": runner.PACKET_CONTRACT, "ticker": "TEST", "decision_time_utc": "2026-10-30T13:00:00Z",
-          "evidence": [{"fact_id": "G1", "kind": "release", "period": "2026-02-01", "text": "The company expects revenue growth of 5% in 2026."},
-                       {"fact_id": "R1", "kind": "release", "period": "2026-02-01",
-                        "text": "Adjusted EBITDA margin was 25.0% for the year, excluding one-time items."}]}
+          "evidence": [{"fact_id": k, "kind": kd, "period": per, "text": t} for k, (kd, per, t) in C.ITEMS.items()]}
     p = tmp_path / "packet.json"
     p.write_text(json.dumps(pk), encoding="utf-8")
     return p, tmp_path / "runs"
@@ -39,7 +37,7 @@ def test_clean_reply_is_ok_in_one_call(setup, monkeypatch):
     p, out = setup
     seen = []
     monkeypatch.setattr(runner, "call", fake([C.clean()], seen))
-    res = run.value(p, "1", "Technology", 180e6, out_root=out, url="http://x")
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out, url="http://x")
     assert res["status"] == "ok" and len(seen) == 1 and res["authority"] == "diagnostic_only"
     assert res["values"]["bear"] <= res["values"]["base"] <= res["values"]["bull"]
     assert seen[0]["messages"][0]["content"] is runner.tasks.SYSTEM
@@ -54,7 +52,7 @@ def test_failing_reply_gets_one_repair_turn_with_the_failures(setup, monkeypatch
                                    ["Adjusted EBITDA margin was 25.0%"], ["25.0%"]))
     seen = []
     monkeypatch.setattr(runner, "call", fake([bad, C.clean()], seen))
-    res = run.value(p, "1", "Technology", 180e6, out_root=out, url="http://x")
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out, url="http://x")
     assert res["status"] == "ok" and [a["status"] for a in res["attempts"]] == ["valuation_incomplete", "ok"]
     repair = seen[1]["messages"][-1]["content"]
     assert "V4" in repair and seen[1]["options"]["seed"] == runner.SEED_BASE + run.REPAIR_SEED_OFFSET
@@ -65,7 +63,7 @@ def test_still_failing_after_repair_is_incomplete_and_still_valued(setup, monkey
     bad = C.clean()
     bad["base"]["margin_source"] = "investment_after_year5"
     monkeypatch.setattr(runner, "call", fake([bad, bad], []))
-    res = run.value(p, "1", "Technology", 180e6, out_root=out, url="http://x")
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out, url="http://x")
     assert res["status"] == "valuation_incomplete" and "base" in res["values"] and len(res["attempts"]) == 2
 
 
@@ -76,14 +74,14 @@ def test_refusal_before_any_call_is_a_no_call(setup, monkeypatch):
     monkeypatch.setattr(run, "prepare", refuse)
     seen = []
     monkeypatch.setattr(runner, "call", fake([], seen))
-    res = run.value(p, "1", "Technology", 180e6, out_root=out, url="http://x")
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out, url="http://x")
     assert res["status"] == "no_call" and res["reason"] == "tax_unavailable" and not seen
 
 
 def test_financial_family_is_refused_by_name():
     with pytest.raises(desk.DeskRefusal) as e:
         run.prepare({"decision_time_utc": "2026-10-30T13:00:00Z"}, "1", "Banks", 1.0, online=False, family="financial")
-    assert e.value.code == "route_not_built_in_runner"
+    assert e.value.code == "family_not_routed"
 
 
 def test_memo_prints_code_numbers_and_only_supported_reasons(setup, monkeypatch):
@@ -92,10 +90,10 @@ def test_memo_prints_code_numbers_and_only_supported_reasons(setup, monkeypatch)
     bad = C.clean()
     bad["reasons"].append(C.reason("base.rev_growth", "Revenue will double.", ["G1"], ["revenue will double"], []))
     monkeypatch.setattr(runner, "call", fake([bad], []))
-    res = run.value(p, "1", "Technology", 180e6, out_root=out, url="http://x")
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out, url="http://x")
     pk = json.loads(p.read_text(encoding="utf-8"))
     items = {e["fact_id"]: e for e in pk["evidence"]}
     items.update({i["fact_id"]: i for i in forecast.record_items(C.facts())})
-    text = memo.render(res, checks.reasons_by_input(res["inputs"], items, "TEST", set()))
+    text = memo.render(res, checks.reasons_by_input(res["inputs"], items, "TEST", set(), C.ENDS))
     assert "diagnostic only" in text and f"{res['values']['base']:,.2f}" in text
     assert "Revenue will double" not in text and "The company expects revenue growth of 5% in 2026." in text

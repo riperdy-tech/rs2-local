@@ -106,3 +106,24 @@ def test_no_sustaining_charge_and_fade_convention_recorded():
     src = (Path(desk.__file__)).read_text(encoding="utf-8")
     assert "sustain" not in src.split('"""', 2)[2]
     assert desk.FADE_CONVENTION == "revenue"
+
+
+def test_non_positive_equity_return_is_refused():
+    # CROSS_CHECK_Q 3: delta 0.45, kd 6%, tau 25% gives an equity return <= 0 below RONIC 2.02%
+    for ron in (0.015, 0.02):
+        with pytest.raises(desk.DeskRefusal) as e:
+            desk.value_operating(dict(A, delta=0.45, kd=0.06, tau=0.25, ronic_T=ron))
+        assert e.value.code == "equity_ronic_not_positive"
+
+
+def test_rollforward_from_the_fiscal_year_end_to_T():
+    v0, v1 = desk.value_operating(A), desk.value_operating(dict(A, stub_days=365))
+    assert v1["equity_value"] == pytest.approx(v0["equity_value"])
+    assert v1["value_per_share"] == pytest.approx(v0["value_per_share"] * (1 + A["r"]))
+    with pytest.raises(desk.DeskRefusal):
+        desk.value_operating(dict(A, stub_days=-1))
+
+
+def test_a_zero_year5_amortization_still_runs_off_the_balance():
+    path, left = desk.amortization_path([1.0, 1.0, 0.5, 0.5, 0.0], 2.0, 10)
+    assert path[5:9] == [0.5, 0.5, 0.5, 0.5] and left == 0.0

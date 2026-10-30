@@ -35,7 +35,8 @@ def render(result, reasons_by_input):
              f"| Margin source | {base.get('margin_source')} |", "",
              "Labels (code, V6): " + ", ".join(f"{k} {v}" for k, v in (chk.get("labels") or {}).items() if not k.endswith("_submitted")), ""]
     for (scen, key), rs in sorted(reasons_by_input.items()):
-        ok = [x for x in rs if x["support"] == contract.SUPPORTED]
+        refused = set(chk.get("refused_reasons") or [])
+        ok = [x for x in rs if x.get("ok", x["support"] == contract.SUPPORTED) and x.get("i") not in refused]
         lines.append(f"**{scen}.{key}**")
         for x in ok:
             lines.append(f"- {x['reason']['claim']} [{', '.join(x['reason']['fact_ids'])}]")
