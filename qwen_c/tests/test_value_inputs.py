@@ -84,8 +84,9 @@ def test_depreciation_only_tag_is_not_reduced_by_amortization():
 
 def test_debt_components_and_kd():
     b = base()
-    assert b["debt0"] == 20 and b["delta"] == pytest.approx(13 / 193) and b["kd"] == pytest.approx(1 / 20)   # O5: net of cash (N10)
-    assert "leverage_bridge_unvalidated" in b["stamps"]
+    assert b["debt0"] == 20 and b["kd"] == pytest.approx(1 / 20)
+    assert b["delta"] == pytest.approx(13 / (13 + 46)) and b["delta_market"] == pytest.approx(13 / 193)   # B12 book ratio; N10 net of cash
+    assert "leverage_book_ratio_assumed" in b["stamps"]
 
 
 def test_a_total_tag_is_not_added_to_current_debt():

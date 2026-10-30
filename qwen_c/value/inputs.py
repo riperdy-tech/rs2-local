@@ -20,7 +20,7 @@ from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION
 
-INPUTS_VERSION = "m3q.inputs.v3"   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v4"   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -195,12 +195,15 @@ def base(f, *, market_cap, bill_rate):
         stamps.append("ronic0_capped_at_100pct" if tangible > 0 else "tangible_capital_not_positive_ronic0_capped")
     if not (market_cap and market_cap > 0):
         raise DeskRefusal("market_cap_unavailable", "delta needs the market value of equity")
-    net_debt = max(0.0, debt0 - c_l)                                       # N10: O5 as approved, net of cash and short-term investments
-    delta = net_debt / (net_debt + market_cap)
+    net_debt = max(0.0, debt0 - c_l)                                       # N10: net of cash and short-term investments
+    delta_market = net_debt / (net_debt + market_cap)                     # O5's market weight, kept as a diagnostic
+    if not (e0 in eq and net_debt + eq[e0] > 0):
+        raise DeskRefusal("book_capital_not_positive", f"net debt {net_debt:.6g} plus book equity {eq.get(e0)} is not positive")
+    delta = net_debt / (net_debt + eq[e0])                                # B12 (b12_leverage.json): the book ratio new capital is funded at
     if how0 in ("DebtAndCapitalLeaseObligations", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"):
         stamps.append("debt_includes_finance_leases")
     if delta > 0:
-        stamps.append("leverage_bridge_unvalidated")                      # B12: K_0 flat interest and market-weight delta (RR_Q3 §7)
+        stamps.append("leverage_book_ratio_assumed")                      # B12: debt grows with the business at its book ratio
     shares = _by_end(f, "diluted_shares").get(e0)
     if not (shares and shares > 0):
         raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
@@ -228,7 +231,7 @@ def base(f, *, market_cap, bill_rate):
             stamps.append(f"da_vintages_out_of_bounds(life {life})")
     return {"version": INPUTS_VERSION, "fy0": e0, "ppe": ppe, "revenue_hist": [rev[e] for e in ends], "R0": rev[e0], "x0": x0, "m0": x0 / rev[e0],
             "oi0": oi[e0], "k0": k0, "op_margin0": oi[e0] / rev[e0], "d_ratio": d_ratio, "c_ratio": c_ratio, "w": w, "tau": tau,
-            "ronic0": ronic0, "delta": delta, "kd": kd, "debt0": debt0, "debt_basis": how0, "shares": shares, "excess_cash": excess_cash,
+            "ronic0": ronic0, "delta": delta, "delta_market": delta_market, "kd": kd, "debt0": debt0, "debt_basis": how0, "shares": shares, "excess_cash": excess_cash,
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,
             "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps,
             "da_rule": "vintages" if ppe else "pooled",
@@ -237,12 +240,13 @@ def base(f, *, market_cap, bill_rate):
 
 
 def bridge_x_margin(b, op_margins, revenues, amort=None):
-    """Analyst operating margins (GAAP basis) to X margins: X_t = (op_t R_t + A_t - K_0)(1 - tau), K_0 from the base (module doc);
-    `amort` the A_t of the same years (None: 0, as for the long run)."""
+    """Analyst operating margins (GAAP basis) to X margins: X_t = (op_t R_t + A_t - K_0 R_t / R_0)(1 - tau). The non-operating items
+    (interest above all) scale with revenue, as debt does at a book ratio (B12, b12_leverage.json); `amort` the A_t of the same years
+    (None: 0, as for the long run)."""
     if b.get("k0") is None:
         raise DeskRefusal("bridge_unavailable", "no bridge constant: operating income or pretax income for the base year is not filed")
     amort = amort or [0.0] * len(op_margins)
-    return [(m * r + a - b["k0"]) * (1 - b["tau"]) / r for m, r, a in zip(op_margins, revenues, amort)]
+    return [(m * r + a - b["k0"] * r / b["R0"]) * (1 - b["tau"]) / r for m, r, a in zip(op_margins, revenues, amort)]
 
 
 def base_financial(f):
