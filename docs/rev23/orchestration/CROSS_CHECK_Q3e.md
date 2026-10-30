@@ -17,7 +17,7 @@
 
 **Method:**
 - **Suite** (foreground, bytecode off, no cache): **639 passed in 193.66 s**.
-- **Probes e1–e8** are in `C:\Users\riper\AppData\Local\Temp\claude\C--Users-riper-stocks\69b4116b-d43f-4a78-867f-8f8db1d8ff91\scratchpad\q3e_probes\`. All ran to the end (exit 0).
+- **Probes e1–e8** are in `<session scratchpad>/q3e_probes/`. All ran to the end (exit 0).
 - **Facts.**
   - The smoke replays (e1, e2, e4a, e5–e8) use the exact bytes each smoke used: `sec_store.get_pinned` on the sha256 in result.json.
   - The census probes (e3, e4b) read the store's latest receipts offline, at CROSS_CHECK_Q3d's T and settings.
