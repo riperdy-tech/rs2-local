@@ -125,3 +125,70 @@ Code: `q3_fade_new.py`; output `q3_fade_new.json`. Errors against the true value
 - A margin rise above the record with no evidence of its source already fails V3.
 - Whether to replace the wedge by C is left as an open design option, not a ruling. It needs an operator decision (O2 is
   approved) and a test where RONIC_T is the analyst's estimate, not the truth.
+
+## 7. v1.3: B1 re-run on the production path (PREREG_q3_fade_v1_3.json, sha256 `b574b682…f9f`, committed `53ee122` before the run)
+
+**Why.** CROSS_CHECK_Q 4: v1.0–v1.2 fed D2 the true capex path through `reference_d2`, which production could not state.
+
+**What ran.** The production code (`d2a35dd` + `d323133`):
+- simulated statements are turned into a facts dict;
+- `inputs.base` (market cap = true value, bill rate 0), then the ideal analyst's typed inputs;
+- `forecast.assemble`, then `desk.value_operating`.
+
+Code: `q3_prod_path.py`; output `q3_prod_path.json`. The repo test is `qwen_c/tests/test_value_prod_path.py` (fixture from
+`gen_prod_path_fixture.py`).
+
+| Firm | Cited capex (O7) | Pooled capex |
+|---|---|---|
+| M1_pricing | −0.14% | −0.14% |
+| M2_invested | −0.15% | **+15.13%** |
+| M3_mixed | −0.09% | +6.24% |
+| M4_decline | −0.14% | −0.14% |
+| M5_decline_invested | +0.12% | −6.74% |
+| A_compounder | +0.00% | +0.00% |
+| D_acquirer | −0.42% (was +12.05% before `d323133`) | −0.42% |
+| C_depleter | +8.25% (reference default +7.37%) | +18.52% |
+| C2_depleter_levered | +1.84% (reference default +4.53%) | +10.13% |
+| C3_impaired | +1.39% | +1.39% |
+| E_holiday | +10.85% (reference default +10.97%; registered pass only on H = 9) | +3.71% |
+| G_utility | **+17.86%** | +52.40% |
+| H_reit | **−5.38%** | +7.28% |
+
+**By the rule: B1 = R stands** (M1–M5 within 0.15% with a cited capex plan).
+
+**Read with the rule:**
+- **Without a cited plan,** a margin bought by investment in the explicit years is mispriced (M2 +15%). So V11 holds
+  (`investment_in_explicit_years` needs the capex path), and the evidence must name the plan.
+- **D was a defect, now fixed.** The bridge constant K_0 kept the base year's amortization add-back in every margin after the
+  schedule ran off. It is an identity fix, not a convention change.
+- **G and H (reported, not ruled).** They pass in the reference with book leverage. Production uses O5's market-weight δ and holds
+  K_0 (interest) flat in dollars. Two diagnostics (G / H):
+  - K_0 scaled with revenue: −5.7% / −7.3% (market δ); +4.0% / +3.0% (book δ);
+  - flat K_0 with book δ: +27.9% / +4.9%.
+  - Neither change is clean. Both are design questions (O5 is approved; the K_0 form needs its own pre-registration), so I
+    change nothing on this evidence. Utilities and REITs are refused today (ruling 17).
+  - The remaining exposure is levered operating firms whose interest grows with debt. That is decision B12.
+
+## 8. B12: the leverage bridge (PREREG_b12_leverage.json, sha256 `c4cf298f…d9a`, committed `3a42a3a` before the run)
+
+Code: `b12_leverage.py`, on the production path; output `b12_leverage.json`.
+
+| Firm | flat K_0, market δ (as built) | scaled K_0, market δ | **scaled K_0, book δ** | flat K_0, book δ |
+|---|---|---|---|---|
+| L1 (40% book debt, 1% growth) | −4.77% | −6.54% | **+0.03%** | +1.86% |
+| L2 (30%, 3% growth) | −8.13% | −10.23% | **+0.09%** | +2.34% |
+| L3 (50%, 2% growth) | −9.56% | −12.42% | **+0.06%** | +3.16% |
+| C2 (reported only) | +1.84% | +0.86% | +8.25% | +9.26% |
+
+**By the rule, `scaled_book` is adopted** (rs2 `m3q.inputs.v4`). The non-operating items K_0 scale with revenue, and δ is net debt
+over net debt plus book equity, measured from the filings. Re-run of the production path after the change:
+- G_utility: +17.9% → +4.0%;
+- H_reit: −5.4% → +2.6%;
+- M1–M5: unchanged, within 0.15% (B1 stands);
+- C2: +8.25%, the same as C's registered default-path error, which is a capex question.
+
+**Caveats, stated:**
+- The simulated firms fund new capital at a book ratio by construction, so the test partly favours book δ by design.
+- Book δ departs from the approved O5 (market weights). The two causes are coupled: scaling K_0 with market δ is worse than
+  either alone. So they were adopted together, and flagged to the operator (decision B12b).
+- `delta_market` stays as a diagnostic on every result.

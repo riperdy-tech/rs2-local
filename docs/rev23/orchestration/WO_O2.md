@@ -9,8 +9,9 @@ and before 3N FRESH (SPEC_m3o §9).
 
 ## Code and roots
 
-- **Code:** rs2-local `review-2026-10/m3n-v6` at `4bc9425` (builder v7, AUDIT_N6 and its addendum; the `find_prior` fix).
-- **Worktree:** a new one, `scratch/rev23/wt-m3o`, on a new branch `review-2026-10/m3o` made at `035ef96`, fast-forwarded to `4bc9425`. Its own
+- **Code:** rs2-local `review-2026-10/m3n-v6` at `d2f3f15` (builder v7 and contract `m3m.analysis.v3`, as PREREG_m3o v1.4 pins;
+  AUDIT_N6 and its addendum; the `find_prior` fix). *Corrected 2026-10-30: this line said `4bc9425`; the worktree is at `d2f3f15`.*
+- **Worktree:** a new one, `scratch/rev23/wt-m3o`, on a new branch `review-2026-10/m3o` made at `035ef96`, fast-forwarded to `d2f3f15`. Its own
   `cache/m3m` holds this formation's store, packets, runs and ledger. Formation runs never share a ledger with 3N runs,
   so `find_prior` can only find an earlier formation run of the same ticker.
 - **Scripts:** `scratch/rev23/m3o_run/` (`o2_decide.py`, `o2_packets.py`, `o2_run.py`, `run_o2.cmd`, `launch_o2.vbs`,
