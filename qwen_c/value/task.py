@@ -11,7 +11,7 @@ import json
 
 from qwen_c import tasks
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v3"   # v3 2026-10-30 (CROSS_CHECK_Q2 N8): [V0] names the D&A rule the desk uses   # v2 2026-10-30 (CROSS_CHECK_Q 26, operator decision C5 default): price-blind [S0];
+VALUATION_PROMPT_VERSION = "m3q.prompt.v5"   # v5 2026-10-30 (smoke 2): inner quotation marks; keep reasons short   # v4 2026-10-30 (smoke 1): the figures rule for reasons; [V0] is citable   # v3 2026-10-30 (CROSS_CHECK_Q2 N8): [V0] names the D&A rule the desk uses   # v2 2026-10-30 (CROSS_CHECK_Q 26, operator decision C5 default): price-blind [S0];
 #                                              reasons must quote; scenario inputs need their own reasons; capex_path (O7)
 PRICE_LINES = ("price:", "marketCap:", "price as-of")
 NL = "\n"
@@ -60,12 +60,19 @@ INSTRUCTION = (
     "five values for years 1-5, or {\"year5\": x} for a year-5 level; margin_source investment_in_explicit_years needs it.\n"
     "REASONS. Every base input needs at least one reason whose \"input\" names it, for example \"base.normalized\"; every scenario "
     "input needs its own, for example \"bear.op_margin\". A reason is a claim under the rules above, about the input it names, with "
-    "at least one exact quote; one reason serves one input. A margin outside the filed "
+    "at least one exact quote; one reason serves one input. In a reason write only figures a cited item prints, and the input's own "
+    "value; never a figure you computed (a growth rate, margin or ratio the items do not print). [V0] may be cited. Inside a JSON "
+    "string write any quotation mark the source text prints as a single quote ('); a reason is one or two sentences. A margin outside the filed "
     "record's minimum and maximum needs a reason that quotes filed statements or filing sections of at least two different fiscal "
     "years; the [Y] record items alone cannot support it. A margin "
     "reason must cite at least one [Y], statement or filing section; an adjusted or company-defined figure may support it but not "
     "alone. When the evidence cannot support an input, choose the input the filed record supports and say so in \"unknowns\".\n"
     "Reply in this shape:\n" + _SHAPE)
+
+
+def base_item(b, bar, r, coe_prov):
+    """[V0] as a citable evidence item (kind code_base: it never carries V3's span or V4's basis)."""
+    return {"fact_id": "V0", "kind": "code_base", "period": b["fy0"], "text": render_base(b, bar, r, coe_prov)}
 
 
 def render_base(b, bar, r, coe_prov):
@@ -86,12 +93,19 @@ def user_message(packet, record, b, bar, r, coe_prov):
     return "\n\n".join([tasks.render_packet(mask_price(packet)), recs, render_base(b, bar, r, coe_prov), INSTRUCTION])
 
 
+def compact_failures(failures):
+    """One line per failing input: its first failure (smoke 1: the full list made the repair turn run out of output)."""
+    if isinstance(failures, dict):
+        return "\n".join(f"- {k}: {str(v[0])[:200]}" for k, v in failures.items())
+    return "\n".join(f"- {str(f)[:200]}" for f in failures)
+
+
 def messages(packet, record, b, bar, r, coe_prov, retry=None):
     """[system, user] (+ the repair turn: the previous reply and the failures to fix)."""
     msgs = [{"role": "system", "content": tasks.SYSTEM}, {"role": "user", "content": user_message(packet, record, b, bar, r, coe_prov)}]
     if retry:
         prev, failures = retry
         msgs += [{"role": "assistant", "content": prev},
-                 {"role": "user", "content": "These inputs did not pass the code checks; reply again with every input supported:\n"
-                                             + json.dumps(failures, ensure_ascii=False, indent=1)}]
+                 {"role": "user", "content": "These inputs did not pass the code checks. Reply again with the whole JSON, every input "
+                                             "supported; keep the inputs that passed:\n" + compact_failures(failures)}]
     return msgs

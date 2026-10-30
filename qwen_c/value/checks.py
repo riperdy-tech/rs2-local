@@ -190,13 +190,16 @@ def fiscal_year_of(period, fy_ends):
 
 def reasons_by_input(out, items, ticker, statements, fy_ends=()):
     """{(scenario, input): [{"i", "reason", "support", "ok", "why", "kinds", "span_years"}]}. ok = the reason counts (see module doc)."""
-    texts = {k: v["text"] for k, v in items.items()}
+    texts = {k: _sq(v["text"]) for k, v in items.items()}                   # smoke 2: " and ' match alike (local to valuation)
     got, seen_claims = {}, {}
     for i, rz in enumerate(out.get("reasons") or []):
         key = _key(rz.get("input", ""))
-        claim = {"claim": rz.get("claim", ""), "fact_ids": rz.get("fact_ids") or [], "quotes": rz.get("quotes") or [],
+        claim = {"claim": rz.get("claim", ""), "fact_ids": rz.get("fact_ids") or [], "quotes": [_sq(q) for q in rz.get("quotes") or []],
                  "numbers": rz.get("numbers") or []}
-        chk = contract.check_claim(claim, texts, ticker, statements)
+        # smoke 1: the reason may state its own input's value; that figure is supplied as a cited text, never as evidence for spans
+        own = input_value_text(out, key)
+        chk = contract.check_claim(dict(claim, fact_ids=claim["fact_ids"] + ["_OWN"]) if own else claim,
+                                   dict(texts, _OWN=own) if own else texts, ticker, statements)
         cited = [items[a] for a in claim["fact_ids"] if a in items]
         why = None
         if chk["support"] != contract.SUPPORTED:
@@ -210,11 +213,29 @@ def reasons_by_input(out, items, ticker, statements, fy_ends=()):
             why = f"the same claim already serves {'.'.join(seen_claims[norm])}"
         seen_claims.setdefault(norm, key)
         # N2: the span counts only the filed (non-[Y]) items a verified quote of this reason comes from
-        quoted = [c for c in cited if any(contract.quote_found(q, [c["text"]]) for q in claim["quotes"])]
+        quoted = [c for c in cited if any(contract.quote_found(q, [_sq(c["text"])]) for q in claim["quotes"])]
         span = {fiscal_year_of(c.get("period"), fy_ends) for c in quoted if c["kind"] in FILED_KINDS} - {None}
         got.setdefault(key, []).append({"i": i, "reason": rz, "support": chk["support"], "ok": why is None, "why": why,
                                         "kinds": {c["kind"] for c in cited}, "span_years": span})
     return got
+
+
+def _sq(s):
+    return (s or "").replace('"', "'")
+
+
+def input_value_text(out, key):
+    """The printed forms of the input `key` = (scenario, input) value, so a reason can state the value it argues for: each number as a
+    fraction and as a percentage (one decimal and none). '' when the input is not numeric."""
+    sc = merged(out, key[0]) if key[0] in ("base", "bear", "bull") and isinstance(out.get("base"), dict) else {}
+    v = sc.get(key[1])
+    if isinstance(v, dict):
+        v = [v.get("delta_pts"), v.get("rev_growth")]
+    vals = [x for x in (v if isinstance(v, list) else [v]) if _num(x)]
+    forms = []
+    for x in vals:
+        forms += [f"{x}", f"{x:.2f}", f"{x:.4f}", f"{100 * x:.1f}%", f"{100 * x:.0f}%", f"{x:.1f}", f"{x:.0f}"]
+    return " ".join(forms)
 
 
 def _ok(rs):

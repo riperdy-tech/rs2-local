@@ -26,6 +26,7 @@ def _statements(packet):
 
 
 MAX_STUB_DAYS = 800
+NUM_PREDICT = 24576    # smokes 1-2: 12,288 and 16,384 ran out in thinking; prompt ~35k + 24.5k is well inside NUM_CTX
 ROUTED = ("operating", "commodity")      # ruling 17: every other family (financial until its task exists) is a named no_call
 
 
@@ -73,7 +74,7 @@ def _one_call(msgs, seed, opts, url):
 def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner.SEED_BASE, online=True, root=None, out_root=RUNS,
           allow_after_T=False, opts=None):
     packet, src = runner.load_packet(packet_path)
-    opts = opts or {"num_ctx": runner.NUM_CTX, "num_predict": runner.NUM_PREDICT, "think": runner.THINK}
+    opts = opts or {"num_ctx": runner.NUM_CTX, "num_predict": NUM_PREDICT, "think": runner.THINK}
     url = url or runner.llm_provider.OLLAMA_URL
     run_dir = out_root / f"{packet['ticker']}_{runner.t_compact(packet['decision_time_utc'])}_{runner.sha256_bytes(src)[:12]}_{seed}"
     (run_dir / "raw").mkdir(parents=True, exist_ok=True)
@@ -96,6 +97,7 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
                   stamps=b["stamps"] + prov.get("stamps", []), fact_stamps=fact_stamps)            # N16
     items = {e["fact_id"]: e for e in packet["evidence"]}
     items.update({i["fact_id"]: i for i in record})
+    items["V0"] = task.base_item(b, bar, r, prov)                         # smoke 1: [V0] is citable
     retry, attempts, res = None, [], None
     for n, s in enumerate((seed, seed + REPAIR_SEED_OFFSET), 1):
         msgs = task.messages(packet, record, b, bar, r, prov, retry=retry)
