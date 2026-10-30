@@ -20,7 +20,7 @@ from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION
 
-INPUTS_VERSION = "m3q.inputs.v4"   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v5"   # v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -33,6 +33,7 @@ EPS_ROUNDING = 0.006         # CROSS_CHECK_Q2 N15
 NCI_MATERIAL, NCI_DOMINANT = 0.10, 0.25   # N9
 VINTAGE_LIFE = (5, 40)       # N8
 VINTAGE_RATIO_TOL = 0.5
+DELTA_CAP = 0.75             # B12b (OPINION_B12b_fable.md): the book delta's ceiling
 DEBT_TOTAL_EXCLUDES_SHORT = {"LongTermDebt", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"}
 CURRENT_INCLUDES_SHORT = {"DebtCurrent", "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings"}
 
@@ -146,6 +147,7 @@ def base(f, *, market_cap, bill_rate):
     if not x0 > 0:
         raise DeskRefusal("e0_not_positive", f"X_0 = {x0:.6g}: no earnings base (O7)")
     k0 = oi[e0] - pt_ex
+    k0_int = _by_end(f, "interest_expense").get(e0) or 0.0                                            # B12b: only interest scales with revenue (debt grows with it)
     stamps.append("bridge_constant_from_base_year")
     r_sum = sum(rev[e] for e in pool)
     da_tag = {v["end"]: v["tag"] for v in f["da"]["values"]}
@@ -197,9 +199,20 @@ def base(f, *, market_cap, bill_rate):
         raise DeskRefusal("market_cap_unavailable", "delta needs the market value of equity")
     net_debt = max(0.0, debt0 - c_l)                                       # N10: net of cash and short-term investments
     delta_market = net_debt / (net_debt + market_cap)                     # O5's market weight, kept as a diagnostic
-    if not (e0 in eq and net_debt + eq[e0] > 0):
-        raise DeskRefusal("book_capital_not_positive", f"net debt {net_debt:.6g} plus book equity {eq.get(e0)} is not positive")
-    delta = net_debt / (net_debt + eq[e0])                                # B12 (b12_leverage.json): the book ratio new capital is funded at
+    if e0 not in eq:
+        raise DeskRefusal("input_missing", f"book equity for {e0}")
+    # B12 (b12_leverage.json): the book ratio new capital is funded at; B12b bounds (OPINION_B12b_fable.md): capped at DELTA_CAP, and a
+    # negative book equity is valued at the cap, stamped, not refused
+    if net_debt <= 0:
+        delta = 0.0
+    elif eq[e0] <= 0:
+        delta = DELTA_CAP
+        stamps.append("book_equity_negative_delta_at_cap")
+    else:
+        delta = net_debt / (net_debt + eq[e0])
+        if delta > DELTA_CAP:
+            delta = DELTA_CAP
+            stamps.append("delta_book_capped")
     if how0 in ("DebtAndCapitalLeaseObligations", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"):
         stamps.append("debt_includes_finance_leases")
     if delta > 0:
@@ -230,7 +243,7 @@ def base(f, *, market_cap, bill_rate):
             ppe = None
             stamps.append(f"da_vintages_out_of_bounds(life {life})")
     return {"version": INPUTS_VERSION, "fy0": e0, "ppe": ppe, "revenue_hist": [rev[e] for e in ends], "R0": rev[e0], "x0": x0, "m0": x0 / rev[e0],
-            "oi0": oi[e0], "k0": k0, "op_margin0": oi[e0] / rev[e0], "d_ratio": d_ratio, "c_ratio": c_ratio, "w": w, "tau": tau,
+            "oi0": oi[e0], "k0": k0, "k0_interest": k0_int, "op_margin0": oi[e0] / rev[e0], "d_ratio": d_ratio, "c_ratio": c_ratio, "w": w, "tau": tau,
             "ronic0": ronic0, "delta": delta, "delta_market": delta_market, "kd": kd, "debt0": debt0, "debt_basis": how0, "shares": shares, "excess_cash": excess_cash,
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,
             "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps,
@@ -246,7 +259,9 @@ def bridge_x_margin(b, op_margins, revenues, amort=None):
     if b.get("k0") is None:
         raise DeskRefusal("bridge_unavailable", "no bridge constant: operating income or pretax income for the base year is not filed")
     amort = amort or [0.0] * len(op_margins)
-    return [(m * r + a - b["k0"] * r / b["R0"]) * (1 - b["tau"]) / r for m, r, a in zip(op_margins, revenues, amort)]
+    k_int = b.get("k0_interest", 0.0)
+    k_other = b["k0"] - k_int
+    return [(m * r + a - k_int * r / b["R0"] - k_other) * (1 - b["tau"]) / r for m, r, a in zip(op_margins, revenues, amort)]
 
 
 def base_financial(f):

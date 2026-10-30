@@ -431,6 +431,13 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
         res["values"][name] = v["value_per_share"]
         if name == "base" and not inp["H"] and v["seam_ratio"] is not None and not SEAM_BAND[0] <= v["seam_ratio"] <= SEAM_BAND[1]:
             res["annotations"].append(f"V2 flow_seam_out_of_band: {v['seam_ratio']:.3f}")
+    # B12b: the value at O5's market-weight delta, as a sensitivity on every levered result (annotation, never a gate)
+    if res["results"].get("base") and b.get("delta", 0) > 0 and b.get("delta_market") is not None:
+        try:
+            alt = desk.value_operating(forecast.assemble(merged(out, "base"), dict(b, delta=b["delta_market"]), bar, r=r))
+            res["sensitivity"] = {"value_at_delta_market": alt["value_per_share"], "delta_book": b["delta"], "delta_market": b["delta_market"]}
+        except desk.DeskRefusal as e:
+            res["sensitivity"] = {"value_at_delta_market": None, "refused": e.code}
     vv = res["values"]
     for name, v in vv.items():
         if not v > 0:

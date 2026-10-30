@@ -240,3 +240,17 @@ def test_vintages_out_of_bounds_falls_back_to_pooled():
     f = facts(ppe_gross=series([200, 200, 200, 200, 200]), ppe_net=series([100, 100, 100, 100, 100]))
     b = base(f)
     assert b["ppe"] is None and b["da_rule"] == "pooled" and any(s.startswith("da_vintages_out_of_bounds") for s in b["stamps"])
+
+
+def test_book_delta_is_capped_and_negative_equity_valued_at_the_cap():
+    b = base(facts(equity=series([40, 41, 42, 44, 2])))                  # net debt 13 over 13 + 2: 0.87 -> capped
+    assert b["delta"] == inputs.DELTA_CAP and "delta_book_capped" in b["stamps"]
+    b = base(facts(equity=series([40, 41, 42, 44, -5])))
+    assert b["delta"] == inputs.DELTA_CAP and "book_equity_negative_delta_at_cap" in b["stamps"]
+
+
+def test_only_interest_scales_with_revenue_in_the_bridge():
+    b = base()
+    k_int, k_other = b["k0_interest"], b["k0"] - b["k0_interest"]
+    x = inputs.bridge_x_margin(b, [0.16], [200.0], [1.0])[0]
+    assert x == pytest.approx((0.16 * 200 + 1.0 - k_int * 2 - k_other) * (1 - b["tau"]) / 200)

@@ -430,3 +430,9 @@ def test_equity_return_not_above_terminal_growth_is_refused(ctx):
     out = clean()
     out["base"]["terminal_ronic"] = 0.025                             # below g_T 3%
     assert any("ronic_not_above_growth" in w for w in run(ctx, out)["unsupported"]["base.desk"])
+
+
+def test_market_delta_sensitivity_is_reported_for_levered_names(ctx):
+    res = run(ctx, clean())
+    s = res.get("sensitivity")
+    assert s and s["value_at_delta_market"] is not None and s["delta_book"] > s["delta_market"]
