@@ -8,8 +8,10 @@ THE EARNINGS BASE (rulings 6, 9). From filed pretax income, so neither a one-yea
 capitalised:
     pt_ex = PT_0 - C x bill - NCI_0 / (1 - tau)          C = cash + short-term investments, bill = the 3-month bill rate over FY0
     X_0   = (pt_ex + A_0)(1 - tau)                        A_0 only when the amortization basis holds in every pooled year (ruling 19)
-    K_0   = OI_0 - pt_ex - A_0                            the non-operating items held flat in dollars by the bridge
-The operating-margin bridge X_t = (op_t R_t - K_0)(1 - tau) then returns X_0 at the base year, and cash is added once, at face. With no
+    K_0   = OI_0 - pt_ex                                  the non-operating items only, held flat in dollars by the bridge
+The operating-margin bridge X_t = (op_t R_t + A_t - K_0)(1 - tau), A_t the filed amortization schedule (0 once run off; the long-run
+margin is bridged with A = 0), returns X_0 at the base year, and cash is added once, at face. K_0 carrying A_0 made the base year's
+amortization permanent (found by the v1.3 production-path test, D_acquirer +12%). With no
 bill rate the cash is NOT added and the interest stays in the base (stamped): never both.
 """
 import statistics
@@ -130,7 +132,7 @@ def base(f, *, market_cap, bill_rate):
     x0 = (pt_ex + a0) * (1 - tau)
     if not x0 > 0:
         raise DeskRefusal("e0_not_positive", f"X_0 = {x0:.6g}: no earnings base (O7)")
-    k0 = oi[e0] - pt_ex - a0
+    k0 = oi[e0] - pt_ex
     stamps.append("bridge_constant_from_base_year")
     r_sum = sum(rev[e] for e in pool)
     da_tag = {v["end"]: v["tag"] for v in f["da"]["values"]}
@@ -201,11 +203,13 @@ def base(f, *, market_cap, bill_rate):
             "record": {"op_margin": {e: oi[e] / rev[e] for e in ends if e in oi}}}
 
 
-def bridge_x_margin(b, op_margins, revenues):
-    """Analyst operating margins (GAAP basis) to X margins: X_t = (op_t R_t - K_0)(1 - tau), K_0 from the base (module doc)."""
+def bridge_x_margin(b, op_margins, revenues, amort=None):
+    """Analyst operating margins (GAAP basis) to X margins: X_t = (op_t R_t + A_t - K_0)(1 - tau), K_0 from the base (module doc);
+    `amort` the A_t of the same years (None: 0, as for the long run)."""
     if b.get("k0") is None:
         raise DeskRefusal("bridge_unavailable", "no bridge constant: operating income or pretax income for the base year is not filed")
-    return [(m * r - b["k0"]) * (1 - b["tau"]) / r for m, r in zip(op_margins, revenues)]
+    amort = amort or [0.0] * len(op_margins)
+    return [(m * r + a - b["k0"]) * (1 - b["tau"]) / r for m, r, a in zip(op_margins, revenues, amort)]
 
 
 def base_financial(f):

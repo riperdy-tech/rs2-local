@@ -38,8 +38,8 @@ def test_x0_k0_from_pretax_and_the_bridge_returns_x0():
     pt_ex = 13 - 7 * BILL                                             # cash 7 at the bill rate; no NCI filed
     assert b["tau"] == pytest.approx(tau)
     assert b["x0"] == pytest.approx((pt_ex + 1) * (1 - tau))
-    assert b["k0"] == pytest.approx(16 - pt_ex - 1)
-    assert inputs.bridge_x_margin(b, [0.16], [100.0])[0] == pytest.approx(b["m0"])
+    assert b["k0"] == pytest.approx(16 - pt_ex)                          # non-operating items only (the v1.3 fix)
+    assert inputs.bridge_x_margin(b, [0.16], [100.0], [1.0])[0] == pytest.approx(b["m0"])
     assert b["excess_cash"] == 7 and "nci_not_filed" in b["stamps"]
 
 
@@ -201,3 +201,13 @@ def test_financial_base_uses_book_equity_and_the_identity_holds():
     v = desk.value_financial({"revenue": R, "margin": [roe] * 5, "r": 0.10, "g_T": 0.03, "F": 10, "ronic0": roe, "ronic_T": roe,
                               "m_long": roe, "shares": b["shares"], "excess_cash": 0.0})
     assert v["flows_all"][0] == pytest.approx(R[1] * roe - (R[2] - R[1]))
+
+
+def test_bridge_adds_each_years_amortization_and_none_in_the_long_run():
+    # v1.3 production path (D_acquirer +12%): K_0 holds only non-operating items; A_t is added per year, so a run-off schedule does not
+    # leave the base year's amortization in the long-run margin
+    b = base()
+    assert b["k0"] == pytest.approx(16 - (13 - 7 * BILL))
+    with_a = inputs.bridge_x_margin(b, [0.16], [100.0], [1.0])[0]
+    without = inputs.bridge_x_margin(b, [0.16], [100.0])[0]
+    assert with_a == pytest.approx(b["m0"]) and with_a - without == pytest.approx(1.0 * (1 - b["tau"]) / 100)

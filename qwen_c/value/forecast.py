@@ -9,7 +9,7 @@ assemble: one scenario to desk.value_operating's input, the margins bridged from
 """
 import statistics
 
-from qwen_c.value import inputs
+from qwen_c.value import desk, inputs
 from qwen_c.value.desk import DeskRefusal
 
 FORECAST_VERSION = "m3q.forecast.v1"
@@ -90,7 +90,9 @@ def assemble(sc, b, bar, *, r):
     """desk.value_operating input for one scenario `sc` (the merged base + replacements) on base `b` (inputs.base) at cost of equity r."""
     path, m_n = build_path(sc, bar, b["R0"])
     rev = [b["R0"]] + [y["revenue"] for y in path]
-    x_m = inputs.bridge_x_margin(b, [y["op_margin"] for y in path], rev[1:])
+    ip = sc.get("investment_path")
+    amort, _ = desk.amortization_path(b["amort_schedule"], b["amort_thereafter"], 5 + len(ip or []))
+    x_m = inputs.bridge_x_margin(b, [y["op_margin"] for y in path], rev[1:], amort[:5])
     cp = sc.get("capex_path")                                  # O7 (ruling 4): mode 1 five ratios; mode 2 a year-5 target reached linearly
     if cp is None:
         ratios = [b["c_ratio"]] * 5
@@ -100,7 +102,6 @@ def assemble(sc, b, bar, *, r):
         ratios = [float(c) for c in cp]
     capex = [c * R for c, R in zip(ratios, rev[1:])]
     h = 0
-    ip = sc.get("investment_path")
     if ip:
         h = len(ip)
         for j, yr in enumerate(ip):
@@ -108,7 +109,7 @@ def assemble(sc, b, bar, *, r):
                 raise DeskRefusal("input_invalid", "investment_path years must run 6, 7, ... without gaps")
             R = rev[-1] * (1 + float(yr["revenue_growth"]))
             rev.append(R)
-            x_m += inputs.bridge_x_margin(b, [float(yr["op_margin"])], [R])
+            x_m += inputs.bridge_x_margin(b, [float(yr["op_margin"])], [R], [amort[5 + j]])
             capex.append(float(yr["capex_over_revenue"]) * R)
     m_long = inputs.bridge_x_margin(b, [float(sc["long_run_op_margin"])], [rev[-1]])[0]     # at the end of the levels leg (ruling 10)
     ronic_t = float("inf") if sc["terminal_ronic"] == "unlimited" else float(sc["terminal_ronic"])
