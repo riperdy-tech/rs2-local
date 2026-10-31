@@ -140,7 +140,7 @@ Every annotation is carried on the verdict and counted in the reports. No annota
 | Operating (81) | D2 operating |
 | Commodity (29) | D2 operating with the cyclicality score feeding V6. Depleting producers keep gate 16 (non-actionable) unless a cited path passes O8's C/C2 test |
 | Financial (20) | D2 financial route, retained equity (O3). A balance-sheet test confirms the family (census findings: V operating, STT financial) |
-| Equity REIT | D2 with δ (O6); the recurring-capex gap is diagnostic |
+| Equity REIT | D2 with δ (O6); the recurring-capex gap is diagnostic. *Corrected 2026-10-31 (CROSS_CHECK_Q7 15): not built. The runner refuses REITs (ruling 17, RR_Q3: `family_not_built`), so in E3 they are named no-calls, and that is coverage lost.* |
 | Mortgage REIT | Financial route (O6) |
 | Utility (5) | **No call, `family_not_built: utility`.** Rate-base growth exists only as synthetic firm G; the route is not validated |
 | Pre-profit (10), shells, holding companies | **No call, with the stated reason.** E_0 ≤ 0 stays refused (O7) |
