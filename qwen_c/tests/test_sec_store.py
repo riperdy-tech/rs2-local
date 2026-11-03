@@ -7,7 +7,7 @@ import urllib.error
 import pytest
 
 from qwen_c import sec_store
-from sec_guidance import UA
+from sec_guidance import sec_ua
 
 ARCH = "https://www.sec.gov/Archives/edgar/data/123/000000012326000001/doc.htm"
 SUBS = "https://data.sec.gov/submissions/CIK0000000123.json"
@@ -59,8 +59,8 @@ def test_online_fetch_stores_bytes_and_a_full_receipt(tmp_path, net):
     assert (tmp_path / sha).read_bytes() == b"<html>filing</html>"
     (rec,) = [json.loads(l) for l in (tmp_path / "receipts.jsonl").read_text(encoding="utf-8").splitlines()]
     assert rec["url"] == ARCH and rec["sha256"] == sha and rec["bytes"] == 19 and rec["status"] == 200
-    assert rec["user_agent"] == UA["User-Agent"] and rec["fetched_at"].endswith("Z")
-    assert calls[0][1].get("User-agent") == UA["User-Agent"]
+    assert rec["user_agent"] == sec_ua()["User-Agent"] and rec["fetched_at"].endswith("Z")
+    assert calls[0][1].get("User-agent") == sec_ua()["User-Agent"]
     assert not [p for p in tmp_path.iterdir() if p.name.startswith(".tmp_")]
 
 

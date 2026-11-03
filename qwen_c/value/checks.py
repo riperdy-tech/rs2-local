@@ -377,13 +377,17 @@ def check(out, items, ticker, statements, b, bar, r, fy_ends=(), route="operatin
            "results": {}, "stamps": list(ALWAYS_STAMPS) + (list(FIN_STAMPS) if route == "financial" else []), "refused_reasons": []}
     try:
         bad = shape(out, r) if route == "operating" else shape_fin(out, r)
-        if bad:
-            return dict(res, status="invalid", failures=bad)
+    except (KeyError, TypeError, ValueError, AttributeError, ZeroDivisionError, OverflowError) as e:
+        return dict(res, status="invalid", failures=[f"{type(e).__name__}: {e}"])
+    if bad:
+        return dict(res, status="invalid", failures=bad)
+    try:
         if route == "financial":
             return _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res)
         return _check(out, items, ticker, statements, b, bar, r, fy_ends, res)
     except (KeyError, TypeError, ValueError, AttributeError, ZeroDivisionError, OverflowError) as e:
-        return dict(res, status="invalid", failures=[f"{type(e).__name__}: {e}"])
+        # review 2026-11-03: past the shape rules a crash is the code's, not the model's; run.py records it as engine_defect
+        raise AssertionError(f"engine defect in checks: {type(e).__name__}: {e}") from e
 
 
 # ------------------------------------------------------------------ the financial route (WO_Q6; O3 retained equity)

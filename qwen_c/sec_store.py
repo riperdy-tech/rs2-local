@@ -22,7 +22,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sec_guidance import UA
+from sec_guidance import sec_ua
 
 REPO = Path(__file__).resolve().parent.parent
 RAW_DIR = REPO / "cache" / "m3m" / "raw"
@@ -132,7 +132,7 @@ def _fetch(url):
         if wait > 0:
             time.sleep(wait)
         try:
-            req = urllib.request.Request(url, headers=dict(UA))
+            req = urllib.request.Request(url, headers=sec_ua())
             with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
                 final = r.geturl()
                 status = r.status
@@ -173,7 +173,7 @@ def get(url, *, online, root=None):
         if not online:
             raise NotInStore(url)
     status, data = _fetch(url)
-    _store(root, url, data, status, UA["User-Agent"])
+    _store(root, url, data, status, sec_ua()["User-Agent"])
     return data
 
 

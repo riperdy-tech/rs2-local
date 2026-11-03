@@ -12,7 +12,7 @@ import pytest
 
 import sec_primary
 from qwen_c import packet, sec_store
-from sec_guidance import UA
+from sec_guidance import sec_ua
 
 FIX = Path(__file__).resolve().parent / "fixtures"
 CIK = "0000000123"
@@ -142,7 +142,7 @@ def documents():
 
 def make_store(root, docs=None):
     for url, data in (docs if docs is not None else documents()).items():
-        sec_store._store(Path(root), url, data, 200, UA["User-Agent"])
+        sec_store._store(Path(root), url, data, 200, sec_ua()["User-Agent"])
     return Path(root)
 
 

@@ -49,3 +49,4 @@ searxng/settings.yml
 # the frozen packs. The written-up comparison IS committed; the raw runs are not.
 api_llm/deep_api/
 api_llm/_deep_api_*
+searxng/settings.yml.bak-*
