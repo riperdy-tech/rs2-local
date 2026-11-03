@@ -11,11 +11,12 @@ at T). Annual flows are full-year facts (fp FY, a 350-380 day duration) from 10-
 instants at a fiscal-year end of the same forms. Nothing is defaulted: a missing concept is absent from the result with its reason.
 """
 import json
+import re
 from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
 
-FACTS_VERSION = "m3q.facts.v5"   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v6"   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -38,7 +39,8 @@ CONCEPTS = {
     "da": ("flow", [("us-gaap", "DepreciationDepletionAndAmortization", "USD"), ("us-gaap", "DepreciationAmortizationAndAccretionNet", "USD"),
                     ("us-gaap", "DepreciationAndAmortization", "USD"), ("ifrs-full", "DepreciationAndAmortisationExpense", "USD"),
                     ("ifrs-full", "AdjustmentsForDepreciationAndAmortisationExpense", "USD"), ("us-gaap", "Depreciation", "USD"),
-                    ("ifrs-full", "DepreciationExpense", "USD"), ("ifrs-full", "AdjustmentsForDepreciationExpense", "USD")]),
+                    ("ifrs-full", "DepreciationExpense", "USD"), ("ifrs-full", "AdjustmentsForDepreciationExpense", "USD"),
+                    ("us-gaap", "CostOfGoodsAndServicesSoldDepreciationAndAmortization", "USD")]),     # F6: the last tag, kept only per DA_COST_LINE
     "amortization": ("flow", [("us-gaap", "AmortizationOfIntangibleAssets", "USD")]),
     "capex": ("flow", [("us-gaap", "PaymentsToAcquirePropertyPlantAndEquipment", "USD"),
                        ("us-gaap", "PaymentsToAcquireProductiveAssets", "USD"),
@@ -99,7 +101,34 @@ CONCEPTS = {
     "amort_next_4": ("instant", [("us-gaap", "FiniteLivedIntangibleAssetsAmortizationExpenseYearFour", "USD")]),
     "amort_next_5": ("instant", [("us-gaap", "FiniteLivedIntangibleAssetsAmortizationExpenseYearFive", "USD")]),
     "amort_after_5": ("instant", [("us-gaap", "FiniteLivedIntangibleAssetsAmortizationExpenseAfterYearFive", "USD")]),
+    # F6 (AUX_CONCEPTS): the inputs of the derived series in _derive, and the lease and financing interest that inputs.base reads
+    "income_continuing": ("flow", [("us-gaap", "IncomeLossFromContinuingOperationsIncludingPortionAttributableToNoncontrollingInterest", "USD"),
+                                   ("ifrs-full", "ProfitLossFromContinuingOperations", "USD")]),
+    "income_discontinued": ("flow", [("us-gaap", "IncomeLossFromDiscontinuedOperationsNetOfTax", "USD"),
+                                     ("ifrs-full", "ProfitLossFromDiscontinuedOperations", "USD")]),
+    "profit_loss_consolidated": ("flow", [("us-gaap", "ProfitLoss", "USD"), ("ifrs-full", "ProfitLoss", "USD")]),
+    "basic_shares_ifrs": ("flow", [("ifrs-full", "WeightedAverageShares", "shares")]),
+    "dilutive_effect_ifrs": ("flow", [("ifrs-full", "DilutiveEffectOfAllInstrumentsOnWeightedAverageNumberOfOrdinaryShares", "shares"),
+                                      ("ifrs-full", "DilutiveEffectOfShareOptionsOnNumberOfOrdinaryShares", "shares")]),
+    "equity_incl_nci": ("instant", [("us-gaap", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "USD"),
+                                    ("ifrs-full", "Equity", "USD")]),
+    "nci_equity": ("instant", [("us-gaap", "MinorityInterest", "USD"), ("ifrs-full", "NoncontrollingInterests", "USD")]),
+    "cost_excl_da": ("flow", [("us-gaap", "CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization", "USD")]),
+    "lease_interest_ifrs16": ("flow", [("ifrs-full", "InterestExpenseOnLeaseLiabilities", "USD")]),
+    "lease_liabilities_ifrs16": ("instant", [("ifrs-full", "LeaseLiabilities", "USD")]),
+    "lease_liabilities_current_ifrs16": ("instant", [("ifrs-full", "CurrentLeaseLiabilities", "USD")]),
+    "financing_interest": ("flow", [("us-gaap", "FinancingInterestExpense", "USD")]),
 }
+AUX_CONCEPTS = {"income_continuing", "income_discontinued", "profit_loss_consolidated", "basic_shares_ifrs", "dilutive_effect_ifrs",
+                "equity_incl_nci", "nci_equity", "cost_excl_da", "lease_interest_ifrs16", "lease_liabilities_ifrs16", "lease_liabilities_current_ifrs16",
+                "financing_interest"}
+# F6: the cost-of-sales D&A line is D&A only where the same year's cost of sales is filed EXCLUDING D&A (the face statement then shows
+# D&A as its own line, which this tag carries); without that companion the year's value is dropped. Stamped da_from_cost_of_sales_line
+DA_COST_LINE = "CostOfGoodsAndServicesSoldDepreciationAndAmortization"
+# F6: a USD fact under any tag naming an income tax, in an annual form effective by T, means the company reports income taxes
+TAX_FACT_RX = re.compile(r"IncomeTax|TaxExpense|CurrentTax|DeferredTax|TaxesPaid")
+PRETAX_FROM_NI = "pretax_from_net_income_no_tax_filed"
+EPS_TOL, EPS_ROUNDING = 0.01, 0.006        # the ProfitLoss reconciliation's 1%; diluted EPS is filed to the cent (inputs.EPS_ROUNDING)
 
 
 DA_EXCLUDES_AMORTIZATION = {"Depreciation", "DepreciationExpense", "AdjustmentsForDepreciationExpense"}     # depreciation alone: nothing to subtract for D&A_org
@@ -172,7 +201,8 @@ def annual_facts(cf, subs, T, years=8):
     """{concept: {"tags", "values": [{end, start, value, tag, accn, form, filed, stamp}] oldest first (at most `years`)}} plus
     {"_absent": {concept: reason}} and {"_stale": {concept: its latest end}} for a concept ending before the latest revenue year.
     Net income from ProfitLoss (consolidated) takes the basis, as filed or less the noncontrolling interest, that reconciles with
-    diluted EPS x diluted shares within 1% (stamped); neither: left as filed, stamped `profitloss_basis_unverified`. cf, subs: the parsed companyfacts and submissions JSON; T: aware."""
+    diluted EPS x diluted shares within 1% (stamped); neither: left as filed, stamped `profitloss_basis_unverified`. Then the F6 derived
+    series (_derive). cf, subs: the parsed companyfacts and submissions JSON; T: aware."""
     eligible = eligible_accessions(subs, T)
     known = {r["accession"] for r in packet._filing_rows(subs)}
     facts = cf.get("facts") or {}
@@ -219,11 +249,109 @@ def annual_facts(cf, subs, T, years=8):
             v["value"], v["stamp"] = min(fits, key=lambda o: abs(o[0] / implied - 1))
         else:
             v["stamp"] = "profitloss_basis_unverified"
+    _derive(out, absent, cf, eligible, known, T, years)
     latest = max((v["end"] for v in out.get("revenue", {}).get("values", [])), default=None)
-    stale = {c: d["values"][-1]["end"] for c, d in out.items() if latest and d["values"][-1]["end"] < latest and c != "nci_income"}
+    stale = {c: d["values"][-1]["end"] for c, d in out.items()
+             if latest and d["values"][-1]["end"] < latest and c != "nci_income" and c not in AUX_CONCEPTS}
     out["_absent"], out["_stale"] = absent, stale
     out["_latest_annual_period"] = latest_annual_period(subs, T)
     return out
+
+
+def _stamp(*stamps):
+    return ";".join(s for s in stamps if s) or None
+
+
+def has_stamp(value, stamp):
+    """Whether a fact value carries `stamp` (a value's stamps are joined by ';')."""
+    return stamp in (value.get("stamp") or "").split(";")
+
+
+def _reports_income_tax(cf, eligible, known, T):
+    """Whether any USD fact under a us-gaap or ifrs-full tag naming an income tax (TAX_FACT_RX) is in an annual form effective by T."""
+    for tax in ("us-gaap", "ifrs-full"):
+        for tag, d in ((cf.get("facts") or {}).get(tax) or {}).items():
+            if TAX_FACT_RX.search(tag) and any(f.get("form") in ANNUAL_FORMS and _eligible(f, eligible, known, T)[0]
+                                               for f in ((d.get("units") or {}).get("USD") or [])):
+                return True
+    return False
+
+
+def _derive(out, absent, cf, eligible, known, T, years):
+    """F6: series derived from filed facts by one rule each, for every company, each value stamped and tagged with its sources (so a
+    switch from a filed tag to a derived value stays visible). Only facts already eligible at T enter (they come from `out`)."""
+    by = {c: {v["end"]: v for v in (out.get(c) or {}).get("values", [])} for c in CONCEPTS}
+
+    def put(concept, end, value, tag, stamp, src):
+        d = out.setdefault(concept, {"tags": [], "values": []})
+        d["values"] = sorted(d["values"] + [{"end": end, "start": src.get("start"), "value": value, "tag": tag, "accn": src.get("accn"),
+                                             "form": src.get("form"), "filed": src.get("filed"), "stamp": _stamp(src.get("stamp"), stamp)}],
+                             key=lambda v: v["end"])[-years:]
+        d["tags"] = sorted({v["tag"] for v in d["values"]})
+        absent.pop(concept, None)
+
+    # (1) no income tax filed at all: a company that files neither pretax income nor a provision, and no income-tax fact of any kind, shows
+    # no tax line, so its pretax income is its income from continuing operations including NCI (else its consolidated profit, when no
+    # discontinued operation is filed for the year). inputs.tax_rate then takes tau = 0 (stamped)
+    if not by["pretax_income"] and not by["tax_provision"] and not _reports_income_tax(cf, eligible, known, T):
+        for e, v in by["net_income"].items():
+            if e in by["income_continuing"]:
+                src = by["income_continuing"][e]
+                put("pretax_income", e, src["value"], src["tag"], PRETAX_FROM_NI, src)
+            elif e in by["income_discontinued"] and by["income_discontinued"][e]["value"] != 0:
+                continue                                                  # profit includes a discontinued operation: not a continuing base
+            elif e in by["profit_loss_consolidated"]:
+                src = by["profit_loss_consolidated"][e]
+                put("pretax_income", e, src["value"], src["tag"], PRETAX_FROM_NI, src)
+            elif e in by["nci_income"]:
+                put("pretax_income", e, v["value"] + by["nci_income"][e]["value"], f"{v['tag']}+{by['nci_income'][e]['tag']}", PRETAX_FROM_NI, v)
+            else:
+                put("pretax_income", e, v["value"], v["tag"], PRETAX_FROM_NI, v)
+    # (2) IFRS diluted shares: basic weighted-average shares plus the filed dilutive effect (none filed: 0), accepted only where net income
+    # per share on it reconciles with filed diluted EPS within 1% or to the cent
+    for e, b in by["basic_shares_ifrs"].items():
+        ni, eps = by["net_income"].get(e), by["eps_diluted"].get(e)
+        if e in by["diluted_shares"] or ni is None or eps is None:
+            continue
+        inc = by["dilutive_effect_ifrs"].get(e)
+        n = b["value"] + (inc["value"] if inc is not None else 0.0)
+        if not n > 0:
+            continue
+        implied = ni["value"] / n
+        if abs(implied - eps["value"]) <= EPS_ROUNDING or (eps["value"] != 0 and abs(implied / eps["value"] - 1) <= EPS_TOL):
+            put("diluted_shares", e, n, f"WeightedAverageShares+{inc['tag'] if inc is not None else 'no_dilutive_effect_filed'}",
+                "diluted_shares_from_basic_plus_dilutive_effect", b)
+    # (3) equity attributable to the parent where only total equity is filed: the total less the filed NCI balance; with no NCI balance
+    # filed, the total itself when nothing is attributed to NCI that year (NCI income filed as 0, or consolidated profit equal to net
+    # income) and the last NCI balance filed before, if any, was 0
+    for e, t in by["equity_incl_nci"].items():
+        if e in by["equity"]:
+            continue
+        if e in by["nci_equity"]:
+            nci = by["nci_equity"][e]
+            put("equity", e, t["value"] - nci["value"], f"{t['tag']}-{nci['tag']}", "equity_total_less_nci", t)
+            continue
+        prior = [x for x in by["nci_equity"] if x < e]
+        if prior and by["nci_equity"][max(prior)]["value"] != 0:
+            continue
+        ni, plc, nci_i = by["net_income"].get(e), by["profit_loss_consolidated"].get(e), by["nci_income"].get(e)
+        if (nci_i is not None and nci_i["value"] == 0) or (
+                ni is not None and plc is not None and ni["tag"] != "ProfitLoss" and abs(plc["value"] - ni["value"]) < 0.5):
+            put("equity", e, t["value"], t["tag"], "equity_total_no_nci_income", t)
+    # (4) the cost-of-sales D&A line (the last D&A tag) only beside cost of sales filed excluding D&A
+    if "da" in out:
+        vals = []
+        for v in out["da"]["values"]:
+            if v["tag"] == DA_COST_LINE:
+                if v["end"] not in by["cost_excl_da"]:
+                    continue
+                v["stamp"] = _stamp(v.get("stamp"), "da_from_cost_of_sales_line")
+            vals.append(v)
+        if vals:
+            out["da"] = {"tags": sorted({v["tag"] for v in vals}), "values": vals}
+        else:
+            del out["da"]
+            absent["da"] = f"only {DA_COST_LINE}, without cost of sales filed excluding D&A"
 
 
 def fetch(cik, T, *, online, root=None):

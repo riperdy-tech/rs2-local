@@ -158,3 +158,101 @@ def test_ifrs_ordinary_holders_net_income_and_depreciation_adjustment():
     out = facts.annual_facts({"facts": f}, subs(), T)
     assert out["net_income"]["values"][-1]["value"] == 90.0
     assert out["da"]["values"][-1]["tag"] in facts.DA_EXCLUDES_AMORTIZATION
+
+
+# ---- F6 (F_SPEC_valuation_menu §8): derived series, each value stamped, from eligible facts only ------------------------------------
+
+A26, A25 = "0001-26-000010", "0001-25-000010"
+
+
+def ifrs(**tags):
+    return {"facts": {"ifrs-full": {k: {"units": {"shares" if "Shares" in k or "Dilutive" in k else
+                                                 "USD/shares" if "PerShare" in k else "USD": v}} for k, v in tags.items()}}}
+
+
+def test_no_income_tax_filed_derives_pretax_from_continuing_income_and_skips_a_discontinued_year():
+    g = {"Revenues": {"units": {"USD": [fy("2024-12-31", 90.0, A25, filed="2025-02-21"), fy("2025-12-31", 100.0, A26)]}},
+         "NetIncomeLoss": {"units": {"USD": [fy("2024-12-31", 9.0, A25, filed="2025-02-21"), fy("2025-12-31", 8.0, A26)]}},
+         "IncomeLossFromContinuingOperationsIncludingPortionAttributableToNoncontrollingInterest": {"units": {"USD": [fy("2025-12-31", 10.0, A26)]}},
+         "IncomeLossFromDiscontinuedOperationsNetOfTax": {"units": {"USD": [fy("2024-12-31", -1.0, A25, filed="2025-02-21"),
+                                                                            fy("2025-12-31", -2.0, A26)]}}}
+    out = facts.annual_facts({"facts": {"us-gaap": g}}, subs(), T)
+    # 2024 has a discontinued operation and no continuing line: no pretax for it; 2025 is the continuing income, stamped
+    assert [(v["end"], v["value"], v["stamp"]) for v in out["pretax_income"]["values"]] == [("2025-12-31", 10.0, facts.PRETAX_FROM_NI)]
+    assert "pretax_income" not in out["_absent"]
+
+
+def test_any_income_tax_fact_filed_by_T_blocks_the_derived_pretax_but_one_filed_after_T_does_not():
+    g = {"Revenues": {"units": {"USD": [fy("2025-12-31", 100.0, A26)]}},
+         "NetIncomeLoss": {"units": {"USD": [fy("2025-12-31", 8.0, A26)]}}}
+    taxed = dict(g, DeferredTaxLiabilities={"units": {"USD": [{"end": "2025-12-31", "val": 0.0, "accn": A26, "form": "10-K", "filed": "2026-02-20"}]}})
+    assert "pretax_income" not in facts.annual_facts({"facts": {"us-gaap": taxed}}, subs(), T)
+    late = dict(g, IncomeTaxesPaidNet={"units": {"USD": [fy("2025-12-31", 1.0, "0001-26-000099", form="10-K/A", filed="2026-03-10")]}})
+    v = facts.annual_facts({"facts": {"us-gaap": late}}, subs(), T)["pretax_income"]["values"][0]
+    assert (v["value"], v["tag"], v["stamp"]) == (8.0, "NetIncomeLoss", facts.PRETAX_FROM_NI)
+
+
+def test_ifrs_diluted_shares_are_basic_plus_the_dilutive_effect_only_when_they_reconcile_with_diluted_eps():
+    base = dict(Revenue=[fy("2025-12-31", 1000.0, A26)], ProfitLossAttributableToOwnersOfParent=[fy("2025-12-31", 42.0, A26)],
+                WeightedAverageShares=[fy("2025-12-31", 100.0, A26)],
+                DilutiveEffectOfShareOptionsOnNumberOfOrdinaryShares=[fy("2025-12-31", 5.0, A26)])
+    v = facts.annual_facts(ifrs(**base, DilutedEarningsLossPerShare=[fy("2025-12-31", 0.4, A26)]), subs(), T)["diluted_shares"]["values"][0]
+    assert (v["value"], v["stamp"]) == (105.0, "diluted_shares_from_basic_plus_dilutive_effect")
+    assert v["tag"] == "WeightedAverageShares+DilutiveEffectOfShareOptionsOnNumberOfOrdinaryShares"
+    off = facts.annual_facts(ifrs(**base, DilutedEarningsLossPerShare=[fy("2025-12-31", 0.42, A26)]), subs(), T)   # 0.4 on 105: 5% off
+    assert "diluted_shares" not in off
+
+
+def test_ifrs_diluted_shares_with_no_dilutive_effect_filed_are_the_basic_when_eps_reconciles():
+    f = ifrs(Revenue=[fy("2025-12-31", 1000.0, A26)], ProfitLossAttributableToOwnersOfParent=[fy("2025-12-31", -50.0, A26)],
+             WeightedAverageShares=[fy("2025-12-31", 100.0, A26)], DilutedEarningsLossPerShare=[fy("2025-12-31", -0.5, A26)])
+    v = facts.annual_facts(f, subs(), T)["diluted_shares"]["values"][0]
+    assert (v["value"], v["tag"]) == (100.0, "WeightedAverageShares+no_dilutive_effect_filed")
+
+
+def test_equity_from_the_total_less_nci_or_the_total_when_nothing_is_attributed_to_nci():
+    inst = lambda end, val, a=A26, filed="2026-02-20": {"end": end, "val": val, "accn": a, "form": "10-K", "filed": filed}
+    g = {"Revenues": {"units": {"USD": [fy("2024-12-31", 90.0, A25, filed="2025-02-21"), fy("2025-12-31", 100.0, A26)]}},
+         "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": {"units": {"USD": [
+             inst("2024-12-31", 50.0, A25, "2025-02-21"), inst("2025-12-31", 60.0)]}},
+         "MinorityInterest": {"units": {"USD": [inst("2024-12-31", 0.0, A25, "2025-02-21")]}},
+         "NetIncomeLoss": {"units": {"USD": [fy("2025-12-31", 7.0, A26)]}},
+         "ProfitLoss": {"units": {"USD": [fy("2025-12-31", 7.0, A26)]}}}
+    vals = facts.annual_facts({"facts": {"us-gaap": g}}, subs(), T)["equity"]["values"]
+    assert [(v["end"], v["value"], v["stamp"]) for v in vals] == [("2024-12-31", 50.0, "equity_total_less_nci"),
+                                                                 ("2025-12-31", 60.0, "equity_total_no_nci_income")]
+    # a nonzero NCI balance filed before, or consolidated profit unlike net income, leaves the year absent
+    g2 = dict(g, MinorityInterest={"units": {"USD": [inst("2024-12-31", 3.0, A25, "2025-02-21")]}})
+    assert [v["end"] for v in facts.annual_facts({"facts": {"us-gaap": g2}}, subs(), T)["equity"]["values"]] == ["2024-12-31"]
+    g3 = dict(g, ProfitLoss={"units": {"USD": [fy("2025-12-31", 7.5, A26)]}})
+    assert [v["end"] for v in facts.annual_facts({"facts": {"us-gaap": g3}}, subs(), T)["equity"]["values"]] == ["2024-12-31"]
+
+
+def test_the_cost_of_sales_da_line_counts_only_beside_cost_excluding_da_and_a_tag_switch_stays_visible():
+    g = {"Revenues": {"units": {"USD": [fy("2024-12-31", 90.0, A25, filed="2025-02-21"), fy("2025-12-31", 100.0, A26)]}},
+         "DepreciationDepletionAndAmortization": {"units": {"USD": [fy("2024-12-31", 6.0, A25, filed="2025-02-21")]}},
+         "CostOfGoodsAndServicesSoldDepreciationAndAmortization": {"units": {"USD": [fy("2025-12-31", 7.0, A26)]}},
+         "CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization": {"units": {"USD": [fy("2025-12-31", 70.0, A26)]}}}
+    da = facts.annual_facts({"facts": {"us-gaap": g}}, subs(), T)["da"]
+    assert [(v["tag"], v["stamp"]) for v in da["values"]] == [("DepreciationDepletionAndAmortization", None),
+                                                            (facts.DA_COST_LINE, "da_from_cost_of_sales_line")]
+    assert da["tags"] == sorted(["DepreciationDepletionAndAmortization", facts.DA_COST_LINE])
+    alone = dict(g)
+    del alone["CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization"]
+    out = facts.annual_facts({"facts": {"us-gaap": alone}}, subs(), T)
+    assert [v["end"] for v in out["da"]["values"]] == ["2024-12-31"] and out["_stale"]["da"] == "2024-12-31"
+
+
+def test_a_cost_of_sales_line_never_outranks_a_total_in_the_same_filing():
+    g = {"Revenues": {"units": {"USD": [fy("2025-12-31", 100.0, A26)]}},
+         "DepreciationAndAmortization": {"units": {"USD": [fy("2025-12-31", 9.0, A26)]}},
+         "CostOfGoodsAndServicesSoldDepreciationAndAmortization": {"units": {"USD": [fy("2025-12-31", 7.0, A26)]}},
+         "CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization": {"units": {"USD": [fy("2025-12-31", 70.0, A26)]}}}
+    v = facts.annual_facts({"facts": {"us-gaap": g}}, subs(), T)["da"]["values"][0]
+    assert (v["value"], v["tag"], v["stamp"]) == (9.0, "DepreciationAndAmortization", None)
+
+
+def test_auxiliary_concepts_are_never_named_stale():
+    g = {"Revenues": {"units": {"USD": [fy("2024-12-31", 90.0, A25, filed="2025-02-21"), fy("2025-12-31", 100.0, A26)]}},
+         "FinancingInterestExpense": {"units": {"USD": [fy("2024-12-31", 3.0, A25, filed="2025-02-21")]}}}
+    assert facts.annual_facts({"facts": {"us-gaap": g}}, subs(), T)["_stale"] == {}
