@@ -135,3 +135,26 @@ def test_latest_annual_period_from_the_submissions():
 def test_companyfacts_is_refetched_online():
     from qwen_c import sec_store
     assert facts.companyfacts_url(1).startswith(sec_store.MUTABLE_PREFIXES)
+
+
+def test_ifrs_profitloss_is_net_income_reconciled_with_ifrs_nci_and_eps():
+    # RR_Q7 3 (FRO, CPA): an IFRS filer with consolidated ProfitLoss only; the NCI and diluted EPS come from their IFRS tags
+    a = "0001-26-000010"
+    f = {"ifrs-full": {"Revenue": {"units": {"USD": [fy("2025-12-31", 1000.0, a)]}},
+                       "ProfitLoss": {"units": {"USD": [fy("2025-12-31", 110.0, a)]}},
+                       "ProfitLossAttributableToNoncontrollingInterests": {"units": {"USD": [fy("2025-12-31", 10.0, a)]}},
+                       "DilutedEarningsLossPerShare": {"units": {"USD/shares": [fy("2025-12-31", 1.0, a)]}},
+                       "AdjustedWeightedAverageShares": {"units": {"shares": [fy("2025-12-31", 100.0, a)]}}}}
+    v = facts.annual_facts({"facts": f}, subs(), T)["net_income"]["values"][-1]
+    assert (v["tag"], v["value"], v["stamp"]) == ("ProfitLoss", 100.0, "profitloss_less_nci")
+
+
+def test_ifrs_ordinary_holders_net_income_and_depreciation_adjustment():
+    # RR_Q7 3 (ECO, IHS)
+    a = "0001-26-000010"
+    f = {"ifrs-full": {"Revenue": {"units": {"USD": [fy("2025-12-31", 1000.0, a)]}},
+                       "ProfitLossAttributableToOrdinaryEquityHoldersOfParentEntity": {"units": {"USD": [fy("2025-12-31", 90.0, a)]}},
+                       "AdjustmentsForDepreciationExpense": {"units": {"USD": [fy("2025-12-31", 40.0, a)]}}}}
+    out = facts.annual_facts({"facts": f}, subs(), T)
+    assert out["net_income"]["values"][-1]["value"] == 90.0
+    assert out["da"]["values"][-1]["tag"] in facts.DA_EXCLUDES_AMORTIZATION

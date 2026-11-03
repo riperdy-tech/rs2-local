@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
 
-FACTS_VERSION = "m3q.facts.v4"   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v5"   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -26,8 +26,10 @@ CONCEPTS = {
                          ("ifrs-full", "Revenue", "USD"), ("ifrs-full", "RevenueFromContractsWithCustomers", "USD")]),
     "operating_income": ("flow", [("us-gaap", "OperatingIncomeLoss", "USD"), ("ifrs-full", "ProfitLossFromOperatingActivities", "USD")]),
     "net_income": ("flow", [("us-gaap", "NetIncomeLoss", "USD"), ("ifrs-full", "ProfitLossAttributableToOwnersOfParent", "USD"),
-                            ("us-gaap", "ProfitLoss", "USD")]),
-    "nci_income": ("flow", [("us-gaap", "NetIncomeLossAttributableToNoncontrollingInterest", "USD")]),
+                            ("ifrs-full", "ProfitLossAttributableToOrdinaryEquityHoldersOfParentEntity", "USD"),
+                            ("us-gaap", "ProfitLoss", "USD"), ("ifrs-full", "ProfitLoss", "USD")]),
+    "nci_income": ("flow", [("us-gaap", "NetIncomeLossAttributableToNoncontrollingInterest", "USD"),
+                            ("ifrs-full", "ProfitLossAttributableToNoncontrollingInterests", "USD")]),
     "pretax_income": ("flow", [("us-gaap", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", "USD"),
                                ("us-gaap", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments", "USD"),
                                ("ifrs-full", "ProfitLossBeforeTax", "USD")]),
@@ -36,7 +38,7 @@ CONCEPTS = {
     "da": ("flow", [("us-gaap", "DepreciationDepletionAndAmortization", "USD"), ("us-gaap", "DepreciationAmortizationAndAccretionNet", "USD"),
                     ("us-gaap", "DepreciationAndAmortization", "USD"), ("ifrs-full", "DepreciationAndAmortisationExpense", "USD"),
                     ("ifrs-full", "AdjustmentsForDepreciationAndAmortisationExpense", "USD"), ("us-gaap", "Depreciation", "USD"),
-                    ("ifrs-full", "DepreciationExpense", "USD")]),
+                    ("ifrs-full", "DepreciationExpense", "USD"), ("ifrs-full", "AdjustmentsForDepreciationExpense", "USD")]),
     "amortization": ("flow", [("us-gaap", "AmortizationOfIntangibleAssets", "USD")]),
     "capex": ("flow", [("us-gaap", "PaymentsToAcquirePropertyPlantAndEquipment", "USD"),
                        ("us-gaap", "PaymentsToAcquireProductiveAssets", "USD"),
@@ -52,7 +54,7 @@ CONCEPTS = {
                                   ("us-gaap", "InterestAndDebtExpense", "USD")]),
     "diluted_shares": ("flow", [("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding", "shares"),
                                 ("ifrs-full", "AdjustedWeightedAverageShares", "shares")]),
-    "eps_diluted": ("flow", [("us-gaap", "EarningsPerShareDiluted", "USD/shares")]),
+    "eps_diluted": ("flow", [("us-gaap", "EarningsPerShareDiluted", "USD/shares"), ("ifrs-full", "DilutedEarningsLossPerShare", "USD/shares")]),
     "assets_current": ("instant", [("us-gaap", "AssetsCurrent", "USD"), ("ifrs-full", "CurrentAssets", "USD")]),
     "liabilities_current": ("instant", [("us-gaap", "LiabilitiesCurrent", "USD"), ("ifrs-full", "CurrentLiabilities", "USD")]),
     "cash": ("instant", [("us-gaap", "CashAndCashEquivalentsAtCarryingValue", "USD"),
@@ -100,7 +102,7 @@ CONCEPTS = {
 }
 
 
-DA_EXCLUDES_AMORTIZATION = {"Depreciation", "DepreciationExpense"}     # depreciation alone: nothing to subtract for D&A_org
+DA_EXCLUDES_AMORTIZATION = {"Depreciation", "DepreciationExpense", "AdjustmentsForDepreciationExpense"}     # depreciation alone: nothing to subtract for D&A_org
 MAX_CONCEPTS = {"revenue"}
 
 
