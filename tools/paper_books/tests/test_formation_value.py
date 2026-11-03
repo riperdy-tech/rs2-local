@@ -262,3 +262,10 @@ def test_family_route_overturns_and_confirms():
     for r in late["facts"]["us-gaap"].values():
         r["units"]["USD"][0]["filed"] = "2026-12-05"
     assert VF.family(late, sub, _f(oi), T_)["base_end"] is None
+
+
+def test_a_set_archival_cost_of_equity_variable_stops_a_live_formation(monkeypatch):
+    monkeypatch.setenv("RS2_ARCHIVAL_COE_DIR", "C:/pinned")
+    with pytest.raises(SystemExit) as e:
+        FV.main()
+    assert "RS2_ARCHIVAL_COE_DIR" in str(e.value)

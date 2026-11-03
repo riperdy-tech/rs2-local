@@ -227,6 +227,8 @@ def judge(body, n, pk, seed, head):
 
 
 def main():
+    if os.environ.get("RS2_ARCHIVAL_COE_DIR", "").strip():                # the archival test's pinned cost of equity never values a live book
+        sys.exit("STOP: RS2_ARCHIVAL_COE_DIR is set; live formations use the live anchors only")
     STATE.mkdir(parents=True, exist_ok=True)
     if not take_lock():
         print("another valuation pass holds the lock", flush=True)
