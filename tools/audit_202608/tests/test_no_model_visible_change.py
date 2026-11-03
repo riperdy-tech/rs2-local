@@ -97,14 +97,10 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 TOOLS_SHA256 = "fe7489ca4e77e03a6ed6219ba7749d3d225bd763fc56189de3158791e51f7fbe"
 # research_tools() (search_web, fetch_page) changed with them (revision 21, R4); was "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35".
 RESEARCH_TOOLS_SHA256 = "62cb74cb2a4fa294060ba2acd1556ef14e501dfadb6b226b9034bc4634c68e49"
-SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
-SYSTEM_MTP5_Q4_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
-SYSTEM_MTP5_V32_SHA256 = "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd723213b0c0ab7"
-SYSTEM_MTP5_Q4_V32_SHA256 = "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd723213b0c0ab7"
 # 2026-09-30 (revision 17, brief_rev17_charter_v33.md): charter v3.3 - twelve sentence changes to the v3.2 SYSTEM text;
-# the v32 files and their pins stay for rollback.
+# the v32 files and their pins stay for rollback. 2026-11-03: the retired Modelfiles (plain MTP5, v31, v32 and the whole Q4 family)
+# moved to _archive/retired_20261103/ with their pins; v33 is the one analyst Modelfile pinned here.
 SYSTEM_MTP5_V33_SHA256 = "ff033c2519528445a1f2e56a797746524d64bff7d65e5a31612be35d6cbdfc22"
-SYSTEM_MTP5_Q4_V33_SHA256 = "ff033c2519528445a1f2e56a797746524d64bff7d65e5a31612be35d6cbdfc22"
 # 2026-10-02 (Muse integration, brief_muse_integration.md M2.4): the transport lines of continue_report (the urllib Request and
 # urlopen) became one call, llm_provider.chat(body, timeout). The body and every model-visible string are unchanged; under
 # depth_provider "ollama" the request is byte for byte what it was (tools/audit_202608/tests/test_llm_provider_ollama_identity.py
@@ -141,20 +137,8 @@ def test_text_pins():
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
     assert _sha256(json.dumps(analyst_tools.research_tools(), sort_keys=True, ensure_ascii=False)) == RESEARCH_TOOLS_SHA256
 
-    sys_mtp5 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5.Modelfile")
-    sys_mtp5_q4 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-Q4.Modelfile")
-    assert _sha256(sys_mtp5) == SYSTEM_MTP5_SHA256
-    assert _sha256(sys_mtp5_q4) == SYSTEM_MTP5_Q4_SHA256
-
-    sys_mtp5_v32 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-v32.Modelfile")
-    sys_mtp5_q4_v32 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-Q4-v32.Modelfile")
-    assert _sha256(sys_mtp5_v32) == SYSTEM_MTP5_V32_SHA256
-    assert _sha256(sys_mtp5_q4_v32) == SYSTEM_MTP5_Q4_V32_SHA256
-
     sys_mtp5_v33 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-v33.Modelfile")
-    sys_mtp5_q4_v33 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-Q4-v33.Modelfile")
     assert _sha256(sys_mtp5_v33) == SYSTEM_MTP5_V33_SHA256
-    assert _sha256(sys_mtp5_q4_v33) == SYSTEM_MTP5_Q4_V33_SHA256
 
     assert _sha256(inspect.getsource(consensus_valuation.continue_report)) == CONTINUE_REPORT_SHA256
 

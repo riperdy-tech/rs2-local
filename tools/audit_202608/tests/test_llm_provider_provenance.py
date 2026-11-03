@@ -8,7 +8,10 @@ records are unchanged.
   per verdict   depth_pipeline.band_verdict: model (the tag) and serving
   downstream    the overlay copies the whole row; the forward ledger's reader ignores the extra key
 
-seed_base (also listed in M6 for consensus.json) is revision 19's G2 and is not built here."""
+seed_base (also listed in M6 for consensus.json) is revision 19's G2 and is not built here.
+
+2026-11-03: the llamacpp cases left with the provider (_archive/retired_20261103/README_muse.md); what remains is the Ollama
+side and the provider-neutral helpers."""
 import copy
 import hashlib
 import json
@@ -35,7 +38,6 @@ import depth_pipeline as dp  # noqa: E402
 import llm_provider as prov  # noqa: E402
 import pack_facts  # noqa: E402
 import rs2_data  # noqa: E402
-from llamacpp_fakes import chat_body, completion, fake_llama, muse_env, tool_call  # noqa: E402,F401
 from test_consensus_anchor_gate import _DUMMY_PACK, _SAMPLE_MEMO  # noqa: E402
 
 REPORT = "y" * 6000
@@ -44,8 +46,6 @@ OLD_META_KEYS = {"tool_calls", "done_reason", "stub_rejected", "turns", "generat
                  "evidence_hits", "evidence_misses", "research_calls", "repeat_calls", "desk_runs", "desk_validation_errors",
                  "report_turn_headroom_tokens", "elapsed_s", "think_configured", "failure", "window_retry_used",
                  "continuation_for_desk"}
-SERVING_KEYS = {"provider", "build", "build_manifest_sha256", "model_sha256", "drafter_sha256", "server_cmdline_sha256",
-                "system_sha256", "provider_sha256"}
 
 
 # ------------------------------------------------------------------ per turn: turn_metrics
@@ -93,58 +93,6 @@ def test_the_cause_of_a_refused_turn_is_recorded_only_when_there_is_one():
 
 
 # ------------------------------------------------------------------ per sample: chat_with_tools meta
-
-@pytest.fixture
-def session(muse_env, monkeypatch, tmp_path):
-    monkeypatch.setattr(at, "search_web", lambda *a, **k: {"results": [], "n_results": 0, "query": "q"})
-
-    def go(**kw):
-        return at.chat_with_tools(muse_env.cfg["model_tag"], "PACK", tmp_path / "s", think="high", verbose=False,
-                                  max_model_calls=0, **kw)
-    return go
-
-
-def test_every_turn_and_the_sample_carry_the_engine_and_the_draft_totals(muse_env, session, tmp_path):
-    muse_env.fake.script = [("json", 200, completion("", finish="tool_calls", tool_calls=[tool_call()])),
-                            ("json", 200, completion(REPORT))]
-    rep, think, meta = session()
-    assert rep == REPORT and meta["failure"] is None and len(meta["turns"]) == 2
-    engine = json.loads(muse_env.engine_file.read_text(encoding="utf-8"))
-    for t in meta["turns"]:
-        assert t["engine"] == engine and t["draft_n"] == 30 and t["draft_n_accepted"] == 21
-        assert t["reasoning_in_content"] is False and t["sampling_stripped"] == {"presence_penalty": 0.05}
-        assert t["system_injected"] is True and "num_ctx" in t["ignored_options"] and "think" in t["ignored_options"]
-    assert meta["engine"] == engine and meta["engine_consistent"] is True
-    assert meta["draft_n"] == 60 and meta["draft_n_accepted"] == 42
-    snap = json.loads((tmp_path / "s" / "_research_snapshot.json").read_text(encoding="utf-8"))
-    assert all("engine" in t and "draft_n" in t for t in snap["turns"])
-
-
-def test_a_mid_sample_engine_change_is_flagged(muse_env, monkeypatch, tmp_path):
-    muse_env.fake.script = [("json", 200, completion("", finish="tool_calls", tool_calls=[tool_call()])),
-                            ("json", 200, completion(REPORT))]
-
-    def swap(*a, **k):
-        muse_env.write_engine(vram_loaded_mib=20000)             # a different record; every pin still holds
-        return {"results": [], "n_results": 0, "query": "q"}
-    monkeypatch.setattr(at, "search_web", swap)
-    rep, think, meta = at.chat_with_tools(muse_env.cfg["model_tag"], "PACK", tmp_path / "s", think="high", verbose=False,
-                                          max_model_calls=0)
-    assert meta["engine_consistent"] is False and meta["engine"]["vram_loaded_mib"] == 21937
-
-
-def test_zero_draft_counts_sum_as_zero_not_none(muse_env, session):
-    from llamacpp_fakes import timings
-    muse_env.fake.script = [("json", 200, completion(REPORT, tim=timings(draft_n=0, draft_n_accepted=0)))]
-    rep, think, meta = session()
-    assert meta["draft_n"] == 0 and meta["draft_n_accepted"] == 0
-
-
-def test_a_plain_server_without_draft_counters_gives_none_totals(muse_env, session):
-    muse_env.fake.script = [("json", 200, completion(REPORT, tim={"prompt_ms": 1.0, "predicted_ms": 2.0, "predicted_n": 3}))]
-    rep, think, meta = session()
-    assert meta["draft_n"] is None and meta["draft_n_accepted"] is None and meta["engine_consistent"] is True
-
 
 def test_an_ollama_sample_meta_and_turns_are_unchanged(monkeypatch, tmp_path):
     import urllib.request
@@ -199,32 +147,6 @@ def _run_cv(monkeypatch, tmp_path, capsys, model, extra=()):
     return json.loads((d / "consensus.json").read_text(encoding="utf-8"))
 
 
-def test_the_runs_row_and_the_doc_carry_the_engine_under_llamacpp(muse_env, monkeypatch, tmp_path, capsys, screener_data_stub):
-    muse_env.fake.script = [("json", 200, completion(_SAMPLE_MEMO, usage=(100, 500)))]
-    doc = _run_cv(monkeypatch, tmp_path, capsys, muse_env.cfg["model_tag"])
-    engine = json.loads(muse_env.engine_file.read_text(encoding="utf-8"))
-    (row,) = doc["runs"]
-    assert row["engine"] == engine and row["engine_consistent"] is True and row["draft_n"] == 30 and row["draft_n_accepted"] == 21
-    assert doc["provider"] == "llamacpp" and doc["engine"] == engine
-    assert doc["model"] == muse_env.cfg["model_tag"]
-
-
-def test_the_runs_row_copies_a_tools_sessions_meta(muse_env, monkeypatch, tmp_path, capsys, screener_data_stub):
-    meta_engine = {"pid": 1, "build": "b11272"}
-
-    def fake_session(model, pack, out_dir, **kw):
-        out_dir.mkdir(parents=True, exist_ok=True)
-        return _SAMPLE_MEMO, "", {"tool_calls": 0, "done_reason": "stop", "generated_tokens": 500, "eval_rate": 40.0,
-                                  "eval_duration_s": 12.0, "engine": meta_engine, "engine_consistent": False,
-                                  "draft_n": 100, "draft_n_accepted": 0, "turns": [], "failure": None}
-    monkeypatch.setattr(at, "chat_with_tools", fake_session)
-    doc = _run_cv(monkeypatch, tmp_path, capsys, muse_env.cfg["model_tag"], extra=("--tools",))
-    (row,) = doc["runs"]
-    assert row["engine"] == meta_engine and row["engine_consistent"] is False
-    assert row["draft_n"] == 100 and row["draft_n_accepted"] == 0                   # 0 is a value
-    assert doc["engine"] == meta_engine and doc["provider"] == "llamacpp"
-
-
 def test_an_ollama_run_has_a_provider_and_nothing_else_new(monkeypatch, tmp_path, capsys, screener_data_stub):
     import urllib.request
 
@@ -270,23 +192,6 @@ def _doc(**over):
     return d
 
 
-def test_the_verdict_row_serving_under_llamacpp_is_the_pins_of_the_engine_that_answered(muse_env):
-    engine = json.loads(muse_env.engine_file.read_text(encoding="utf-8"))
-    v = dp.band_verdict(_doc(provider="llamacpp", engine=engine, model=muse_env.cfg["model_tag"]))
-    assert v["model"] == muse_env.cfg["model_tag"]
-    cfg = muse_env.cfg
-    assert v["serving"] == {"provider": "llamacpp", "build": cfg["build"], "build_manifest_sha256": cfg["build_manifest_sha256"],
-                            "model_sha256": cfg["model_sha256"], "drafter_sha256": cfg["drafter_sha256"],
-                            "server_cmdline_sha256": cfg["server_cmdline_sha256"], "system_sha256": cfg["system_sha256"],
-                            "provider_sha256": prov.provider_sha256()}
-    assert set(v["serving"]) == SERVING_KEYS
-
-
-def test_a_llamacpp_verdict_with_no_engine_shows_the_gap_as_none(muse_env):
-    v = dp.band_verdict(_doc(provider="llamacpp", model=muse_env.cfg["model_tag"]))
-    assert v["serving"] == {"provider": "llamacpp", **{k: None for k in SERVING_KEYS - {"provider"}}}
-
-
 def _ollama_manifest(tmp_path, monkeypatch, model="rs2-analyst-deep-mtp5-v33", tag="latest"):
     d = tmp_path / "ollama_models" / "manifests" / "registry.ollama.ai" / "library" / model
     d.mkdir(parents=True)
@@ -321,19 +226,6 @@ def test_an_unreadable_ollama_manifest_gives_none_digests_not_an_error(monkeypat
 def test_a_doc_without_a_provider_gets_no_serving_key(monkeypatch):
     v = dp.band_verdict(_doc())
     assert "serving" not in v and v["model"] == "the-tag"
-
-
-def test_the_whole_chain_the_verdict_rows_serving_equals_the_pins(muse_env, monkeypatch, tmp_path, capsys, screener_data_stub):
-    """registration I2: a run through the provider, then the verdict row built from its consensus.json."""
-    muse_env.fake.script = [("json", 200, completion(_SAMPLE_MEMO, usage=(100, 500)))]
-    doc = _run_cv(monkeypatch, tmp_path, capsys, muse_env.cfg["model_tag"])
-    v = dp.band_verdict(doc)
-    cfg = muse_env.cfg
-    assert v["model"] == cfg["model_tag"]
-    assert v["serving"] == {"provider": "llamacpp", "build": cfg["build"], "build_manifest_sha256": cfg["build_manifest_sha256"],
-                            "model_sha256": cfg["model_sha256"], "drafter_sha256": cfg["drafter_sha256"],
-                            "server_cmdline_sha256": cfg["server_cmdline_sha256"], "system_sha256": cfg["system_sha256"],
-                            "provider_sha256": prov.provider_sha256()}
 
 
 # ------------------------------------------------------------------ downstream: the overlay and the forward ledger

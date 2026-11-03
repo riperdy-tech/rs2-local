@@ -130,9 +130,6 @@ def test_any_other_failure_propagates_unchanged(ollama, exc):
 
 def test_under_ollama_the_provider_makes_no_other_call_and_reads_no_engine_file(ollama, monkeypatch, tmp_path):
     spy = ollama({"message": {"content": "x"}})
-    monkeypatch.setattr(prov, "ENGINE_DIR", tmp_path / "does_not_exist")
-    monkeypatch.setattr(prov, "pid_alive", lambda pid: pytest.fail("pid_alive called under ollama"))
-    monkeypatch.setattr(prov, "health_ok", lambda *a, **k: pytest.fail("/health probed under ollama"))
     prov.chat({"messages": []}, 10)
     assert len(spy.calls) == 1 and spy.calls[0]["url"] == TODAYS_URL
 
@@ -140,6 +137,30 @@ def test_under_ollama_the_provider_makes_no_other_call_and_reads_no_engine_file(
 def test_the_default_provider_is_ollama_and_so_is_the_production_config():
     cfg = json.loads((REPO / "config.json").read_text(encoding="utf-8"))
     assert cfg["depth_provider"] == "ollama" and cfg["depth_model"] == "rs2-analyst-deep-mtp5-v33"
+
+
+# ------------------------------------------------------------------ the provider setting (moved from the archived
+# tests/test_llm_provider_server_identity.py on 2026-11-03, with the archived provider's refusal added)
+
+def test_an_unknown_provider_is_a_configuration_error_not_a_fallback(monkeypatch):
+    monkeypatch.setitem(rs2_data.CONFIG, "depth_provider", "vllm")
+    with pytest.raises(ValueError, match="depth_provider"):
+        prov.chat({"messages": []}, 10)
+
+
+def test_the_provider_defaults_to_ollama_when_the_key_is_absent(monkeypatch):
+    monkeypatch.delitem(rs2_data.CONFIG, "depth_provider", raising=False)
+    assert prov.provider_name() == "ollama"
+
+
+def test_the_archived_llamacpp_provider_is_refused_by_name_and_nothing_is_sent(ollama, monkeypatch):
+    spy = ollama({"message": {"content": "x"}})
+    monkeypatch.setitem(rs2_data.CONFIG, "depth_provider", "llamacpp")
+    with pytest.raises(ValueError, match="'llamacpp' is archived"):
+        prov.chat({"messages": []}, 10)
+    with pytest.raises(ValueError, match="'llamacpp' is archived"):
+        prov.serving_block("llamacpp", "m")
+    assert spy.calls == []
 
 
 def test_analyst_tools_still_defines_OLLAMA_for_the_tests_and_tools_that_import_it():

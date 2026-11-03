@@ -341,7 +341,7 @@ def test_ollama_raw_refusals_are_named_http_500s(stub, monkeypatch, tmp_path):
 
 
 def test_provider_names_and_serving_block():
-    assert prov.PROVIDERS == ("ollama", "llamacpp", "ollama_raw")
+    assert prov.PROVIDERS == ("ollama", "ollama_raw")
     sb = prov.serving_block("ollama_raw", "no-such-model")
     assert sb["provider"] == "ollama_raw" and sb["template_sha256"] == raw.TEMPLATE_SHA256
     assert prov.serving_block("ollama", "no-such-model")["provider"] == "ollama"
