@@ -39,6 +39,21 @@ def test_sync_copies_state_and_pushes(tmp_path, monkeypatch):
     assert "state sync" in log
 
 
+def test_sync_skips_while_the_paper_books_run_holds_the_lock(tmp_path, monkeypatch):
+    import state_lock
+    clone = _make_repos(tmp_path)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "depth_ledger.jsonl").write_text("x\n", encoding="utf-8")
+    monkeypatch.setattr(sync_state, "CACHE", cache)
+    monkeypatch.setattr(state_lock, "LOCK", tmp_path / "rs2_state.lock")
+    with state_lock.rs2_state_lock() as held:
+        assert held
+        assert sync_state.main(repo_dir=clone).startswith("skipped")
+        assert not (clone / "cache").exists()                      # nothing touched while the lock is held
+    assert "synced" in sync_state.main(repo_dir=clone)
+
+
 def test_sync_noop_when_unchanged(tmp_path, monkeypatch):
     clone = _make_repos(tmp_path)
     cache = tmp_path / "cache"

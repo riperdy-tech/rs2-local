@@ -1,0 +1,17 @@
+{
+ "analysis_sha256": "8adb97203881256c55e7645d6d8d912b85b0efed06b86e74701c20a83e19463f",
+ "builder_version": "m3m.packet.builder.v6",
+ "contract": "m3m.analysis.v2",
+ "decision_time_utc": "2026-09-30T18:00:00Z",
+ "finished_at": "2026-09-30T19:00:00.000000Z",
+ "model": {
+  "tag": "rs2-analyst-deep-mtp5-v33"
+ },
+ "prompt_version": "m3m.prompt.v3",
+ "qwen_c": {
+  "git_commit": "qqqqqqqabc"
+ },
+ "run_id": "C-2026-09-30",
+ "status": "complete",
+ "ticker": "C"
+}

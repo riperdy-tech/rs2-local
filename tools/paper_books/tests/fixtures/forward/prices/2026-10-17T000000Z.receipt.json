@@ -1,0 +1,11 @@
+{
+ "fetched_utc_local_clock": "2026-10-17T000000Z",
+ "note": "fixture",
+ "rows": 708,
+ "sha256": "b6d2eeef38459fc49974b36235b5da6f77eb8056cc2cd67e0c3f8fd357d19e85",
+ "source": "fixture",
+ "window": [
+  "2026-07-27",
+  "2026-10-16"
+ ]
+}

@@ -1,0 +1,76 @@
+{
+ "tickers": {
+  "A": {
+   "fct_band": "research_now",
+   "fct_flags": [],
+   "fct_nominated_doors": [
+    "DOOR_1_COMPOUNDER"
+   ],
+   "fct_rank": 1,
+   "fct_veto": null
+  },
+  "B": {
+   "fct_band": "research_now",
+   "fct_flags": [],
+   "fct_nominated_doors": [
+    "DOOR_1_COMPOUNDER"
+   ],
+   "fct_rank": 2,
+   "fct_veto": null
+  },
+  "C": {
+   "fct_band": "research_now",
+   "fct_flags": [],
+   "fct_nominated_doors": [
+    "DOOR_1_COMPOUNDER"
+   ],
+   "fct_rank": 3,
+   "fct_veto": null
+  },
+  "D": {
+   "fct_band": "research_now",
+   "fct_flags": [],
+   "fct_nominated_doors": [
+    "DOOR_1_COMPOUNDER"
+   ],
+   "fct_rank": 4,
+   "fct_veto": null
+  },
+  "E": {
+   "fct_band": "research_now",
+   "fct_flags": [],
+   "fct_nominated_doors": [
+    "DOOR_1_COMPOUNDER"
+   ],
+   "fct_rank": 5,
+   "fct_veto": null
+  },
+  "OPXA": {
+   "fct_band": "research_now",
+   "fct_flags": [],
+   "fct_nominated_doors": [
+    "DOOR_1_COMPOUNDER"
+   ],
+   "fct_rank": 6,
+   "fct_veto": null
+  },
+  "Z1": {
+   "fct_band": "pass",
+   "fct_flags": [],
+   "fct_nominated_doors": [
+    "DOOR_1_COMPOUNDER"
+   ],
+   "fct_rank": 7,
+   "fct_veto": null
+  },
+  "Z2": {
+   "fct_band": "pass",
+   "fct_flags": [],
+   "fct_nominated_doors": [
+    "DOOR_1_COMPOUNDER"
+   ],
+   "fct_rank": 8,
+   "fct_veto": null
+  }
+ }
+}
