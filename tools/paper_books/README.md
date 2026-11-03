@@ -44,6 +44,16 @@ from the repo root (`py` = `"C:\Program Files\Python312\python.exe"`):
    `formation_run.py <T>` through `formation_run_hidden.vbs` every 15 minutes (GPU; one run per name, resumable, one instance by
    `cache/paper_books/formation/runner.lock`). `finished_<T>.flag` in that folder marks the end; then remove the task with `-Remove`.
    Logs: `runner.out` and `runner.err` there.
+4a. With step 4, from the 2026-11-30 formation: `tools\paper_books\register_formation_value_task.ps1 -Formation <T>` registers
+   `RS2-Formation-Value`, which runs `formation_value.py <T>` through `formation_value_hidden.vbs` every 15 minutes (F10,
+   F_SPEC_valuation_menu sections 7-8). Its first pass pins the MRI anchors as of the decision time into `<books>/m3o/value/anchors_<T>/`
+   (the newest build, live or under MRI's `archive/`, built at or before T, sha256s in `manifest.json`); every pass waits until
+   `finished_<T>.flag` exists, so no valuation takes a Q1 slot. Then each book name with a packet that is not operator-excluded gets
+   `python -m qwen_c.value.run` at seeds 1000 and 3000 (family by `value_family.py`, sector and market cap from `stocks.json` at the
+   output commit), indexed in `<books>/m3o/value/formation_<T>.json` (status, reason, result path and sha256, seconds; resumable).
+   A crash, an engine_defect, an environment no_call or a code change mid-formation writes `value_STOP_<T>.flag` and the task stays
+   idle until a human looks; `value_finished_<T>.flag` marks the end (then `-Remove`). Logs: `value.out`, `value.err`. Tests:
+   `tests/test_formation_value.py`.
 5. Before the fill open: `py tools/paper_books/formation_freeze.py <T>` copies the map to `formation_<T>.frozen.json` (refuses a second
    freeze), writes the one-line witness to `<books>/m3o/witness/formation_<T>.txt` and prints it. Publishing the witness (a public commit
    and push) is by hand, after a scan.
