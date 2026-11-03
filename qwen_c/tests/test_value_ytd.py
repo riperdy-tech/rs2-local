@@ -190,6 +190,8 @@ def test_the_neutral_reply_is_ok_and_the_record_neutral_diagnostic_uses_the_same
     res = checks.check(neutral_reply(b, bar), ids, b, bar, OP.R, OP.ENDS)
     assert res["status"] == "ok" and res["departures"] == [] and res["neutral"]["rev_growth.y1"] == 0.12
     assert res["neutral"]["op_margin.y1"] == 0.18 and res["directions"]["rev_growth.y1"] == "none"
+    # v1.3 audit: a ytd neutral outside the record is annotated, never gated (the record's max growth 6.25%, margin max 0.1600)
+    assert {"ytd_outside_record: rev_growth.y1 0.1200", "ytd_outside_record: op_margin.y1 0.1800"} <= set(res["annotations"])
     rn = res["diagnostics"]["record_neutral"]
     assert rn["value"] == res["values"]["base"] and res["diagnostics"]["value_over_record_neutral"]["base"] == 1.0
     assert rn["inputs"].startswith("year 1 growth 0.1200 and margin 0.1800, margin ")

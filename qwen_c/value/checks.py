@@ -233,8 +233,8 @@ def _check(reply, base, ids, b, bar, r, fy_ends, m, neutral, res):
     if res["reverts"]:
         res["status"] = "ok_with_reverts"
     surviving = [entries[k] for k in keys if k in dep and k in entries]
-    res["annotations"] += [f"guidance_outside_record: {k} {_n(nums[k])}" for k in guided if k in dep and k not in pins and (
-        not m["bar"]["min"] <= nums[k] <= m["bar"]["max"] if keys[k] != "growth" else m["growth_max"] is not None and nums[k] > m["growth_max"])]
+    res["annotations"] += [f"{menu.option(opts, k)}_outside_record: {k} {_n(nums[k])}" for k in keys if ((k in guided and k in dep and k not in pins) or menu.option(opts, k) == "ytd") and (
+        not m["bar"]["min"] <= nums[k] <= m["bar"]["max"] if keys[k] != "growth" else m["growth_max"] is not None and nums[k] > m["growth_max"])]   # v1.3: ytd too
     res.update(options={k: menu.option(opts, k) for k in keys}, year=opts["normalized"]["year"], numbers=nums, neutral=neutral,
                guided=guided, departures=surviving, directions={k: menu.direction(k, nums, neutral, m) for k in keys})
     cited = {i for d in surviving for i in d["evidence"]} | {guidance[k]["evidence"] for k in guided}
