@@ -206,6 +206,12 @@ def test_tax_zero_when_no_provision_is_filed_and_net_income_is_pretax_less_nci()
     assert e.value.code == "tax_unavailable"
 
 
+def test_tax_zero_when_the_measured_median_is_within_a_point_of_zero():
+    # F_SPEC v1.2 (INSW): rates +0.2%, +0.69%, -0.26%, -0.13%, -0.1%: a ~0% shipper, its median just below 0
+    b = base(facts(tax_provision=series([0.02, 0.0759, -0.0312, -0.01625, -0.013])))
+    assert b["tau"] == 0.0 and "tax_rate_median_near_zero" in b["stamps"]
+
+
 def test_a_20f_filer_with_an_eps_gap_is_valued_with_its_stamps():
     rev = series([80, 85, 90, 95, 100])
     rev["values"] = [dict(v, form="20-F") for v in rev["values"]]

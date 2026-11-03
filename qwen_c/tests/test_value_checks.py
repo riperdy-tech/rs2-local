@@ -168,10 +168,12 @@ def test_v13_returns_fade_and_a_rising_long_run_need_a_filed_item(ctx):
     assert reverted(run(ctx, depart(clean(), "long_run_op_margin", ("p25", 0), "pricing", [Y25])), "long_run_op_margin") == []    # down
 
 
-def test_v3g_growth_above_the_record_maximum(ctx):
+def test_v3g_guidance_above_the_record_maximum_is_kept_and_annotated(ctx):
+    # F_SPEC v1.2: the company's own forward figure is its evidence; V3g's two-fiscal-year span is not asked of it
     g = {"evidence": "G2.s1", "metric": "revenue_growth", "sign": "as_printed", "ordinal": 1}
     res = run(ctx, depart(clean(), "rev_growth.y1", "guidance", "guidance", ["G2.s1"], g))          # 10% above the record's 6.25%
-    assert reverted(res, "rev_growth.y1") == ["V3g"] and res["numbers"]["rev_growth.y1"] == 0.03
+    assert reverted(res, "rev_growth.y1") == [] and res["numbers"]["rev_growth.y1"] == 0.10
+    assert "guidance_outside_record: rev_growth.y1 0.1000" in res["annotations"]
     res = run(ctx, depart(clean(), "rev_growth.y1", "record_median", "record_persistence", [Y21, Y25]))
     assert res["status"] == "ok" and res["numbers"]["rev_growth.y1"] == pytest.approx(0.0572, abs=1e-4)
 

@@ -132,8 +132,9 @@ def _domain(nums, m):
 
 
 # ------------------------------------------------------------------ evidence rules on departed keys (§4)
-def _rule(key, entry, nums, neutral, m, ids, fy_ends):
-    """The first evidence rule a departed key fails, or None."""
+def _rule(key, entry, nums, neutral, m, ids, fy_ends, guided=()):
+    """The first evidence rule a departed key fails, or None. A key read from guidance needs no V3/V3g span (v1.2: annotated instead)."""
+    from_guidance = key in guided
     kind, x, bar = menu.KEYS[m["route"]][key], nums[key], m["bar"]
     cited = [ids[i] for i in entry["evidence"]]
     filed = [c for c in cited if c["kind"] in FILED_KINDS]
@@ -141,10 +142,10 @@ def _rule(key, entry, nums, neutral, m, ids, fy_ends):
     if kind in ("margin", "norm", "long"):
         if not any(c["kind"] in V4_KINDS for c in cited):
             return "V4"
-        if not bar["min"] <= x <= bar["max"] and not two:
+        if not bar["min"] <= x <= bar["max"] and not (two or from_guidance):
             return "V3"
     if kind == "growth":
-        if m["growth_max"] is not None and x > m["growth_max"] and not two:
+        if m["growth_max"] is not None and x > m["growth_max"] and not (two or from_guidance):
             return "V3g"
         if m["route"] == "financial":
             roe = nums[{"book_growth.y1": "roe.y1", "book_growth.y2": "roe.y2"}.get(key, "normalized.roe")]
@@ -221,7 +222,7 @@ def _check(reply, base, ids, b, bar, r, fy_ends, m, neutral, res):
                 return dict(res, status="reply_invalid", errors=err)
             res["annotations"] += [f"departure_superfluous: {k}" for k in entries if k not in dep]
             first = False
-        fails = {k: (_rule(k, entries[k], nums, neutral, m, ids, fy_ends) if k in entries else "no_entry_after_revert") for k in dep}
+        fails = {k: (_rule(k, entries[k], nums, neutral, m, ids, fy_ends, guided) if k in entries else "no_entry_after_revert") for k in dep}
         fails = {k: v for k, v in {**fails, **_numeric(nums, dep, m)}.items() if v and k not in pins}
         if not fails:
             break
@@ -232,6 +233,8 @@ def _check(reply, base, ids, b, bar, r, fy_ends, m, neutral, res):
     if res["reverts"]:
         res["status"] = "ok_with_reverts"
     surviving = [entries[k] for k in keys if k in dep and k in entries]
+    res["annotations"] += [f"guidance_outside_record: {k} {_n(nums[k])}" for k in guided if k in dep and k not in pins and (
+        not m["bar"]["min"] <= nums[k] <= m["bar"]["max"] if keys[k] != "growth" else m["growth_max"] is not None and nums[k] > m["growth_max"])]
     res.update(options={k: menu.option(opts, k) for k in keys}, year=opts["normalized"]["year"], numbers=nums, neutral=neutral,
                guided=guided, departures=surviving, directions={k: menu.direction(k, nums, neutral, m) for k in keys})
     cited = {i for d in surviving for i in d["evidence"]} | {guidance[k]["evidence"] for k in guided}

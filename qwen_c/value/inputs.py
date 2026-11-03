@@ -35,6 +35,7 @@ VINTAGE_LIFE = (5, 40)       # N8
 VINTAGE_RATIO_TOL = 0.5
 DELTA_CAP = 0.75             # B12b (OPINION_B12b_fable.md): the book delta's ceiling
 ZERO_TAX_TOL = 0.02          # F_SPEC §6 tax (a): net income within 2% of pretax income less NCI
+NEAR_ZERO_TAX = 0.01         # F_SPEC v1.2: a measured median within 1 point of 0 is a zero rate, stamped
 DEBT_TOTAL_EXCLUDES_SHORT = {"LongTermDebt", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"}
 CURRENT_INCLUDES_SHORT = {"DebtCurrent", "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings"}
 
@@ -51,8 +52,8 @@ def tax_rate(f, e0=None):
     """V8: (tau, stamp). The in-band years (provision / pretax in [0, 0.35], positive pretax) of the last 8: with >= 3 of them, their median
     unless the latest year is in band and within 5 points of it (then the latest); with fewer, the latest if in band; else a persistent
     rate (>= 3 measured years, all >= 0, within 5 points): their median. F_SPEC §6: else, with no provision filed for the base year `e0`
-    and its filed net income within 2% of pretax income less NCI, a zero rate; else, with >= 3 measured years, their UNCLAMPED median
-    when it lies in [0, 1); else refused. Never a clamped default."""
+    and its filed net income within 2% of pretax income less NCI, a zero rate; else, with >= 3 measured years, zero when their median
+    is within 1 point of 0 (v1.2), else their UNCLAMPED median when it lies in [0, 1); else refused. Never a clamped default."""
     tax, pre = _by_end(f, "tax_provision"), _by_end(f, "pretax_income")
     years = sorted(set(tax) & set(pre))
     rates = [(e, tax[e] / pre[e]) for e in years if pre[e] > 0][-8:]
@@ -72,6 +73,8 @@ def tax_rate(f, e0=None):
     ni, nci = _by_end(f, "net_income").get(e0), _by_end(f, "nci_income").get(e0, 0.0)
     if e0 in pre and e0 not in tax and ni is not None and abs(ni - (pre[e0] - nci)) <= ZERO_TAX_TOL * abs(pre[e0] - nci):
         return 0.0, "tax_zero_no_provision"
+    if len(recent) >= 3 and abs(statistics.median(recent)) < NEAR_ZERO_TAX:   # F_SPEC v1.2: a shipper's ~0% median (INSW -0.06%)
+        return 0.0, "tax_rate_median_near_zero"
     if len(recent) >= 3 and 0 <= statistics.median(recent) < 1:
         return statistics.median(recent), "tax_rate_median_outside_band"
     raise DeskRefusal("tax_unavailable", f"no usable measured tax rate (latest {rates[-1][1] if rates else None}); never a stamped default")

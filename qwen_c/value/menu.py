@@ -175,6 +175,8 @@ def read_guidance(entry, key, ids, g1, m, fy0, fy_of):
     if why:
         return None, why
     if entry["sign"] == "negative":
+        if entry["metric"] in LEVELS:
+            return None, "a level is never negative"
         x = -abs(x)
     if entry["metric"] == "capex_level":
         return x / (m["R0"] * (1 + g1)), None

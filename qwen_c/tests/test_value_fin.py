@@ -139,9 +139,10 @@ def test_V3_and_V4_on_an_roe_outside_the_record(ctx, evidence, rule):
     assert reverted(res, "long_run_roe") == ([rule] if rule else [])
 
 
-def test_V3g_book_growth_above_the_record_and_issuance(ctx):
+def test_guided_book_growth_above_the_record_is_annotated_and_issuance_still_reverts(ctx):
     res = run_check(depart(clean(), "book_growth.y1", "guidance", "guidance", ["B1.s1"], grow("B1.s1")), ctx)
-    assert reverted(res, "book_growth.y1") == ["V3g"] and res["numbers"]["book_growth.y1"] == res["neutral"]["book_growth.y1"]
+    assert reverted(res, "book_growth.y1") == []                                               # F_SPEC v1.2: guidance needs no V3g span
+    assert any(a.startswith("guidance_outside_record: book_growth.y1") for a in res["annotations"])
     b, bar, ids = ctx
     rec = dict(b["record"], book_growth_max=0.5)                                                # no V3g: issuance decides
     res = checks.check(depart(clean(), "book_growth.y1", "guidance", "guidance", ["B3.s1"], grow("B3.s1")), ids, dict(b, record=rec),

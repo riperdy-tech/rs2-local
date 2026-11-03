@@ -153,6 +153,7 @@ def test_unreadable_guidance_says_why(item, metric, why):
     assert x is None and why in got
     ids = {"P1.s1": {"text": "Revenue of $500 million.", "kind": "release", "period": "2026-02-01", "sentence": True}}
     assert "years 1 and 2 only" in guide("P1.s1", "revenue_level", 1, key="normalized.rev_growth", ids=ids)[1]
+    assert "never negative" in guide("P1.s1", "revenue_level", 1, sign="negative", ids=ids)[1]          # F_SPEC v1.2
 
 
 # ------------------------------------------------------------------ departures and neighbours
