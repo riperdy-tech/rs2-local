@@ -1,0 +1,70 @@
+{
+ "note": "windows of E3 packets (2026-11-01T16:47:30Z) for the sentence splitter and guidance tests",
+ "evidence": [
+  {
+   "fact_id": "IRWD_P6",
+   "kind": "release",
+   "period": "2026-08-06",
+   "form": "8-K",
+   "title": "8-K Item 2.02 earnings release (EX-99.1 tm2622244d1_ex99-1.htm)",
+   "source": {
+    "ticker": "IRWD",
+    "packet_fact_id": "P6",
+    "packet_sha256": "06a2133a668a3a5f8444514f5499f56b2de96a50eaabc674451f49bb96f12079"
+   },
+   "text": "Exhibit 99.1\nFOR IMMEDIATE RELEASE\nIronwood Pharmaceuticals Raises 2026 Full-Year Financial Guidance Building on\nStrong Second Quarter Results\n– Raises full-year 2026 LINZESS® (linaclotide) U.S. net sales guidance to $1.15 - $1.20 billion, representing greater than 30% increase year-over-year; Raises total revenue guidance to $460 - $485 million and adjusted EBITDA guidance to greater than $310 million –\n– Q2 2026 LINZESS U.S. net sales of $282 million; $555 million year-to-date representing 44% year-over-year growth –\n– Total revenue of $113 million, GAAP net income of $51 million and adjusted EBITDA of $83 million in Q2 2026; repaid $200 million convertible notes with cash on hand –\n– Confirmatory Phase 3 STARS-2 trial of apraglutide in short bowel syndrome with intestinal failure (SBS-IF) now actively recruiting patients –\nBOSTON, Mass., August 6, 2026 — Ironwood Pharmaceuticals, Inc. (Nasdaq: IRWD), a biotechnology company developing and commercializing life-changing therapies for people living with gastrointestinal (GI) and rare diseases, today reported its second quarter 2026 results and recent business performance.\n“Throughout the first half of the year, we have remained laser focused on meaningful execution of our three strategic priorities: maximizing LINZESS, advancing apraglutide, and delivering sustained profits and cash flows,” said Tom McCourt, chief executive officer of Ironwood. “We are pleased to report a second consecutive quarter of strong performance for LINZESS, fueled by improved net price and mid-single digit prescription demand growth which supported our decision to raise our full-year 2026 financial guidance. We also repaid our $200 million convertible notes during the quarter using cash on hand and remain committed to further debt reduction and strengthening our balance sheet through year end.”"
+  },
+  {
+   "fact_id": "TASK_P6",
+   "kind": "release",
+   "period": "2026-08-05",
+   "form": "8-K",
+   "title": "8-K Item 2.02 earnings release (EX-99.1 earningsreleaseex991q22026.htm)",
+   "source": {
+    "ticker": "TASK",
+    "packet_fact_id": "P6",
+    "packet_sha256": "fec27646607187cbef7bfe316cd92190e80bde62dca4b3b6401093419867efe6"
+   },
+   "text": "Net cash provided by operating activities | $43,108 | $17,009 | 153.4% | $89,412 | $53,285 | 67.8%\nFree Cash Flow | $32,606 | $38 | NM | $68,705 | $21,834 | 214.7%\nConversion of Adjusted EBITDA to Free Cash Flow | 56.5% | 0.1% | 59.1% | 17.6%\nAdjusted Free Cash Flow | $36,440 | $6,518 | 459.1% | $78,650 | $28,956 | 171.6%\nConversion of Adjusted EBITDA to Adjusted Free Cash Flow | 63.2% | 10.0% | 67.7% | 23.3%\nNM = not meaningful\n•At 25.8% year-over-year growth, AI Services remained TaskUs’ fastest growing service line for the sixth quarter in a row.\n•Digital Customer Experience growth accelerated to 6.4% compared to Q2 2025.\n•Recognized as a Major Contender in Everest Group’s Healthcare Customer Experience Management (CXM) Intelligent Operations PEAK Matrix® Assessment 2026—a company first.\n[… 209 characters omitted …]\n“In the second quarter of 2026, we generated revenue of $308.9 million, exceeding the top end of our revenue guidance by $10.9 million. Our results demonstrate the disciplined financial and operational execution underpinning our specialized service offerings as we scale,” said Chief Financial Officer, Rishabh Khemka. “Cash flow generation was once again a highlight in Q2, enabling us to increase our cash flow guidance for the second quarter in a row. For the full-year, we now expect Adjusted Free Cash Flow of $110 to $120 million, representing 9.3% of revenue at the midpoint. We are also increasing the bottom end of our revenue guidance by $10 million, resulting in full-year expectations of $1.22 billion to $1.24 billion in revenue and an Adjusted EBITDA margin of approximately 19%. TaskUs remains laser-focused on outpacing industry growth rates and driving long-term profitability. By pairing financial discipline with emerging growth initiatives and our ongoing AI-enabled transformation, we are well-positioned to strengthen our market leadership.”\nThird Quarter and Full Year 2026 Outlook\n[… 91 characters omitted …]\n2026 Outlook\nThird Quarter | Full Year\nRevenue (in millions) | $300 to $302 | $1,220 to $1,240\nRevenue growth (YoY) at midpoint | 0.8% | 3.9%\nAdjusted EBITDA Margin1 | ~18.7% | ~19.0%\nAdjusted Free Cash Flow (in millions)2 | N/A | $110 to $120\n1.With respect to the non-GAAP Adjusted EBITDA margin outlook provided above, a reconciliation to the closest GAAP financial measure has not been provided as the quantification of certain items included in the calculation of GAAP net income (loss) cannot be calculated or predicted at this time without unreasonable efforts. For example, the non-GAAP adjustment for stock-based compensation expense requires additional inputs such as number of shares granted and market price that are not currently ascertainable, the non-GAAP adjustment for foreign currency gains or losses depends on the timing and magnitude of changes in foreign currency exchange rates and cannot be accurately forecasted. For the same reasons, the Company is unable to address the probable significance of the unavailable information, which could have a potentially unpredictable, and potentially significant, impact on its future GAAP financial results."
+  },
+  {
+   "fact_id": "RNG_P7",
+   "kind": "release",
+   "period": "2026-10-22",
+   "form": "8-K",
+   "title": "8-K Item 2.02 earnings release (EX-99.1 rng-20260930x8kxex991.htm)",
+   "source": {
+    "ticker": "RNG",
+    "packet_fact_id": "P7",
+    "packet_sha256": "d72c25f367ad738c6f9623fd591bcf72784e91e41e24fa5ec2414d12e782d92c"
+   },
+   "text": "Exhibit 99.1\nRingCentral Announces Third Quarter 2026 Financial Results\nSubscriptions revenue up 6.0%, above high end of guidance, with record GAAP and non-GAAP margins\nARR from customers utilizing a native paid AI product is approaching 15%, doubling year-over-year\nReduced gross debt to approximately $1 billion\nRaising full year outlook for revenue, non-GAAP margins and free cash flow\nBelmont, Calif. – October 22, 2026 – RingCentral, Inc. (NYSE: RNG), a global leader in AI-powered customer engagement, today announced financial results for the third quarter ended September 30, 2026.\nThird Quarter Financial Highlights\n•Subscriptions revenue increased approximately 6.0% year-over-year to $653 million.\n•Total revenue increased approximately 5.9% year-over-year to $676 million.\n•GAAP operating margin of 8.0%, compared to 4.8% in the prior year.\n•Non-GAAP operating margin of 24.7%, up approximately 190 basis points year-over-year.\n•GAAP diluted EPS of $6.50. GAAP diluted EPS, excluding the impact of valuation allowance release, was $0.28, up 47.4% year-over-year.\n•Non-GAAP EPS of $1.33 compared to $1.13 last year.\n•Net cash provided by operating activities of $180 million, up 18.8% year-over-year.\n•Free cash flow of $157 million, up 21.0% year-over-year.\n•Repurchased approximately 0.4 million shares for a total of $18 million as of the end of the quarter.\n“Voice is central to the next wave of AI innovation, and RingCentral is uniquely positioned to lead this transformation,” said Vlad Shmunis, Founder, Chairman and CEO of RingCentral. “Our trusted communications platform and expanding Agentic Voice AI portfolio puts us at the front door of customer interactions. By bringing communications, contact center, and AI together, we are redefining how businesses engage with customers, turning conversations into intelligent actions, better experiences, and measurable business outcomes. We see a significant opportunity ahead as businesses embrace the next generation of AI-powered customer engagement.”"
+  },
+  {
+   "fact_id": "MATX_P4",
+   "kind": "quarterly_section",
+   "period": "2026-06-30",
+   "form": "10-Q",
+   "title": "10-Q Part I Item 2 Management's Discussion and Analysis",
+   "source": {
+    "ticker": "MATX",
+    "packet_fact_id": "P4",
+    "packet_sha256": "665ca14cc664654fd931ab30ab2fe2cf54935900e0d03a88aaaf3cba258e4ad3"
+   },
+   "text": "Consolidated Operating Income: To date, the Iran conflict has not impacted the Company’s operating performance or service levels; however, it has impacted fuel prices in all of the Company’s markets. The Company continues to expect to fully recover fuel costs by the end of the year. For the third quarter 2026, the Company expects consolidated operating income to be approximately 45 percent higher than the level achieved in the third quarter 2025. For full year 2026, the Company expects consolidated operating income to be higher than the level achieved in full year 2025 based on the Company’s expectations of continued solid U.S. consumer demand and a stable trading environment in the Transpacific tradelane.\n​\nDepreciation and Amortization: For full year 2026, the Company expects depreciation and amortization expense to be approximately $205 million, inclusive of dry-docking amortization of approximately $35 million.\n​\nInterest Income: The Company expects interest income for the full year 2026 to be approximately $18 million.\n​\nInterest Expense, Net: The Company expects interest expense, net for the full year 2026 to be approximately $6 million.\n​\nOther Income (Expense), Net: The Company expects full year 2026 other income (expense), net to be approximately $7 million in income, which is attributable to the amortization of certain components of net periodic benefit costs or gains related to the Company’s pension and post-retirement plans.\n​\nIncome Taxes: For the second quarter 2026, the Company’s effective tax rate was 21.0 percent. For the full year 2026, the Company expects its effective tax rate to be approximately 21.0 percent.\n19\nTable of Contents\n​\nCapital and Vessel Dry-docking Expenditures: For the second quarter 2026, the Company made capital expenditure payments excluding vessel construction expenditures of $25.4 million, vessel construction expenditures (including capitalized interest and owner’s items) of $181.8 million, and dry-docking payments of $12.7 million. For the full year 2026, the Company expects to make capital expenditure payments, including maintenance capital expenditures, of approximately $150 to $170 million, vessel construction expenditures (including capitalized interest and owner’s items) of approximately $400 million, and dry-docking payments of approximately $45 million.\n​\n​\nCONSOLIDATED RESULTS OF OPERATIONS\n​\nConsolidated Results – Three months ended June 30, 2026 compared with 2025:\n​\n​ | ​ | ​ | ​ | ​ | ​ | ​ | ​ | ​ | ​ | ​ | ​ | ​\n​ | ​ | Three Months Ended June 30,\n(Dollars in millions, except per share amounts) | ​ | 2026 | ​ | 2025 | ​ | Change\nOperating revenue | ​ ​ ​ | $969.4 | ​ ​ ​ | $830.5 | ​ ​ ​ | $138.9 | ​ ​ ​ | 16.7%\nOperating costs and expenses | ​ | (810.5) | ​ | (717.5) | ​ | (93.0) | 13.0%\nOperating income | ​ | 158.9 | ​ | 113.0 | ​ | 45.9 | 40.6%\nInterest income | ​ | ​ | 5.0 | ​ | 8.0 | ​ | (3.0) | (37.5)%\nInterest expense, net | ​ | (1.6) | ​ | (1.7) | ​ | 0.1 | (5.9)%\nOther income (expense), net | ​ | 1.6 | ​ | 2.4 | ​ | (0.8) | (33.3)%\nIncome before taxes | ​ | 163.9 | ​ | 121.7 | ​ | 42.2 | 34.7%\nIncome taxes | ​ | (34.5) | ​ | (27.0) | ​ | (7.5) | 27.8%\nNet income | ​ | $129.4 | ​ | $94.7 | ​ | $34.7 | 36.6%\nBasic earnings per share | ​ | $4.30 | ​ | $2.95 | ​ | $1.35 | 45.8%\nDiluted earnings per share | ​ | $4.27 | ​ | $2.92 | ​ | $1.35 | 46.2%\n​\nConsolidated Operating Revenues for the three months ended June 30, 2026 increased by $138.9 million, or 16.7 percent, compared to the three months ended June 30, 2025. The increase was due to an increase in Ocean Transportation revenue of $91.8 million and an increase in Logistics revenue of $47.1 million."
+  },
+  {
+   "fact_id": "IRWD_F1",
+   "kind": "statement",
+   "period": "2026-06-30",
+   "form": "10-Q",
+   "title": "10-Q balance sheet: \"Condensed Consolidated Balance Sheets\" (R2.htm)",
+   "source": {
+    "ticker": "IRWD",
+    "packet_fact_id": "F1",
+    "packet_sha256": "06a2133a668a3a5f8444514f5499f56b2de96a50eaabc674451f49bb96f12079"
+   },
+   "text": "Condensed Consolidated Balance Sheets - USD ($) $ in Thousands | Jun. 30, 2026 | Dec. 31, 2025\nCurrent assets:\nCash and cash equivalents | $ 79,127 | $ 215,456\nAccounts receivable, net | 112,732 | 46,745\nPrepaid expenses and other current assets | 7,342 | 11,977\nTotal current assets | 199,201 | 274,178\nProperty and equipment, net | 2,913 | 3,408\nOperating lease right-of-use assets | 8,443 | 9,340\nIntangible assets, net | 1,633 | 2,040\nDeferred tax assets | 69,064 | 103,433\nOther assets | 3,874 | 4,502\nTotal assets | 285,128 | 396,901"
+  }
+ ]
+}
