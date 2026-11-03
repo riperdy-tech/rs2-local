@@ -30,6 +30,29 @@ while it is held, because its `reset --hard @{u}` would otherwise drop an unpush
 Tests: `"C:\Program Files\Python312\python.exe" -m pytest tools/paper_books/tests -q`. `tests/conftest.py` points the scripts at a
 throwaway rs2-state with a synthetic exclusion list (OPXA..OPXD) and copies the two PREREG files from the real rs2-state.
 
+## Monthly formation (the AI-book inputs map)
+
+Each month-end formation `<T>` (the last NY session of the month) needs its inputs map `<books>/m3o/inputs/formation_<T>.json` before the
+engine can run its qwen arm. It is produced from this repository's code (`qwen_c` runs from the repo root; no worktree). Steps, in order,
+from the repo root (`py` = `"C:\Program Files\Python312\python.exe"`):
+
+1. `py tools/paper_books/check_new_runs.py` (the monthly task already does this): archives and verifies the new screener runs.
+2. `py tools/paper_books/formation_decide.py <T>`: the decision run by `forward_ledger`'s own rule; writes the map with every book name
+   `to_build`. An existing map is never overwritten: the same decision prints `unchanged`, a different one stops (use step 6).
+3. `py tools/paper_books/formation_packets.py <T>`: one `qwen_c.packet` per name (online SEC); a refusal sets `analysis_incomplete`. Resumable.
+4. `tools\paper_books\register_formation_task.ps1 -Formation <T>` (PowerShell) registers `RS2-Formation-Runner`, which runs
+   `formation_run.py <T>` through `formation_run_hidden.vbs` every 15 minutes (GPU; one run per name, resumable, one instance by
+   `cache/paper_books/formation/runner.lock`). `finished_<T>.flag` in that folder marks the end; then remove the task with `-Remove`.
+   Logs: `runner.out` and `runner.err` there.
+5. Before the fill open: `py tools/paper_books/formation_freeze.py <T>` copies the map to `formation_<T>.frozen.json` (refuses a second
+   freeze), writes the one-line witness to `<books>/m3o/witness/formation_<T>.txt` and prints it. Publishing the witness (a public commit
+   and push) is by hand, after a scan.
+6. If a later verified run changes the decision before the fill open: `py tools/paper_books/formation_requeue.py <T>` moves the map aside as
+   `formation_<T>_superseded_<run_id>.json` and rebuilds it (idempotent; run `check_new_runs.py` first).
+
+The packet CLI reads the output commits through `paths.py` `screener_publish_repo` (the clone the verifier uses); the old scratch scripts
+read the same git objects from the `stock-screener` development checkout. Tests: `tests/test_formation.py`.
+
 ## ENGINE_SHA256: a recorded version change
 
 `m3o_engine.py` stamps `engine_sha256` (the sha256 of its own file) on every ledger line. The stop rule leaves `engine_version` and
