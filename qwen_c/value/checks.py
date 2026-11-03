@@ -1,4 +1,4 @@
-"""checks.py - the checks V1-V11 on one valuation_inputs output (SPEC_m3q §4; WO_Q5 §2; CROSS_CHECK_Q_RULINGS batch A).
+"""checks.py - the checks V1-V12 on one valuation_inputs output (SPEC_m3q §4; WO_Q5 §2; CROSS_CHECK_Q_RULINGS batch A).
 
 check(out, items, ticker, statements, b, bar, r, fy_ends) returns
   {"status": "ok" | "valuation_incomplete" | "invalid", "unsupported": {input: [reason]}, "annotations": [...], "labels": {...},
@@ -18,7 +18,7 @@ import re
 from qwen_c import contract
 from qwen_c.value import desk, forecast, forecast_fin
 
-CHECKS_VERSION = "m3q.checks.v9"   # v9 2026-10-31 CROSS_CHECK_Q3e 1-6   # v8 2026-10-31 (financial smoke S2): why names the failing figures   # v7 2026-10-31 CROSS_CHECK_Q3d 1-3, O-1   # v6 2026-10-31 CROSS_CHECK_Q3c: the record-neutral reference (B13), the per-share tolerance   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
+CHECKS_VERSION = "m3q.checks.v10"   # v10 2026-11-03 RR_Q7: V12 stated comparisons   # v9 2026-10-31 CROSS_CHECK_Q3e 1-6   # v8 2026-10-31 (financial smoke S2): why names the failing figures   # v7 2026-10-31 CROSS_CHECK_Q3d 1-3, O-1   # v6 2026-10-31 CROSS_CHECK_Q3c: the record-neutral reference (B13), the per-share tolerance   # v5 2026-10-31 CROSS_CHECK_Q3: V3 every typed year (both routes), the financial fixes, CROSS_CHECK_Q3b N1-N9   # v4 2026-10-30 WO_Q6: the financial route (route="financial"); v3 2026-10-30 CROSS_CHECK_Q2
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 MARGIN_SOURCES = ("record", "pricing_or_mix", "investment_in_explicit_years", "investment_after_year5", "decline")
@@ -302,6 +302,73 @@ def _direction_one(claim, value, bar):
     return None
 
 
+V12_INPUTS = ("rev_growth", "op_margin", "long_run_op_margin", "terminal_ronic", "terminal_g", "book_growth", "roe", "long_run_roe")
+V12_STAT_INPUTS = ("op_margin", "long_run_op_margin", "roe", "long_run_roe")       # the inputs `bar` is the record of
+V12_STAT_TOL = 0.0005
+_STATED = re.compile(r"(\b(?:not|no|never)\b\s+(?:\w+\s+){0,2}?)?\b(" + _UP + "|" + _DOWN + r")\s+(?:the\s+|its\s+|a\s+)?"
+                     r"(?:[a-z][\w'-]*\s+){0,6}?(?:of|at|=)\s+(-?\d+(?:\.\d+)?)\s*(%|percent\b)?", re.I)
+_AT_STAT = re.compile(r"\b(?:set at|set to|equal to|equals|matches|is|at)\s+the\s+(?:filed\s+)?(?:record'?s\s+)?"
+                      r"(p25|p75|median|minimum|maximum)\b", re.I)
+_OTHER_SUBJECT = re.compile(r"\b(?:which|that|this|it)\s+(?:is\s+|are\s+|was\s+|remains\s+|stays\s+)?$", re.I)
+_CONTINUES = re.compile(r"\b(?:and|but|or)\s+$", re.I)
+_NUM_TOKEN = re.compile(r"^-?\$?\d+(?:\.\d+)?%?$")
+
+
+def _subject_is_input(pre, values):
+    """V12: the stated comparison is about the input unless a relative pronoun or another number introduces it."""
+    if _OTHER_SUBJECT.search(pre):
+        return False
+    for w in pre.split()[-4:]:
+        w = w.strip(",;:()")
+        if _NUM_TOKEN.match(w):
+            x = float(w.strip("$%")) / (100 if w.endswith("%") else 1)
+            if not any(abs(x - v) < 1e-4 for v in values):
+                return False
+    return True
+
+
+def _stated_contradiction(claim, values, bar=None):
+    """V12 (E3 RR_Q7, C2): a comparison the reason states against a number it prints ("below the cost of equity of 0.0784"), or a
+    record statistic it says the input is set at ("set at the p75"), that the input does not satisfy. `values` are the input's
+    numbers; a pair contradicts only when both do. Partial by design: the subject is read lexically, and a sentence it cannot attribute
+    to the input is skipped."""
+    for sentence in re.split(r"(?<=[.;])\s+", claim or ""):
+        last = None
+        for m in _STATED.finditer(sentence):
+            pre = sentence[:m.start()]
+            about = last if (last is not None and _CONTINUES.search(pre)) else _subject_is_input(pre, values)
+            last = about
+            neg, word, num, pct = m.groups()
+            ref = float(num) / 100 if pct else float(num)
+            if not about or (not pct and abs(ref) > 1.5):                   # not a rate: years, dollars, counts
+                continue
+            up = re.fullmatch(_UP, word, re.I) is not None
+            holds = [(v > ref) if up else (v < ref) for v in values]
+            if (not any(holds)) if not neg else all(holds):
+                return f"says {(neg or '').strip()} {word} {num}{pct or ''} but the input is {', '.join(f'{v:.4f}' for v in values)}".replace("  ", " ")
+        if bar is not None:
+            for m in _AT_STAT.finditer(sentence):
+                stat = {"minimum": "min", "maximum": "max"}.get(m.group(1).lower(), m.group(1).lower())
+                if _subject_is_input(sentence[:m.start()], values) and all(abs(v - bar[stat]) > V12_STAT_TOL for v in values):
+                    return f"says set at the record's {m.group(1)} ({bar[stat]:.4f}) but the input is {', '.join(f'{v:.4f}' for v in values)}"
+    return None
+
+
+def _v12(out, by, bar, res, unsupported):
+    for (name, k), rs in by.items():
+        if k not in V12_INPUTS or name not in ("base", "bear", "bull"):
+            continue
+        v = merged(out, name).get(k)
+        values = [float(x) for x in (v if isinstance(v, list) else [v]) if _num(x)]
+        if not values:
+            continue
+        for x in rs:
+            why = _stated_contradiction(x["reason"].get("claim"), values, bar if k in V12_STAT_INPUTS else None)
+            if why:
+                unsupported((name, k), f"V12 reason states what its input is not: {why}")
+                res["refused_reasons"] = sorted(set(res["refused_reasons"]) | {x["i"]})
+
+
 def check(out, items, ticker, statements, b, bar, r, fy_ends=(), route="operating"):
     """`route` is "operating" or "financial" (WO_Q6: the ROE-path task, `bar` then the filed ROE record's statistics)."""
     if route not in ("operating", "financial"):
@@ -556,6 +623,7 @@ def _check_fin(out, items, ticker, statements, b, bar, r, fy_ends, res):
             res["annotations"].append(f"value_not_positive: {name} {v:.4f}")
     if len(vv) == 3 and not vv["bear"] <= vv["base"] <= vv["bull"]:
         unsupported(("scenarios", "values"), f"V9: values not monotone {vv}")
+    _v12(out, by, bar, res, unsupported)
     if res["unsupported"]:
         res["status"] = "valuation_incomplete"
     return res
@@ -820,6 +888,7 @@ def _check(out, items, ticker, statements, b, bar, r, fy_ends, res):
             res["annotations"].append(f"value_not_positive: {name} {v:.4f}")
     if len(vv) == 3 and not vv["bear"] <= vv["base"] <= vv["bull"]:
         unsupported(("scenarios", "values"), f"V9: values not monotone {vv}")
+    _v12(out, by, bar, res, unsupported)
     if res["unsupported"]:
         res["status"] = "valuation_incomplete"
     return res
