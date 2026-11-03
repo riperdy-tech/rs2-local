@@ -1,18 +1,16 @@
-"""task.py - what the model is told for valuation_inputs (SPEC_m3q §2; WO_Q5 §1).
+"""task.py - what the model is told for valuation_inputs (SPEC_m3q §2; WO_Q5 §1; F_SPEC_valuation_menu §1-§2, prompt v8).
 
 The system message is qwen_c.tasks.SYSTEM, byte-identical (its SCOPE line stands: the model states forecast inputs and never a value,
 a price or an action; code computes the value). The task is NOT in tasks.TASKS, so the seeds and texts of the formation tasks do not
-move. The user message is the packet rendered as tasks.render_packet does, the filed record items [Y...], the code-measured base [V0],
-then this instruction.
+move. The user message is the packet rendered as tasks.render_packet does, with a [[P4.s17]] marker before each sentence of a prose
+item (sentences.py), the filed record items [Y...], the code-measured base and its MENU [V0], then this instruction.
 
 Changing any text here changes what the model is told: bump VALUATION_PROMPT_VERSION and re-pin the hash in tests/test_value_task.py.
 """
-import json
-
 from qwen_c import tasks
+from qwen_c.value import menu, sentences
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v7"   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6 2026-10-31 (financial smoke S1): how to write a year   # v5 2026-10-30 (smoke 2): inner quotation marks; keep reasons short   # v4 2026-10-30 (smoke 1): the figures rule for reasons; [V0] is citable   # v3 2026-10-30 (CROSS_CHECK_Q2 N8): [V0] names the D&A rule the desk uses   # v2 2026-10-30 (CROSS_CHECK_Q 26, operator decision C5 default): price-blind [S0];
-#                                              reasons must quote; scenario inputs need their own reasons; capex_path (O7)
+VALUATION_PROMPT_VERSION = "m3q.prompt.v8"   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
 PRICE_LINES = ("price:", "marketCap:", "price as-of")
 NL = "\n"
 
@@ -25,120 +23,111 @@ def mask_price(packet):
                        if e.get("kind") == "screener_row" else e for e in packet.get("evidence") or []]
     return out
 
+
 _SHAPE = """```json
 {"task": "valuation_inputs",
- "base": {"rev_growth": [0.05, 0.04], "op_margin": [0.150, 0.152],
-          "normalized": {"year": 4, "baseline": "median", "delta_pts": 0.5, "rev_growth": 0.04},
-          "transition": "linear", "transition_year": null,
-          "fade_years": 10, "long_run_op_margin": 0.150, "terminal_ronic": 0.15, "terminal_g": 0.03,
-          "margin_source": "record", "capex_path": null, "investment_path": null},
- "bear": {"op_margin": [0.13, 0.13]},
- "bull": {"op_margin": [0.16, 0.16]},
- "prob": {"bear": 0.25, "base": 0.5, "bull": 0.25},
- "reasons": [{"input": "base.op_margin", "claim": "one short statement", "fact_ids": ["Y2025-12-31"],
-              "quotes": ["an exact extract from a cited item"], "numbers": ["each figure in the claim, as printed"],
-              "confidence_basis": "stated in the cited item, or inferred, and from what"}],
+ "base": {"rev_growth": {"y1": "guidance", "y2": "anchor"}, "op_margin": {"y1": "median", "y2": "median"},
+          "normalized": {"year": 4, "anchor": "median", "step": 0, "rev_growth": "anchor"}, "fade_years": 10,
+          "long_run_op_margin": {"anchor": "normalized", "step": 0}, "terminal_ronic": "no_growth_value", "terminal_g": "anchor",
+          "capex": "pooled"},
+ "guidance": {"rev_growth.y1": {"evidence": "P4.s17", "metric": "revenue_growth", "sign": "as_printed", "ordinal": 1}},
+ "departures": [{"input": "rev_growth.y1", "driver": "guidance", "evidence": ["P4.s17"]}],
+ "uncertain": ["rev_growth.y1"],
  "unknowns": ["what the evidence cannot answer"]}
 ```"""
 
-INSTRUCTION = (
-    "TASK valuation_inputs. State the forecast inputs from which code will compute the company's value. You do not compute a value, a "
-    "price or a recommendation; you choose each input and give the evidence for it.\n"
-    "INPUTS. rev_growth and op_margin are years 1 and 2: revenue growth as a fraction, and the operating margin on the filed basis "
-    "(operating income over revenue, as the [Y] items print it). normalized is the year (3, 4 or 5) by which the margin reaches a "
-    "normalized level: its baseline is one statistic of the filed record in [V0] (min, p25, median, p75, max or last), delta_pts is "
-    "percentage points added to it (0 means the baseline itself), and rev_growth is that year's revenue growth. transition is linear, "
-    "step_at_year or hold_then_linear (the last two name transition_year, 3 up to the normalized year). fade_years is how many years "
-    "after year 5 growth takes to reach terminal_g and the margin to reach long_run_op_margin. terminal_ronic is the return on new "
-    "capital in the long run (a fraction, or \"unlimited\"). terminal_g must be below the cost of equity in [V0]. margin_source says "
-    "where a margin change comes from: record (the filed record), pricing_or_mix, investment_in_explicit_years, investment_after_year5 "
-    "or decline. investment_after_year5 needs investment_path: one entry per year from year 6, each with capex_over_revenue, "
-    "revenue_growth and op_margin.\n"
-    "SCENARIOS. bear and bull list only the inputs that differ from base. A bear input is not above base and a bull input not below "
-    "it, unless a reason for that scenario input explains why. prob gives the three probabilities, summing to 1.\n"
-    "CAPEX. capex_path is null, or the explicit years' capital expenditure as a fraction of revenue when the evidence states a plan: "
-    "five values for years 1-5, or {\"year5\": x} for a year-5 level; margin_source investment_in_explicit_years needs it.\n"
-    "REASONS. Every base input needs at least one reason whose \"input\" names it, for example \"base.normalized\"; every scenario "
-    "input needs its own, for example \"bear.op_margin\". A reason is a claim under the rules above, about the input it names, with "
-    "at least one exact quote; one reason serves one input. In a reason write only figures a cited item prints, and the input's own "
-    "value; never a figure you computed (a growth rate, margin or ratio the items do not print). [V0] may be cited. Write a year after a word that marks it as a year (\"in 2025\", \"fiscal 2025\"), never as a bare adjective (\"the 2025 return\"); name a forecast year in words (\"the second forecast year\"). Inside a JSON "
-    "string write any quotation mark the source text prints as a single quote ('); a reason is one or two sentences. A margin outside the filed "
-    "record's minimum and maximum needs a reason that quotes filed statements or filing sections of at least two different fiscal "
-    "years; the [Y] record items alone cannot support it. A margin "
-    "reason must cite at least one [Y], statement or filing section; an adjusted or company-defined figure may support it but not "
-    "alone. When the evidence cannot support an input, choose the input the filed record supports and say so in \"unknowns\".\n"
-    "Reply in this shape:\n" + _SHAPE)
+_RULES = (
+    "Each input is an option of its MENU line in [V0]; code uses the number printed beside it. Never choose an option printed \"not "
+    "available\". The first option of a line is the record-neutral choice (normalized: year 3, median, step 0). An input whose number "
+    "differs from the neutral number is a departure (a long run anchored on normalized departs with it). Each departure needs one "
+    "entry: its departure key, a driver and 1 to 4 evidence IDs, at least one not V0. Cite a sentence of a text item by its marker "
+    "(P4.s17), a statement, a [Y] item or [V0] by its ID. Code reverts a departure its evidence does not support: without evidence, "
+    "stay neutral.\n"
+    "The option guidance takes its number from one cited sentence of a filing or 8-K dated in or after the base fiscal year: under "
+    "\"guidance\", keyed by the input, give evidence, metric, sign (as_printed, or negative for a stated decline) and ordinal (the n-th figure in the metric's unit, years not "
+    "counted; a range counts as its first figure).\n"
+    "uncertain names 1 to 3 departure keys; code builds Bear and Bull from their neighbouring options. unknowns is free text.\n")
+
+INSTRUCTION = ("TASK valuation_inputs. Choose the inputs from which code values the company; you never state a number, a value or a "
+               "price. " + _RULES + "Reply in this shape:\n" + _SHAPE)
 
 
-# WO_Q6: the financial route (banks, insurers, mortgage REITs; O3 retained equity). Its own text and version; the operating text above
-# is unchanged. Changing any text here: bump VALUATION_PROMPT_FIN_VERSION and re-pin its hash in tests/test_value_task.py.
-VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v5"   # v5 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v4 2026-10-31 (financial smoke S1): how to write a year   # v3 2026-10-31 CROSS_CHECK_Q3b N7: release means shrinking book; no mortgage REITs   # v2 2026-10-30 CROSS_CHECK_Q3 1-4: common equity; growth during a year; issuance and release rules
+# WO_Q6: the financial route (banks, insurers; O3 retained equity). Its own text and version. Changing any text here: bump
+# VALUATION_PROMPT_FIN_VERSION and re-pin its hash in tests/test_value_fin.py.
+VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v6"   # v6 2026-11-03 F_SPEC_valuation_menu §2.3   # v5 2026-10-31 CROSS_CHECK_Q3e 2   # v4..v2 2026-10-30/31 (see git)
 
 _SHAPE_FIN = """```json
 {"task": "valuation_inputs_financial",
- "base": {"book_growth": [0.06, 0.06], "roe": [0.100, 0.105],
-          "normalized": {"year": 4, "baseline": "median", "delta_pts": 0.5, "book_growth": 0.05},
-          "transition": "linear", "transition_year": null,
-          "fade_years": 10, "long_run_roe": 0.11, "terminal_g": 0.03},
- "bear": {"roe": [0.08, 0.08]},
- "bull": {"roe": [0.12, 0.12]},
- "prob": {"bear": 0.25, "base": 0.5, "bull": 0.25},
- "reasons": [{"input": "base.roe", "claim": "one short statement", "fact_ids": ["Y2025-12-31"],
-              "quotes": ["an exact extract from a cited item"], "numbers": ["each figure in the claim, as printed"],
-              "confidence_basis": "stated in the cited item, or inferred, and from what"}],
+ "base": {"book_growth": {"y1": "neutral", "y2": "neutral"}, "roe": {"y1": "last", "y2": "median"},
+          "normalized": {"year": 3, "anchor": "median", "step": 0, "book_growth": "neutral"}, "fade_years": 10,
+          "long_run_roe": {"anchor": "normalized", "step": 0}, "terminal_g": "neutral"},
+ "guidance": {},
+ "departures": [{"input": "roe.y1", "driver": "record_persistence", "evidence": ["Y2025-12-31", "P2.s4"]}],
+ "uncertain": ["normalized.roe", "long_run_roe"],
  "unknowns": ["what the evidence cannot answer"]}
 ```"""
 
-INSTRUCTION_FIN = (
-    "TASK valuation_inputs_financial. The company is a financial (a bank or an insurer): code values it from its book "
-    "equity and the return it earns on that equity. State the forecast inputs from which code will compute the company's value. You do "
-    "not compute a value, a price or a recommendation; you choose each input and give the evidence for it.\n"
-    "Book equity here is common equity: preferred stock is taken out of book, and its dividends out of net income.\n"
-    "INPUTS. book_growth and roe are years 1 and 2: the growth of book equity during the year as a fraction, and the return on equity "
-    "(net income over book equity at the start of the year, as the [Y] items print it). normalized is the year (3, 4 or 5) by which the return on equity "
-    "reaches a normalized level: its baseline is one statistic of the filed return-on-equity record in [V0] (min, p25, median, p75, max "
-    "or last), delta_pts is percentage points added to it (0 means the baseline itself), and book_growth is that year's growth of book "
-    "equity. transition is linear, step_at_year or hold_then_linear (the last two name transition_year, 3 up to the normalized year). "
-    "fade_years is how many years after year 5 book growth takes to reach terminal_g and the return on equity to reach long_run_roe. "
-    "long_run_roe must be above terminal_g, and terminal_g below the cost of equity in [V0]. Book growth above the same year's return "
-    "on equity means issuing new shares; book equity shrinking faster than in the record's worst year, or a negative terminal_g, "
-    "means releasing book. Each "
-    "needs a reason that quotes filed statements or filing sections of at least two different fiscal years. Capital rules (bank capital ratios, "
-    "insurance reserves) are not modelled: a book growth the company's capital cannot support belongs in the reasons and the unknowns.\n"
-    "SCENARIOS. bear and bull list only the inputs that differ from base. A bear input is not above base and a bull input not below "
-    "it, unless a reason for that scenario input explains why. prob gives the three probabilities, summing to 1.\n"
-    "REASONS. Every base input needs at least one reason whose \"input\" names it, for example \"base.normalized\"; every scenario "
-    "input needs its own, for example \"bear.roe\". A reason is a claim under the rules above, about the input it names, with "
-    "at least one exact quote; one reason serves one input. In a reason write only figures a cited item prints, and the input's own "
-    "value; never a figure you computed (a growth rate or ratio the items do not print). [V0] may be cited. Write a year after a word that marks it as a year (\"in 2025\", \"fiscal 2025\"), never as a bare adjective (\"the 2025 return\"); name a forecast year in words (\"the second forecast year\"). Inside a JSON "
-    "string write any quotation mark the source text prints as a single quote ('); a reason is one or two sentences. A return on "
-    "equity in any year outside the filed record's minimum and maximum, or a book growth above the record's highest, needs a reason "
-    "that quotes "
-    "filed statements or filing sections of at least two different fiscal years; the [Y] record items alone cannot support it. A "
-    "return-on-equity reason must cite at least one [Y], statement or filing section; an adjusted or company-defined figure may support "
-    "it but not alone. When the evidence cannot support an input, choose the input the filed record supports and say so in "
-    "\"unknowns\".\n"
-    "Reply in this shape:\n" + _SHAPE_FIN)
+INSTRUCTION_FIN = ("TASK valuation_inputs_financial. The company is a financial: code values it from its common book equity (preferred "
+                   "stock out of book, its dividends out of income) and the return it earns on it. Choose the inputs from which code values "
+                   "it; you never state a number, a value or a price. " + _RULES + "Reply in this shape:\n" + _SHAPE_FIN)
+
+
+def _menu_lines(b, bar, r, coe_prov, route):
+    """The MENU of [V0]: every offered option with the number code resolves it to; the record-neutral option first."""
+    m = menu.menus(dict(b, g_anchor=b.get("g_anchor", coe_prov["g_anchor"])), bar, r, route)
+
+    def line(name, d, extra=""):
+        return f"{name}: " + "; ".join(f"{k} " + ("not available" if v is None else f"{(v[0] if isinstance(v, tuple) else v):.4f}")
+                                       for k, v in d.items()) + extra
+    keys = list(menu.KEYS[route])
+    g, mg, lr = keys[0].split(".")[0], keys[2].split(".")[0], keys[6]
+    out = ["MENU (option and the number code uses; the first option is the record-neutral one).",
+           line(f"{g}.y1, {g}.y2, {keys[5]}", m["growth"], "; guidance"),
+           line(f"{mg}.y1, {mg}.y2", m["margin"], "; guidance"),
+           line(f"normalized.anchor and {lr}.anchor", m["anchor"], f"; {lr}.anchor also normalized (the normalized number)"),
+           f"normalized.step and {lr}.step (points added to the anchor): 0, " + ", ".join(f"{s:g}" for s in menu.STEPS if s),
+           "normalized.year: 3, 4, 5", "fade_years (years from year 6 to the long run): 10, 5, 15, 20"]
+    if route == "operating":
+        out.append(line("terminal_ronic (return on new capital in the long run)", m["ronic"]))
+    out.append(line("terminal_g", m["terminal_g"]))
+    if route == "operating":
+        out.append(line("capex (capital expenditure over revenue, years 1-5)", m["capex"], "; guidance (a year-1 level, then to pooled by year 5)"))
+    out += [f"Departure keys: {', '.join(keys)}.", f"Drivers: {', '.join(menu.DRIVERS)}.",
+            "Guidance metrics: " + ("revenue_level or revenue_growth (growth), op_margin, capex_level." if route == "operating"
+                                    else "book_growth, roe.")]
+    return out
+
+
+def _growth_line(rec, what):
+    if len(rec) < menu.MIN_GROWTH_YEARS:
+        return f"Filed yearly growth of {what}: fewer than {menu.MIN_GROWTH_YEARS} consecutive fiscal years."
+    return f"Filed yearly growth of {what} (consecutive fiscal years): " + ", ".join(f"{e} {g:.4f}" for e, g in sorted(rec.items())) + "."
 
 
 def render_base_fin(b, bar, r, coe_prov):
-    """[V0] for the financial route: the filed return-on-equity record, book equity and the cost of equity."""
+    """[V0] for the financial route: the filed return-on-equity record, book equity, the cost of equity and the MENU."""
     lines = [f"[V0] Measured by code from the filings (not a forecast). Base fiscal year ended {b['fy0']}.",
              f"Filed return-on-equity record (income to common over opening common equity): min {bar['min']:.4f}, p25 {bar['p25']:.4f}, "
              f"median {bar['median']:.4f}, p75 {bar['p75']:.4f}, max {bar['max']:.4f}, last {bar['last']:.4f}.",
              f"Common book equity at the end of the base year {b['R1']:,.0f}; income to common in the base year {b['e0']:,.0f}.",
-             _book_growth_line(b["record"]),
+             _growth_line(b["record"].get("book_growth") or {}, "book equity"),
              f"Cost of equity {r:.4f} (risk-free {coe_prov['rf']:.4f}, long-run growth anchor {coe_prov['g_anchor']:.4f}, "
              f"loading {coe_prov['loading_adjusted']:.3f}, equity premium {coe_prov['closure_erp']:.4f})."]
-    return "\n".join(lines)
+    return "\n".join(lines + _menu_lines(b, bar, r, coe_prov, "financial"))
 
 
-def _book_growth_line(rec):
-    hi, lo = rec.get("book_growth_max"), rec.get("book_growth_min")
-    if hi is None or lo is None:
-        return "Filed yearly growth of book equity: not measurable."
-    return (f"Filed yearly growth of book equity: lowest {lo:.4f}; highest net of new shares (each year's growth, at most that "
-            f"year's return on equity) {hi:.4f}.")
+def render_base(b, bar, r, coe_prov):
+    """[V0]: the code-measured base the inputs are chosen against, and the MENU."""
+    lines = [f"[V0] Measured by code from the filings (not a forecast). Base fiscal year ended {b['fy0']}.",
+             f"Filed operating margin record: min {bar['min']:.4f}, p25 {bar['p25']:.4f}, median {bar['median']:.4f}, "
+             f"p75 {bar['p75']:.4f}, max {bar['max']:.4f}, last {bar['last']:.4f}.",
+             _growth_line(b["record"].get("rev_growth") or {}, "revenue"),
+             f"Base-year revenue {b['R0']:,.0f}; tax rate {b['tau']:.4f}; return on opening capital {b['ronic0']:.4f}; "
+             f"capital expenditure {b['c_ratio']:.4f} and depreciation {b['d_ratio']:.4f} of revenue (pooled); the desk depreciates by "
+             f"the {b.get('da_rule', 'pooled')} rule" + (" (filed plant ages)" if b.get('da_rule') == "vintages" else "") + ".",
+             f"Cost of equity {r:.4f} (risk-free {coe_prov['rf']:.4f}, long-run growth anchor {coe_prov['g_anchor']:.4f}, "
+             f"loading {coe_prov['loading_adjusted']:.3f}, equity premium {coe_prov['closure_erp']:.4f})."]
+    return "\n".join(lines + _menu_lines(b, bar, r, coe_prov, "operating"))
 
 
 def base_item(b, bar, r, coe_prov):
@@ -147,40 +136,33 @@ def base_item(b, bar, r, coe_prov):
     return {"fact_id": "V0", "kind": "code_base", "period": b["fy0"], "text": render(b, bar, r, coe_prov)}
 
 
-def render_base(b, bar, r, coe_prov):
-    """[V0]: the code-measured base the inputs are chosen against."""
-    lines = [f"[V0] Measured by code from the filings (not a forecast). Base fiscal year ended {b['fy0']}.",
-             f"Filed operating margin record: min {bar['min']:.4f}, p25 {bar['p25']:.4f}, median {bar['median']:.4f}, "
-             f"p75 {bar['p75']:.4f}, max {bar['max']:.4f}, last {bar['last']:.4f}.",
-             f"Base-year revenue {b['R0']:,.0f}; tax rate {b['tau']:.4f}; return on opening capital {b['ronic0']:.4f}; "
-             f"capital expenditure {b['c_ratio']:.4f} and depreciation {b['d_ratio']:.4f} of revenue (pooled); the desk depreciates by "
-             f"the {b.get('da_rule', 'pooled')} rule" + (" (filed plant ages)" if b.get('da_rule') == "vintages" else "") + ".",
-             f"Cost of equity {r:.4f} (risk-free {coe_prov['rf']:.4f}, long-run growth anchor {coe_prov['g_anchor']:.4f}, "
-             f"loading {coe_prov['loading_adjusted']:.3f}, equity premium {coe_prov['closure_erp']:.4f})."]
-    return "\n".join(lines)
+def evidence_ids(packet, record, b, bar, r, coe_prov):
+    """sentences.index over the packet's items, the [Y] record items and [V0]: every ID the reply may cite."""
+    return sentences.index(list(packet.get("evidence") or []) + list(record) + [base_item(b, bar, r, coe_prov)])
 
 
 def user_message(packet, record, b, bar, r, coe_prov):
     recs = "\n\n".join(f"[{i['fact_id']}] {i['text']}" for i in record)
+    head = tasks.render_packet(sentences.marked_packet(mask_price(packet)))
     if b.get("route") == "financial":                                     # WO_Q6
-        return "\n\n".join([tasks.render_packet(mask_price(packet)), recs, render_base_fin(b, bar, r, coe_prov), INSTRUCTION_FIN])
-    return "\n\n".join([tasks.render_packet(mask_price(packet)), recs, render_base(b, bar, r, coe_prov), INSTRUCTION])
+        return "\n\n".join([head, recs, render_base_fin(b, bar, r, coe_prov), INSTRUCTION_FIN])
+    return "\n\n".join([head, recs, render_base(b, bar, r, coe_prov), INSTRUCTION])
 
 
 def compact_failures(failures):
-    """One line per failing input with each of its failures, cut short (smoke 1: the full list made the repair turn run out of
-    output; Q3e-4: only the first hid a V3 failure)."""
+    """One line per failing key with each of its reply errors, cut short (smoke 1: the full list made the repair turn run out of
+    output; Q3e-4: only the first hid a failure)."""
     if isinstance(failures, dict):
         return "\n".join(f"- {k}: " + " | ".join(str(x)[:200] for x in v[:4]) for k, v in failures.items())
     return "\n".join(f"- {str(f)[:200]}" for f in failures)
 
 
 def messages(packet, record, b, bar, r, coe_prov, retry=None):
-    """[system, user] (+ the repair turn: the previous reply and the failures to fix)."""
+    """[system, user] (+ the repair turn: the previous reply and the reply errors to fix)."""
     msgs = [{"role": "system", "content": tasks.SYSTEM}, {"role": "user", "content": user_message(packet, record, b, bar, r, coe_prov)}]
     if retry:
         prev, failures = retry
         msgs += [{"role": "assistant", "content": prev},
-                 {"role": "user", "content": "These inputs did not pass the code checks. Reply again with the whole JSON, every input "
-                                             "supported; keep the inputs that passed:\n" + compact_failures(failures)}]
+                 {"role": "user", "content": "These inputs did not pass the code checks. Reply again with the whole JSON; keep the "
+                                             "inputs that passed:\n" + compact_failures(failures)}]
     return msgs

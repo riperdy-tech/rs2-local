@@ -1,60 +1,35 @@
-"""CROSS_CHECK_Q3: each finding's bypass is a fail case here, with a pass case beside it."""
+"""CROSS_CHECK_Q3: each finding's bypass is a fail case here, with a pass case beside it (rules restated on prompt fin.v6's menus)."""
 import copy
 
 import pytest
 
-from qwen_c.value import checks, desk, forecast, forecast_fin, inputs
+from qwen_c.value import checks, desk, forecast_fin, inputs, menu
 from qwen_c.tests import test_value_checks as OP
-from qwen_c.tests.test_value_fin import (ENDS, M, R, ROE21, ROE25, Y21, Y25, bank_facts, clean, ctx, reason, run_check,  # noqa: F401
+from qwen_c.tests.test_value_fin import (ENDS, M, R, Y21, Y25, bank_facts, clean, ctx, depart, grow, reverted, run_check,  # noqa: F401
                                          series)
 
 
-def flags(res, key):
-    return res["unsupported"].get(key, [])
+# ---- 1: V3 on every ROE outside the filed record; the operating twin
+def test_1_an_roe_outside_the_record_is_reverted_without_two_fiscal_years(ctx):
+    out = depart(clean(), "long_run_roe", ("median", 0))                     # held at the median: the long run does not follow
+    res = run_check(depart(out, "normalized.roe", ("p25", -3), "cycle_downturn", [Y21, Y25]), ctx)      # 0.07 < min 0.10
+    assert reverted(res, "normalized.roe") == ["V3"] and res["status"] == "ok_with_reverts"
 
 
-# ---- 1: V3 on every explicit-year ROE, under hold and step; the operating twin
-@pytest.mark.parametrize("transition", ["hold_then_linear", "step_at_year"])
-def test_1_years_1_2_roe_outside_the_record_is_flagged(ctx, transition):
-    out = clean()
-    out["base"].update(roe=[0.60, 0.60], transition=transition, transition_year=5)
-    out["base"]["normalized"]["year"] = 5
-    out["bear"] = {}
-    out["bull"] = {}
-    out["reasons"] = [x for x in out["reasons"] if not x["input"].startswith(("bear.", "bull."))]
-    res = run_check(out, ctx)
-    assert res["status"] != "ok" and any("V3" in w for w in flags(res, "base.roe"))
+def test_1_an_roe_inside_the_record_passes(ctx):
+    res = run_check(depart(clean(), "roe.y1", "last", "record_persistence", [Y25]), ctx)
+    assert res["status"] == "ok" and not res["reverts"]
 
 
-def test_1_years_1_2_roe_inside_the_record_passes(ctx):
-    res = run_check(clean(), ctx)
-    assert not any("V3" in w for w in flags(res, "base.roe"))
+def test_1_operating_twin_a_margin_outside_the_record_is_reverted():
+    out = OP.depart(OP.clean(), "long_run_op_margin", ("median", 0))
+    res = OP.run(OP.ctx_of(), OP.depart(out, "normalized.margin", ("p25", -3), "cycle_downturn", [OP.Y21, OP.Y25]))
+    assert reverted(res, "normalized.margin") == ["V3"]
 
 
-def test_1_operating_twin_years_1_2_margin_outside_the_record_is_flagged():
-    b = dict(inputs.base(OP.facts(), market_cap=180 * M, bill_rate=0.04), stub_days=0)
-    bar = forecast.record_bar(b["record"]["op_margin"])
-    items = {i["fact_id"]: i for i in forecast.record_items(OP.facts())}
-    items.update({k: {"fact_id": k, "kind": kd, "period": p, "text": t} for k, (kd, p, t) in OP.ITEMS.items()})
-    out = OP.clean()
-    out["base"].update(op_margin=[0.60, 0.60], transition="hold_then_linear", transition_year=5)
-    out["base"]["normalized"]["year"] = 5
-    res = checks.check(out, items, "T", set(), b, bar, OP.R, OP.ENDS)
-    assert any("V3" in w for w in flags(res, "base.op_margin"))
-
-
-# ---- 2: book growth above the same year's ROE (implied issuance); TV share and implied P/B annotated
-def test_2_book_growth_above_roe_needs_a_span(ctx):
-    out = clean()
-    out["base"]["book_growth"] = [0.12, 0.12]
-    res = run_check(out, ctx)
-    assert any("implied issuance" in w for w in flags(res, "base.book_growth"))
-
-
-def test_2_book_growth_below_roe_is_not_issuance(ctx):
-    res = run_check(clean(), ctx)
-    assert not any("implied issuance" in w for w in flags(res, "base.book_growth"))
-    d = res["diagnostics"]
+# ---- 2: book growth above the same year's ROE (issuance, test_value_fin); TV share and implied P/B annotated
+def test_2_tv_share_and_implied_pb_are_reported(ctx):
+    d = run_check(clean(), ctx)["diagnostics"]
     assert 0 < d["tv_share"] < 1 and d["implied_pb"] > 0 and d["record_neutral"]["value"] > 0
 
 
@@ -75,36 +50,21 @@ def test_3_driver_book_needs_g5():
 
 def test_3_year5_growth_enters_the_value(ctx):
     b, bar, _ = ctx
-    sc = clean()["base"]
-    v1 = forecast_fin.value(forecast_fin.assemble(sc, b, bar, r=R))
+    m = menu.menus(b, bar, R, "financial")
+    base = menu.neutral_base("financial")
+    base["normalized"]["year"] = 5
+    sc = menu.scenario(base, menu.resolve(base, {}, m), m)
     sc2 = copy.deepcopy(sc)
-    sc2["normalized"].update(year=5, book_growth=0.09)
-    sc["normalized"]["year"] = 5
+    sc2["normalized"]["book_growth"] = 0.09
     v0 = forecast_fin.value(forecast_fin.assemble(sc, b, bar, r=R))
     v2 = forecast_fin.value(forecast_fin.assemble(sc2, b, bar, r=R))
-    assert v2["value_per_share"] != v0["value_per_share"] and v1["value_per_share"] > 0
+    assert v2["value_per_share"] != v0["value_per_share"] and v0["value_per_share"] > 0
 
 
-# ---- 4: the release lever
-def test_4_book_growth_below_the_record_needs_a_span(ctx):
-    out = clean()
-    out["base"]["book_growth"] = [-0.5, -0.5]
-    res = run_check(out, ctx)
-    assert any("below the filed record" in w for w in flags(res, "base.book_growth"))
-    assert any("V10" in w and "grows" in w for w in flags(res, "base.book_growth"))
-
-
-def test_4_negative_terminal_growth_needs_a_span(ctx):
-    out = clean()
-    out["base"]["terminal_g"] = -0.02
-    res = run_check(out, ctx)
-    assert any("below zero" in w for w in flags(res, "base.terminal_g"))
-    assert any("V10" in w for w in flags(res, "base.terminal_g"))
-
-
+# ---- 4: the release lever (test_value_fin: release needs two fiscal years); a slowdown is not a release
 def test_4_growth_inside_the_record_passes(ctx):
-    res = run_check(clean(), ctx)
-    assert not flags(res, "base.book_growth") and not flags(res, "base.terminal_g")
+    res = run_check(depart(clean(), "book_growth.y1", "record_median", "record_persistence", [Y21, Y25]), ctx)
+    assert res["status"] == "ok" and res["numbers"]["book_growth.y1"] == pytest.approx(0.05)
 
 
 # ---- 5: the operating base's data rules on the financial base
@@ -169,23 +129,12 @@ def test_6_preferred_without_its_dividends_is_refused():
     assert e.value.code == "preferred_dividends_unavailable"
 
 
-# ---- 9: the own-value text by route; 11: AOCI stamped with its size
-def test_9_input_value_text_by_route():
-    out = OP.clean()
-    out["base"]["normalized"]["book_growth"] = 0.37
-    assert "4%" in checks.input_value_text(out, ("base", "normalized")) and "37%" not in checks.input_value_text(out, ("base", "normalized"))   # Q3e-6: exact forms
-
-
+# ---- 11: AOCI stamped with its size; 12: V4 passes with a filed record item
 def test_11_aoci_is_stamped_with_its_share_of_book():
     f = bank_facts()
     f["aoci"] = {"values": [{"end": ENDS[-1], "value": -9.6 * M, "tag": "T", "form": "10-K"}]}
     assert "aoci_in_book_not_separated:-0.075" in inputs.base_financial(f)["stamps"]
 
 
-# ---- 12: explicit V4 and V10 pass cases
-def test_12_v4_passes_with_a_filed_record_reason(ctx):
-    assert not any("V4" in w for w in flags(run_check(clean(), ctx), "base.roe"))
-
-
-def test_12_v10_passes_when_the_reason_agrees(ctx):
-    assert not any("V10" in w for w in flags(run_check(clean(), ctx), "base.normalized"))
+def test_12_v4_passes_with_a_filed_record_item(ctx):
+    assert reverted(run_check(depart(clean(), "roe.y2", "p25", "cycle_downturn", [Y25]), ctx), "roe.y2") == []

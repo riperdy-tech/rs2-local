@@ -1,74 +1,70 @@
-"""memo.py - the valuation memo (SPEC_m3q §2, V10): every number and label is code's; the only prose is the model's own reasons that
-passed the contract, each printed under the input it explains. A reason that did not pass is not printed; the input's failures are.
-The memo carries the authority line: diagnostic only (B9).
+"""memo.py - the valuation memo (F_SPEC_valuation_menu §5): every word and number is code's. One line per input (the option, the
+resolved number, the record-neutral number, the direction, and for a departure its driver), every cited sentence printed in full
+beneath it; then the scenarios, the reverts and stamps, the annotations, and the model's `unknowns` under their own heading, unedited.
+The memo carries the authority line: diagnostic only (B9). Stated limit (§2.2): code cannot tell a GAAP operating margin from an adjusted
+margin printed in the same unit, so every guidance sentence is printed in full for a reader to judge.
 """
-from qwen_c import contract
-
-MEMO_VERSION = "m3q.memo.v4"   # v4 2026-10-31 Q3c: the record-neutral reference; v3 Q3b N3: diagnostics printed;   # v2 2026-10-30 WO_Q6: the financial route's inputs table
+MEMO_VERSION = "m3q.memo.v5"   # v5 2026-11-03 F_SPEC_valuation_menu §5: code's text from options, drivers and cited sentences   # v4 Q3c: the record-neutral reference   # v3, v2 (see git)
 
 
 def _pct(x):
-    return "unlimited" if x == "unlimited" or x == float("inf") else f"{100 * float(x):.1f}%"
+    return f"{100 * float(x):.1f}%"
 
 
-def render(result, reasons_by_input):
-    """Markdown memo of one run.py result. `reasons_by_input` is checks.reasons_by_input on the same output."""
-    if result.get("status") in ("no_call",):
-        return f"# {result['ticker']} at {result['T']}: no call\n\n{result.get('reason')}: {result.get('detail')}\n"
-    inp, chk = result.get("inputs") or {}, result.get("checks") or {}
-    base, vals = inp.get("base") or {}, result.get("values") or {}
-    lines = [f"# {result['ticker']} at {result['T']}: {result['status']}", "",
-             "**Authority: diagnostic only.** No paper or real decision reads this value (B9).", "",
-             "| | Bear | Base | Bull |", "|---|---|---|---|",
-             "| Value per share | " + " | ".join(f"{vals[k]:,.2f}" if k in vals else "—" for k in ("bear", "base", "bull")) + " |",
-             "| Probability | " + " | ".join(_pct((inp.get("prob") or {}).get(k, 0)) for k in ("bear", "base", "bull")) + " |", "",
-             *(_inputs_fin(result, base) if (result.get("base") or {}).get("route") == "financial" else _inputs_op(result, base)),
-             "Labels (code, V6): " + ", ".join(f"{k} {v}" for k, v in (chk.get("labels") or {}).items() if not k.endswith("_submitted")), ""]
-    for (scen, key), rs in sorted(reasons_by_input.items()):
-        refused = set(chk.get("refused_reasons") or [])
-        ok = [x for x in rs if x.get("ok", x["support"] == contract.SUPPORTED) and x.get("i") not in refused]
-        lines.append(f"**{scen}.{key}**")
-        for x in ok:
-            lines.append(f"- {x['reason']['claim']} [{', '.join(x['reason']['fact_ids'])}]")
-        for why in (chk.get("unsupported") or {}).get(f"{scen}.{key}", []):
-            lines.append(f"- *unsupported:* {why}")
-        lines.append("")
+def _num(x):
+    if isinstance(x, (list, tuple)):
+        return f"{x[0]:.4f} in year 1 to {x[-1]:.4f} in year 5"
+    return str(x) if isinstance(x, int) else f"{x:.4f}"
+
+
+def _opt(x):
+    return f"{x[0]} {float(x[1]):+g} pts" if isinstance(x, (list, tuple)) else str(x)
+
+
+def render(result):
+    """Markdown memo of one run.py result."""
+    head = f"# {result['ticker']} at {result['T']}: {result['status']}"
+    if result.get("status") == "no_call" and not result.get("checks"):
+        return f"{head}\n\n{result.get('reason')}: {result.get('detail')}\n"
+    chk, vals = result.get("checks") or {}, result.get("values") or {}
+    lines = [head, "", "**Authority: diagnostic only.** No paper or real decision reads this value (B9).", ""]
+    if chk.get("errors"):
+        return "\n".join(lines + ["Reply errors (nothing is valued):"] + [f"- {k}: {'; '.join(map(str, v))}" for k, v in chk["errors"].items()]) + "\n"
+    if result.get("status") == "no_call":
+        return "\n".join(lines + [f"{chk.get('reason')}: {chk.get('detail')}"]) + "\n"
+    prob = chk.get("prob") or {}
+    lines += ["| | Bear | Base | Bull |", "|---|---|---|---|",
+              "| Value per share | " + " | ".join(f"{vals[k]:,.2f}" if k in vals else "—" for k in ("bear", "base", "bull")) + " |",
+              "| Probability (code) | " + " | ".join(_pct(prob[k]) if k in prob else "—" for k in ("bear", "base", "bull")) + " |", ""]
+    if (result.get("base") or {}).get("route") == "financial":
+        lines += [f"Cost of equity {_pct(result['cost_of_equity'])} (code). Financial route: common book equity and return on equity (O3).", ""]
+    else:
+        lines += [f"Cost of equity {_pct(result['cost_of_equity'])} (code). Tax {_pct(result['base']['tau'])} (code, V8).", ""]
+    deps = {d["input"]: d for d in chk.get("departures") or []}
+    ev = chk.get("evidence") or {}
+    guid = ((result.get("inputs") or {}).get("guidance") or {})
+    lines += [f"## Inputs (normalized year {chk.get('year')})", ""]
+    for k, opt in (chk.get("options") or {}).items():
+        line = (f"- **{k}**: {_opt(opt)}, {_num(chk['numbers'][k])} (record-neutral {_num(chk['neutral'][k])}), "
+                f"{chk['directions'][k]}")
+        cited = []
+        if k in deps:
+            line += f"; driver {deps[k]['driver']}"
+            cited = list(deps[k]["evidence"])
+        if k in (chk.get("guided") or {}) and guid.get(k, {}).get("evidence") not in cited:
+            cited.insert(0, guid[k]["evidence"])
+        lines.append(line)
+        lines += [f"  - [{i}] {ev[i]['text']}" for i in cited if i in ev]
+    sc = chk.get("scenarios") or {}
+    lines += ["", "## Scenarios (code: the uncertain keys' neighbours)", ""]
+    for k, s in (sc.get("keys") or {}).items():
+        lines.append(f"- {k}: Bear {_num(s['bear']) if s['bear'] is not None else 'Base'}, Bull {_num(s['bull']) if s['bull'] is not None else 'Base'}")
+    lines += ["", "## Reverts and stamps", ""] + [f"- {x}" for x in chk.get("reverts") or ["none"]]
+    lines += ["", "Stamps: " + "; ".join((result.get("stamps") or []) + (chk.get("stamps") or []))]
     if chk.get("annotations"):
-        lines += ["Annotations: " + "; ".join(chk["annotations"]), ""]
-    d = chk.get("diagnostics")
-    if d:                                                                 # Q3b N3 / Q3c: the record-neutral reference, P/B, TV share
-        rn = d.get("record_neutral") or {}
-        parts = [f"Record-neutral value {rn['value']:,.2f} ({rn.get('inputs')})" if rn.get("value") is not None else "Record-neutral value unavailable"]
-        if d.get("implied_pb") is not None:
-            parts.append(f"implied P/B {d['implied_pb']:.2f}")
-        if d.get("tv_share") is not None:
-            parts.append(f"terminal value {_pct(d['tv_share'])} of the value")
-        lines += ["; ".join(parts) + ".", ""]
-    return "\n".join(lines)
-
-
-def _inputs_op(result, base):
-    return [f"Cost of equity {_pct(result['cost_of_equity'])} (code). Tax {_pct(result['base']['tau'])} (code, V8).", "",
-            "| Input (Base) | Value |", "|---|---|",
-            f"| Revenue growth, years 1-2 | {', '.join(_pct(g) for g in base.get('rev_growth', []))} |",
-            f"| Operating margin, years 1-2 | {', '.join(_pct(m) for m in base.get('op_margin', []))} |",
-            f"| Normalized margin (year {base.get('normalized', {}).get('year')}) | {base.get('normalized', {}).get('baseline')} "
-            f"{base.get('normalized', {}).get('delta_pts', 0):+.1f} pts |",
-            f"| Long-run operating margin | {_pct(base.get('long_run_op_margin', 0))} |",
-            f"| Fade years | {base.get('fade_years')} |",
-            f"| Terminal return on new capital | {_pct(base.get('terminal_ronic', 0))} |",
-            f"| Terminal growth | {_pct(base.get('terminal_g', 0))} |",
-            f"| Margin source | {base.get('margin_source')} |", ""]
-
-
-def _inputs_fin(result, base):
-    """WO_Q6: the financial route's inputs (book growth and ROE; no tax line: O3 values net income)."""
-    return [f"Cost of equity {_pct(result['cost_of_equity'])} (code). Financial route: book equity and return on equity (O3).", "",
-            "| Input (Base) | Value |", "|---|---|",
-            f"| Book equity growth, years 1-2 | {', '.join(_pct(g) for g in base.get('book_growth', []))} |",
-            f"| Return on equity, years 1-2 | {', '.join(_pct(m) for m in base.get('roe', []))} |",
-            f"| Normalized return on equity (year {base.get('normalized', {}).get('year')}) | {base.get('normalized', {}).get('baseline')} "
-            f"{base.get('normalized', {}).get('delta_pts', 0):+.1f} pts |",
-            f"| Long-run return on equity | {_pct(base.get('long_run_roe', 0))} |",
-            f"| Fade years | {base.get('fade_years')} |",
-            f"| Terminal growth | {_pct(base.get('terminal_g', 0))} |", ""]
+        lines += ["", "Annotations: " + "; ".join(chk["annotations"])]
+    rn = (chk.get("diagnostics") or {}).get("record_neutral") or {}
+    lines += ["", f"Record-neutral value {rn['value']:,.2f} ({rn.get('inputs')})." if rn.get("value") is not None
+              else "Record-neutral value unavailable."]
+    lines += ["", "## Unknowns (the model's text, unedited)", ""] + [f"- {u}" for u in (result.get("inputs") or {}).get("unknowns") or []]
+    return "\n".join(lines) + "\n"
