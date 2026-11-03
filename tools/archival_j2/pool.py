@@ -261,7 +261,7 @@ def counts(frame_n, names):
         alive -= left.get(s, 0)
         c[f"after_{s}"] = alive
     c["companies"] = c["after_duplicate_company"]
-    c["family"] = dict(Counter(n.get("family") for n in names if n.get("family") is not None or n["stage"] == "family"))
+    c["family"] = dict(Counter(str(n.get("family")) for n in names if n.get("family") is not None or n["stage"] == "family"))
     c["prepare_refusals"] = dict(Counter(n["reason"] for n in names if n["stage"] == "prepare"))
     reached = [n for n in names if n.get("run_rate")]
     c["run_rate_measured"] = {k: sum(n["run_rate"][k] for n in reached) for k in KEYS}
@@ -280,7 +280,7 @@ def counts(frame_n, names):
         "realised_margin_available": sum(n["checks"]["realised_margin_available"] for n in pool),
         "base_move_not_evaluable": sum(not n["checks"]["base_move_evaluable"] for n in pool),
         "restated_base_within_1_point": sum(bool(n["checks"]["restated_base"]) for n in pool),
-        "revenue_scope": dict(Counter(n["checks"]["revenue_scope"] for n in pool)),
+        "revenue_scope": dict(Counter(str(n["checks"]["revenue_scope"]) for n in pool)),
         "tag_mismatch": sum(n["checks"]["tag_mismatch"] for n in pool),
         "release_within_1_session": sum(bool(n["checks"]["release"]["releases"]) for n in pool),
         "year1_end_fy0_plus_365": sum(n["checks"]["year1_end_stamp"] is not None for n in pool)}
