@@ -170,10 +170,7 @@ def name_family(cik, T):
 def fields(n, stocks, T):
     pk = json.loads(Path(n["packet"]).read_text(encoding="utf-8"))
     cik, row = pk.get("cik"), stocks.get(pk["ticker"]) or {}
-    try:
-        fam = name_family(cik, T) if cik else {"family": None, "reason": "no CIK in the packet"}
-    except Exception as e:  # noqa: BLE001  a family that cannot be measured is recorded; the slot then is field_missing
-        fam = {"family": None, "reason": f"family not measured: {type(e).__name__}: {str(e)[:200]}"}
+    fam = name_family(cik, T) if cik else {"family": None, "reason": "no CIK in the packet"}
     return {"packet": n["packet"], "packet_sha256": n.get("packet_sha256"), "formation_state": n.get("state"), "cik": cik,
             "sector": row.get("sector"), "market_cap": row.get("marketCap"), "family": fam.get("family"), "family_record": fam,
             "slots": {}, "failures": {}, "asides": []}
@@ -273,7 +270,11 @@ def one_pass():
     for t in todo:
         if t not in idx["names"]:
             stocks = stocks if stocks is not None else stocks_rows(m["output_commit"])
-            idx["names"][t] = fields(m["names"][t], stocks, T)
+            try:
+                idx["names"][t] = fields(m["names"][t], stocks, T)
+            except Exception as e:  # noqa: BLE001  SEC unreachable or similar: nothing is recorded, the next pass measures again
+                print(t, f"family not measured ({type(e).__name__}: {str(e)[:200]}): stopping", flush=True)
+                return 6
             save(ipath, idx)
             print(t, "family", idx["names"][t]["family"], flush=True)
     env = dict(os.environ, MRI_ANCHORS_DIR=str(adir), PYTHONIOENCODING="utf-8")

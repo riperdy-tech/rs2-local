@@ -195,6 +195,16 @@ def test_a_missing_market_cap_is_a_named_no_call_without_a_run(world, monkeypatc
     assert {Path(c[0][3]).stem for c in world.calls} == {"BBB"}
 
 
+def test_a_family_that_cannot_be_measured_is_not_recorded(world, monkeypatch):
+    finish_q1(world)
+
+    def offline(cik, T):
+        raise OSError("SEC unreachable")
+    monkeypatch.setattr(FV, "name_family", offline)
+    assert FV.main() == 6 and world.calls == []
+    assert not (world.value / f"formation_{T}.json").exists()
+
+
 def test_waits_for_another_formation_with_q1_work_left(world):
     finish_q1(world)
     (world.inputs / "formation_2026-12-31.json").write_text(json.dumps({"names": {"ZZZ": {"state": "to_run"}}}), encoding="utf-8")
