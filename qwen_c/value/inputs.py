@@ -20,7 +20,7 @@ from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION, PRETAX_FROM_NI, has_stamp
 
-INPUTS_VERSION = "m3q.inputs.v9"   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v10"   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -294,9 +294,20 @@ def base(f, *, market_cap, bill_rate):
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,
             "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps,
             "da_rule": "vintages" if ppe else "pooled",
+            "ytd": _ytd(f, e0),
             "record": {"op_margin": {e: oi[e] / rev[e] for e in ends if e in oi}, "capex_ratio": capex_record,
                        "rev_growth_max": max(rev[ends[i]] / rev[ends[i - 1]] - 1 for i in range(1, len(ends))),
                        "rev_growth": {c[i]: rev[c[i]] / rev[c[i - 1]] - 1 for c in [_year_chain(ends)] for i in range(1, len(c))}}}  # F_SPEC §2.1
+
+
+def _ytd(f, e0):
+    """F11: the facts' year-to-date pair of year 1 when it is measured against this base year (else not available, with why)."""
+    y = f.get("_ytd")
+    if y is None:
+        return {"rev_growth": None, "op_margin": None, "absent": "no year-to-date record in the facts", "op_margin_absent": None}
+    if y.get("fy0") != e0:
+        return dict(y, rev_growth=None, op_margin=None, absent=f"year-to-date record measured against {y.get('fy0')}, the base year is {e0}")
+    return y
 
 
 def bridge_x_margin(b, op_margins, revenues, amort=None):

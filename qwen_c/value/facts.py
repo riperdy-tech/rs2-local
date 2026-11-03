@@ -9,6 +9,7 @@ reconstruction of what was filed, stamped `snapshot_after_T`; it is not proof of
 For each concept and fiscal-year end, the value of the LATEST eligible filing is used (a restatement filed before T is what was known
 at T). Annual flows are full-year facts (fp FY, a 350-380 day duration) from 10-K, 10-K/A, 20-F, 20-F/A, 40-F, 40-F/A; balances are
 instants at a fiscal-year end of the same forms. Nothing is defaulted: a missing concept is absent from the result with its reason.
+`_ytd` (F11) is year 1's year-to-date revenue and operating income, both legs from the latest 10-Q effective at T (ytd()).
 """
 import json
 import re
@@ -16,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
 
-FACTS_VERSION = "m3q.facts.v6"   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v7"   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -255,6 +256,96 @@ def annual_facts(cf, subs, T, years=8):
              if latest and d["values"][-1]["end"] < latest and c != "nci_income" and c not in AUX_CONCEPTS}
     out["_absent"], out["_stale"] = absent, stale
     out["_latest_annual_period"] = latest_annual_period(subs, T)
+    out["_ytd"] = ytd(cf, eligible, known, T, (out.get("revenue") or {}).get("values", [])[-1:])
+    return out
+
+
+# F11 (F_SPEC_valuation_menu v1.3): year 1's year-to-date pair. A 10-Q's year-to-date period starts on the first day of its fiscal year; its
+# length names the quarter (three, six or nine months, 52/53-week calendars included)
+YTD_FORMS = {"10-Q", "10-Q/A"}
+YTD_QUARTERS = ((1, 80, 100), (2, 170, 190), (3, 260, 285))     # (quarter, min days, max days) of end - start
+YTD_LENGTH_TOL = 7          # days the prior-year leg may differ in length: a 53-week year's extra week, stamped ytd_lengths_differ
+YTD_CALENDAR_TOL = 3        # calendar months differ by up to 3 days between years (a leap day, 30- and 31-day months): not stamped
+
+
+def _days_between(a, b):
+    return (date.fromisoformat(b) - date.fromisoformat(a)).days
+
+
+def _quarter(start, end):
+    d = _days_between(start, end)
+    return next((q for q, lo, hi in YTD_QUARTERS if lo <= d <= hi), None)
+
+
+def ytd(cf, eligible, known, T, base):
+    """Year 1's year-to-date revenue growth and operating margin (F11), from ONE filing: the latest 10-Q effective at T whose fiscal year is
+    year 1, i.e. whose year-to-date period starts the day after the base fiscal year's end (`base`: [the base year's revenue value], the
+    fiscal year itself chained by annual_facts' 350-380-day rule). Its prior-year leg is the period in the same filing, under the same tag,
+    that starts on the base year's first day and has the same length within YTD_LENGTH_TOL days. Revenue: among the revenue tags with both
+    legs, the largest current value (annual_facts' rule). Operating income: the first operating-income tag with the current period.
+    Returns {"rev_growth", "op_margin", the period, accession and legs, "absent": None or why}; a number that cannot be measured is None
+    with its reason, never a default."""
+    out = {"rev_growth": None, "op_margin": None, "absent": None, "op_margin_absent": None}
+    if not base:
+        return dict(out, absent="no base fiscal year of revenue")
+    fy0, b0_start = base[0]["end"], base[0]["start"]
+    y1_start = (date.fromisoformat(fy0) + timedelta(days=1)).isoformat()
+    out.update(fy0=fy0, year1_start=y1_start)
+    facts = cf.get("facts") or {}
+
+    def rows(concept):
+        """[(priority, tag, fact)] of a concept's 10-Q facts effective at T with a numeric value and a start."""
+        got = []
+        for pri, (tax, tag, unit) in enumerate(CONCEPTS[concept][1]):
+            for f in (((facts.get(tax) or {}).get(tag) or {}).get("units") or {}).get(unit) or []:
+                if (f.get("form") in YTD_FORMS and isinstance(f.get("val"), (int, float)) and not isinstance(f.get("val"), bool)
+                        and f.get("start") and f.get("end") and _eligible(f, eligible, known, T)[0]):
+                    got.append((pri, tag, f))
+        return got
+    rev = rows("revenue")
+    current = [x for x in rev if x[2]["start"] == y1_start and _quarter(x[2]["start"], x[2]["end"])]
+    if not current:
+        return dict(out, absent="no 10-Q of year 1 effective at T")
+    # the latest filing: the latest year-to-date end, then the latest filed date and accession (an amendment of the same quarter)
+    pick = max(current, key=lambda x: (x[2]["end"], x[2].get("filed") or "", x[2]["accn"]))[2]
+    accn, end = pick["accn"], pick["end"]
+    q, days = _quarter(y1_start, end), _days_between(y1_start, end)
+    out.update(quarter=q, start=y1_start, end=end, accn=accn, form=pick.get("form"), filed=pick.get("filed"),
+               stamp=_eligible(pick, eligible, known, T)[1])
+
+    def legs(rows_):
+        """{tag: (priority, current, prior or None, prior fact or None)} in the filing; a tag with two different values for one leg is
+        ambiguous and dropped."""
+        by = {}
+        for pri, tag, f in rows_:
+            if f["accn"] != accn:
+                continue
+            if f["start"] == y1_start and f["end"] == end:
+                by.setdefault(tag, [pri, set(), set(), None])[1].add(float(f["val"]))
+            elif (f["start"] == b0_start and f["end"] < y1_start and abs(_days_between(f["start"], f["end"]) - days) <= YTD_LENGTH_TOL):
+                d = by.setdefault(tag, [pri, set(), set(), None])
+                d[2].add(float(f["val"]))
+                d[3] = f
+        return {t: (d[0], next(iter(d[1])), next(iter(d[2])) if len(d[2]) == 1 else None, d[3]) for t, d in by.items()
+                if len(d[1]) == 1 and len(d[2]) <= 1}
+    both = {t: v for t, v in legs(rev).items() if v[2] is not None}
+    if not both:
+        return dict(out, absent=f"no prior-year comparable of the {days}-day year-to-date revenue in {accn}")
+    pairs = {t: v for t, v in both.items() if v[1] > 0 and v[2] > 0}
+    if not pairs:
+        return dict(out, absent=f"year-to-date revenue not positive in {accn}: {sorted((t, v[1], v[2]) for t, v in both.items())}")
+    tag, (_, r1, r0, pf) = max(pairs.items(), key=lambda kv: (kv[1][1], -kv[1][0]))
+    stamps = [out["stamp"]]
+    if len({v[1] for v in pairs.values()}) > 1:
+        stamps.append("ytd_revenue_largest_of_tags")
+    if abs(_days_between(pf["start"], pf["end"]) - days) > YTD_CALENDAR_TOL:
+        stamps.append(f"ytd_lengths_differ: {days} against {_days_between(pf['start'], pf['end'])} days")
+    out.update(revenue=r1, revenue_prior=r0, revenue_tag=tag, prior_start=pf["start"], prior_end=pf["end"], rev_growth=r1 / r0 - 1,
+               stamp=_stamp(*stamps))
+    oi = sorted(legs(rows("operating_income")).items(), key=lambda kv: kv[1][0])
+    if not oi:
+        return dict(out, op_margin_absent=f"no year-to-date operating income in {accn}")
+    out.update(operating_income=oi[0][1][1], operating_income_prior=oi[0][1][2], operating_income_tag=oi[0][0], op_margin=oi[0][1][1] / r1)
     return out
 
 
