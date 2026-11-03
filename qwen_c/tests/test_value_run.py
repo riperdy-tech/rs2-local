@@ -50,7 +50,7 @@ def test_clean_reply_is_ok_in_one_call_and_writes_the_memo(setup, monkeypatch):
     res = value(p, out)
     assert res["status"] == "ok" and len(seen) == 1 and res["authority"] == "diagnostic_only"
     assert res["values"]["bear"] <= res["values"]["base"] <= res["values"]["bull"]
-    assert seen[0]["messages"][0]["content"] is runner.tasks.SYSTEM and "[[G1.s1]] The company expects" in seen[0]["messages"][1]["content"]
+    assert seen[0]["messages"][0]["content"] is runner.tasks.SYSTEM and "<1> The company expects" in seen[0]["messages"][1]["content"]
     assert {"sentences", "menu", "memo", "prompt", "checks", "forecast", "inputs"} <= set(res["versions"])
     d = next(out.iterdir())
     assert json.loads((d / "result.json").read_text(encoding="utf-8"))["status"] == "ok" and (d / "raw" / "attempt_1.json").exists()

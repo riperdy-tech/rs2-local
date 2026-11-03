@@ -189,7 +189,7 @@ def test_an_unbuilt_family_is_still_refused_by_name():
     assert e.value.code == "family_not_routed"
 
 
-PINNED_FIN = "39ddfe57c363a7b53b330c3b1170ea2ebf56dd951ca88ebbe4bfad563e861ecb"   # m3q.prompt.fin.v6
+PINNED_FIN = "963458f153ada5ef3b3a44992c43a831402f859267550c12e38f8d4f8568f24a"   # m3q.prompt.fin.v7
 
 
 def test_the_financial_prompt_is_pinned_and_half_of_v5():
@@ -198,7 +198,7 @@ def test_the_financial_prompt_is_pinned_and_half_of_v5():
     msg = task.user_message(pk, [], copy.deepcopy(b), bar, 0.1027, PROV)
     h = hashlib.sha256("\n".join([task.VALUATION_PROMPT_FIN_VERSION, tasks.SYSTEM, msg]).encode("utf-8")).hexdigest()
     assert h == PINNED_FIN, f"the financial prompt changed: bump VALUATION_PROMPT_FIN_VERSION and re-pin ({h})"
-    assert task.VALUATION_PROMPT_FIN_VERSION == "m3q.prompt.fin.v6" and len(task.INSTRUCTION_FIN) <= 4184 / 2     # v5: 4,184 characters
+    assert task.VALUATION_PROMPT_FIN_VERSION == "m3q.prompt.fin.v7" and len(task.INSTRUCTION_FIN) <= 4184 / 2     # v5: 4,184 characters
 
 
 def test_memo_renders_a_financial_result(ctx):

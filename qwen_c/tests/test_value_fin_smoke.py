@@ -20,7 +20,7 @@ def test_S1_the_contract_still_reads_a_year_after_a_year_word():
 
 
 def test_S1_neither_prompt_asks_for_written_figures():
-    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v8" and task.VALUATION_PROMPT_FIN_VERSION == "m3q.prompt.fin.v6"
+    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v9" and task.VALUATION_PROMPT_FIN_VERSION == "m3q.prompt.fin.v7"
     src = open(task.__file__, encoding="utf-8").read()
     assert "never as a bare adjective" not in src and "single quote" not in src
 

@@ -38,9 +38,9 @@ def test_ids_number_over_the_whole_item_and_carry_the_items_metadata():
 
 def test_marked_rendering_keeps_every_line_and_the_text():
     item = {"fact_id": "P4", "kind": "release", "text": "One. Two.\n​\nThree."}
-    assert sentences.marked(item) == "[[P4.s1]] One. [[P4.s2]] Two.\n​\n[[P4.s3]] Three."
+    assert sentences.marked(item) == "<1> One. <2> Two.\n​\n<3> Three."
     pk = sentences.marked_packet({"evidence": [item, {"fact_id": "F1", "kind": "statement", "text": "A | 1"}]})
-    assert pk["evidence"][1]["text"] == "A | 1" and "[[" not in tasks.render_item(pk["evidence"][1])
+    assert pk["evidence"][1]["text"] == "A | 1" and "<1>" not in tasks.render_item(pk["evidence"][1])
 
 
 def test_pinned_on_the_fixed_packet():
@@ -54,7 +54,7 @@ def test_pinned_on_the_fixed_packet():
     assert ids["MATX_P4.s14"]["text"].startswith("For the full year 2026, the Company expects to make capital expenditure payments")
     assert ids["IRWD_F1"]["kind"] == "statement" and not ids["IRWD_F1"]["sentence"]
     marked = json.dumps(sentences.marked_packet(PK)["evidence"], sort_keys=True).encode()
-    assert hashlib.sha256(marked).hexdigest() == "0607abf3d76728ea66a96f46bbb341c842b988cca54a527c9741e22a2a741216", \
+    assert hashlib.sha256(marked).hexdigest() == "f44da27ce87ceab60930ab586fcdaaed1885477e98055423dfeb4d040a17f801", \
         "the splitter changed: bump SENTENCES_VERSION and re-pin"
 
 
@@ -63,4 +63,4 @@ def test_every_sentence_is_printed_after_its_marker():
     text = "\n".join(e["text"] for e in pk["evidence"])
     for sid, v in sentences.index(PK["evidence"]).items():
         if v["sentence"]:
-            assert f"[[{sid}]] {v['text']}" in text
+            assert f"<{sid.rsplit('.s', 1)[1]}> {v['text']}" in text

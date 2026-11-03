@@ -8,7 +8,7 @@ from qwen_c import tasks
 from qwen_c.value import checks, menu, task
 from qwen_c.tests import test_value_checks as OP
 
-PINNED = "945d54d9d19ef5bf1fd82e0e447cf5a07697d795d14acac2c8c27b0e5e828482"   # m3q.prompt.v8
+PINNED = "553705b3b86ececed67c589d20168bf7cdf3529c3aab269811dc84a3dbc12918"   # m3q.prompt.v9
 V7_INSTRUCTION_CHARS = 4065                                                     # m3q.prompt.v7's INSTRUCTION, shape included
 
 
@@ -26,7 +26,7 @@ def test_system_is_the_shared_text_and_the_formation_tasks_are_untouched():
 
 
 def test_the_instruction_is_at_most_half_of_v7_and_names_no_figure_rules():
-    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v8" and len(task.INSTRUCTION) <= V7_INSTRUCTION_CHARS / 2
+    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v9" and len(task.INSTRUCTION) <= V7_INSTRUCTION_CHARS / 2
     for gone in ("quote", "bare adjective", "figures a cited item prints", "prob"):
         assert gone not in task.INSTRUCTION
 
@@ -44,7 +44,7 @@ def test_user_message_carries_markers_the_record_and_the_menu_then_the_task_last
     pk = {"evidence": [{"fact_id": "P4", "kind": "release", "text": "Revenue rose. Margins held."},
                        {"fact_id": "F1", "kind": "statement", "text": "Revenue | 100"}]}
     msg = task.messages(pk, rec, *_base_args())[1]["content"]
-    assert "[[P4.s1]] Revenue rose. [[P4.s2]] Margins held." in msg and "Revenue | 100" in msg and "[[F1" not in msg
+    assert "<1> Revenue rose. <2> Margins held." in msg and "Revenue | 100" in msg and "<1> Revenue | 100" not in msg
     assert "[Y2025-12-31] Filed annual record" in msg and "[V0] Measured by code" in msg and "Cost of equity 0.0900" in msg
     assert "terminal_ronic (return on new capital in the long run): no_growth_value 0.0790; quarter" in msg
     assert "terminal_g: anchor 0.0300; half_anchor 0.0150; zero 0.0000; decline not available" in msg

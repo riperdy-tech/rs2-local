@@ -2,7 +2,7 @@
 
 The system message is qwen_c.tasks.SYSTEM, byte-identical (its SCOPE line stands: the model states forecast inputs and never a value,
 a price or an action; code computes the value). The task is NOT in tasks.TASKS, so the seeds and texts of the formation tasks do not
-move. The user message is the packet rendered as tasks.render_packet does, with a [[P4.s17]] marker before each sentence of a prose
+move. The user message is the packet rendered as tasks.render_packet does, with a <17> marker (its ID P4.s17 under the item [P4]) before each sentence of a prose
 item (sentences.py), the filed record items [Y...], the code-measured base and its MENU [V0], then this instruction.
 
 Changing any text here changes what the model is told: bump VALUATION_PROMPT_VERSION and re-pin the hash in tests/test_value_task.py.
@@ -10,7 +10,7 @@ Changing any text here changes what the model is told: bump VALUATION_PROMPT_VER
 from qwen_c import tasks
 from qwen_c.value import menu, sentences
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v8"   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
+VALUATION_PROMPT_VERSION = "m3q.prompt.v9"   # v9 2026-11-03 F8: the short sentence marker <17>   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
 PRICE_LINES = ("price:", "marketCap:", "price as-of")
 NL = "\n"
 
@@ -40,8 +40,8 @@ _RULES = (
     "Each input is an option of its MENU line in [V0]; code uses the number printed beside it. Never choose an option printed \"not "
     "available\". The first option of a line is the record-neutral choice (normalized: year 3, median, step 0). An input whose number "
     "differs from the neutral number is a departure (a long run anchored on normalized departs with it). Each departure needs one "
-    "entry: its departure key, a driver and 1 to 4 evidence IDs, at least one not V0. Cite a sentence of a text item by its marker "
-    "(P4.s17), a statement, a [Y] item or [V0] by its ID. Code reverts a departure its evidence does not support: without evidence, "
+    "entry: its departure key, a driver and 1 to 4 evidence IDs, at least one not V0. Cite a sentence of a text item by its item and "
+    "marker (<17> in item [P4] is P4.s17), a statement, a [Y] item or [V0] by its ID. Code reverts a departure its evidence does not support: without evidence, "
     "stay neutral.\n"
     "The option guidance takes its number from one cited sentence of a filing or 8-K dated in or after the base fiscal year: under "
     "\"guidance\", keyed by the input, give evidence, metric, sign (as_printed, or negative for a stated decline) and ordinal (the n-th figure in the metric's unit, years not "
@@ -54,7 +54,7 @@ INSTRUCTION = ("TASK valuation_inputs. Choose the inputs from which code values 
 
 # WO_Q6: the financial route (banks, insurers; O3 retained equity). Its own text and version. Changing any text here: bump
 # VALUATION_PROMPT_FIN_VERSION and re-pin its hash in tests/test_value_fin.py.
-VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v6"   # v6 2026-11-03 F_SPEC_valuation_menu §2.3   # v5 2026-10-31 CROSS_CHECK_Q3e 2   # v4..v2 2026-10-30/31 (see git)
+VALUATION_PROMPT_FIN_VERSION = "m3q.prompt.fin.v7"   # v7 2026-11-03 F8: the short sentence marker <17>   # v6 2026-11-03 F_SPEC_valuation_menu §2.3   # v5 2026-10-31 CROSS_CHECK_Q3e 2   # v4..v2 2026-10-30/31 (see git)
 
 _SHAPE_FIN = """```json
 {"task": "valuation_inputs_financial",

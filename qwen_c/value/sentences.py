@@ -1,7 +1,8 @@
 """sentences.py - the evidence IDs of the valuation prompt (F_SPEC_valuation_menu §1).
 
 A prose item (a filing section, a going-concern note, an amendment, an 8-K release or exhibit) is split into sentences numbered
-<fact_id>.s<n>, and the prompt prints each sentence after its ASCII marker [[P4.s17]]. A line holding a table row (cells joined by
+<fact_id>.s<n>, and the prompt prints each sentence after its ASCII marker <17> (v2), the item's own header [P4] giving the rest of
+its ID P4.s17. A line holding a table row (cells joined by
 " | ") is one sentence. Otherwise a sentence ends at ".", "?" or "!" (with any closing quote or bracket) followed by white space and a
 capital, a digit, an opening quote or bracket, or "$"; so never inside a number, and never after a common abbreviation, a single letter
 or a dotted token ("U.S.", "No.", "Inc.", "p.m."). Statements, the screener row, the code-built [Y] record items and [V0] are cited by
@@ -9,7 +10,7 @@ item ID and carry no markers. Each ID carries its item's kind, period and form; 
 """
 import re
 
-SENTENCES_VERSION = "m3q.sentences.v1"
+SENTENCES_VERSION = "m3q.sentences.v2"   # v2 2026-11-03 F8: marker <17> under the item's [P4] header (the [[P4.s17]] marker cost 15.6-20.9% of prompt tokens)
 PROSE_KINDS = ("annual_section", "quarterly_section", "gc_note", "amendment", "release", "other_8k", "news")
 ABBREV = {"inc", "corp", "co", "ltd", "llc", "no", "nos", "mr", "mrs", "ms", "dr", "st", "vs", "approx", "fig", "jan", "feb", "mar",
           "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"}
@@ -57,7 +58,7 @@ def marked(item):
         parts = []
         for s in sents:
             n += 1
-            parts.append(f"[[{item['fact_id']}.s{n}]] {s}")
+            parts.append(f"<{n}> {s}")
         lines.append(" ".join(parts) if parts else line)
     return "\n".join(lines)
 
