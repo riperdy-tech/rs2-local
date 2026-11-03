@@ -88,6 +88,12 @@ _CANDIDATES = {
         "screener-publish/public/data/sec_facts",
         "stock-screener/public/data/sec_facts",
     ),
+    # The paper books' GitHub run witness archive (tools/paper_books/archive_runs.py, check_new_runs.py, forward_ledger.py; moved out of
+    # an untracked scratch folder 2026-11-03): run.json, jobs.json and raw logs.zip of every screener Actions run. Raw logs, about 76 MB and
+    # growing each run, so data in stocks-workspace, kept out of git.
+    "gh_witness_dir": (
+        "stocks-workspace/data/gh_witness_archive",
+    ),
 }
 
 # Per-key environment overrides. `anchors_dir` deliberately reads MRI_ANCHORS_DIR first and then
@@ -104,6 +110,7 @@ _ENV = {
     "priors_dir": ("RS2_PRIORS_DIR",),
     "priors_inputs_dir": ("RS2_PRIORS_INPUTS_DIR",),
     "screener_sec_facts_dir": ("SCREENER_SEC_FACTS_DIR",),
+    "gh_witness_dir": ("RS2_GH_WITNESS_DIR",),
 }
 
 

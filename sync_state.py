@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import paths
+from state_lock import rs2_state_lock
 
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache"
@@ -163,6 +164,14 @@ def _import_cloud_state(repo_dir: Path) -> int:
 
 
 def main(repo_dir: Path | None = None) -> str:
+    # tools/paper_books/run_monthly.py commits paper_books/ in the same clone; the reset below would drop its unpushed work.
+    with rs2_state_lock() as held:
+        if not held:
+            return "skipped: the paper books run holds cache/rs2_state.lock"
+        return _sync(repo_dir)
+
+
+def _sync(repo_dir: Path | None = None) -> str:
     repo = Path(repo_dir) if repo_dir else STATE_REPO
     if not (repo / ".git").exists():
         return f"error: {repo} is not a git clone"

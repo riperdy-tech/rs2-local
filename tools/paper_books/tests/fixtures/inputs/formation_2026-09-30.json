@@ -1,0 +1,53 @@
+{
+ "book": [
+  "A",
+  "B",
+  "C",
+  "D",
+  "F",
+  "OPXA"
+ ],
+ "builder_version": "m3m.packet.builder.v6",
+ "decision_time_utc": "2026-09-30T18:00:00Z",
+ "formation_T": "2026-09-30",
+ "names": {
+  "A": {
+   "attempts": 1,
+   "packet": "../packets/2026-09-30_A.json",
+   "run_dir": "../runs/2026-09-30_A",
+   "state": "complete"
+  },
+  "B": {
+   "attempts": 1,
+   "packet": "../packets/2026-09-30_B.json",
+   "run_dir": "../runs/2026-09-30_B",
+   "state": "complete"
+  },
+  "C": {
+   "attempts": 1,
+   "packet": "../packets/2026-09-30_C.json",
+   "run_dir": "../runs/2026-09-30_C",
+   "state": "complete"
+  },
+  "D": {
+   "attempts": 1,
+   "packet": "../packets/2026-09-30_D.json",
+   "run_dir": "../runs/2026-09-30_D",
+   "state": "complete"
+  },
+  "F": {
+   "attempts": 1,
+   "packet": "../packets/2026-09-30_F.json",
+   "run_dir": "../runs/2026-09-30_F",
+   "state": "complete"
+  },
+  "OPXA": {
+   "attempts": 0,
+   "packet": null,
+   "run_dir": null,
+   "state": "operator_excluded"
+  }
+ },
+ "output_commit": "c202609300000000000000000000000000000000",
+ "run_id": "run2026-09-30"
+}

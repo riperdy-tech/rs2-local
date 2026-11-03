@@ -5,3 +5,4 @@ tools/audit_202608/llm_provider.py -text
 tools/vendor_break_rule.json -text
 charters/*.jinja -text
 tools/audit_202608/tests/fixture_data/ollama_raw_golden_prompt.txt -text
+tools/paper_books/** -text

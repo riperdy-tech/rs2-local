@@ -62,6 +62,23 @@ def test_rs2_state_dir_env_override_is_used_verbatim(tmp_path, monkeypatch):
     assert paths.resolve("rs2_state_dir") == tmp_path / "typo" / "nowhere"
 
 
+def test_gh_witness_dir_resolves_under_stocks_workspace_data(tmp_path, monkeypatch):
+    monkeypatch.delenv("RS2_GH_WITNESS_DIR", raising=False)
+    monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
+    (tmp_path / "stocks-workspace" / "data" / "gh_witness_archive").mkdir(parents=True)
+
+    assert paths.resolve("gh_witness_dir") == tmp_path / "stocks-workspace" / "data" / "gh_witness_archive"
+
+
+def test_gh_witness_dir_env_override_is_used_verbatim_and_a_missing_one_raises(tmp_path, monkeypatch):
+    monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
+    monkeypatch.setenv("RS2_GH_WITNESS_DIR", str(tmp_path / "typo"))
+    assert paths.resolve("gh_witness_dir") == tmp_path / "typo"
+    monkeypatch.delenv("RS2_GH_WITNESS_DIR")
+    with pytest.raises(FileNotFoundError, match="gh_witness_archive"):
+        paths.resolve("gh_witness_dir")
+
+
 def test_anchors_default_to_the_mri_outputs_directory(tmp_path, monkeypatch):
     """The anchors are additive artifacts written BESIDE the other MRI outputs."""
     monkeypatch.delenv("MRI_ANCHORS_DIR", raising=False)
