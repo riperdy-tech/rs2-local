@@ -14,7 +14,7 @@ import statistics
 from qwen_c import contract
 from qwen_c.value import forecast
 
-MENU_VERSION = "m3q.menu.v2"   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
+MENU_VERSION = "m3q.menu.v3"   # v3 2026-11-04 E4: field-name aliases of the normalized key, the long run inheriting normalized's entry   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
 STEPS = (-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3)            # points added to an anchor
 YEARS = (3, 4, 5)
 FADES = (10, 5, 15, 20)
@@ -308,3 +308,49 @@ def pick(value_base, value_down, value_up, down, up):
     desk refused (value None) is not a candidate. Returns (bear number or None, bull number or None)."""
     cands = [(value_base, None)] + [(v, x) for v, x in ((value_down, down), (value_up, up)) if x is not None and v is not None]
     return min(cands, key=lambda c: c[0])[1], max(cands, key=lambda c: c[0])[1]
+
+
+# E4 (spec F v1.4): the model names the normalized margin by its fields ("normalized.anchor", "normalized.step") in 12 of 17 first-attempt
+# errors. Those names are enum aliases of the one departure key, read as it; "normalized.year" is no departure key (a timing choice) and its
+# entry is dropped. Each change is annotated. Not a reading of prose: the names are the reply's own field paths.
+ALIASES = {"operating": {"normalized.anchor": "normalized.margin", "normalized.step": "normalized.margin"},
+           "financial": {"normalized.anchor": "normalized.roe", "normalized.step": "normalized.roe"}}
+NOT_KEYS = ("normalized.year",)
+
+
+def normalize_reply(reply, route):
+    """(a copy of the reply with aliased keys read as their departure key, [annotations]). A second entry that an alias maps onto an
+    already present key is dropped (the first is kept)."""
+    if not isinstance(reply, dict):
+        return reply, []
+    out, notes, al = dict(reply), [], ALIASES[route]
+    deps, seen = [], set()
+    for d in reply.get("departures") if isinstance(reply.get("departures"), list) else []:
+        if isinstance(d, dict) and d.get("input") in NOT_KEYS:
+            notes.append(f"departure_not_a_key_dropped: {d['input']}")
+            continue
+        if isinstance(d, dict) and d.get("input") in al:
+            notes.append(f"departure_key_alias: {d['input']} read as {al[d['input']]}")
+            if al[d["input"]] in seen:
+                notes.append(f"departure_alias_duplicate_dropped: {d['input']}")
+                continue
+            d = dict(d, input=al[d["input"]])
+        if isinstance(d, dict):
+            seen.add(d.get("input"))
+        deps.append(d)
+    if isinstance(reply.get("departures"), list):
+        out["departures"] = deps
+    unc = reply.get("uncertain")
+    if isinstance(unc, list):
+        mapped = [al.get(u, u) if isinstance(u, str) else u for u in unc]
+        if mapped != unc:
+            notes.append(f"uncertain_key_alias: {unc} read as {mapped}")
+        out["uncertain"] = list(dict.fromkeys(mapped))
+    return out, notes
+
+
+def inherited(key, base, entries, route):
+    """A long run anchored on normalized at step 0 departs only because normalized does: it takes normalized's entry (spec F v1.4)."""
+    if key.startswith("long_run") and tuple(option(base, key)) == ("normalized", 0) and NORM[route] in entries:
+        return dict(entries[NORM[route]], input=key, inherited_from=NORM[route])
+    return None

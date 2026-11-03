@@ -289,3 +289,26 @@ def test_no_regex_on_model_prose_and_the_deleted_classes_are_gone():
                  "margin_source", "investment_path\":"):
         assert name not in src, name
     assert len(open(checks.__file__, encoding="utf-8").read().splitlines()) <= 450
+
+
+# ---- spec F v1.4 (E4): field-name aliases of the normalized key, the long run inheriting its entry -----------------------------------
+
+def test_normalized_field_names_are_read_as_the_normalized_key_and_annotated(ctx):
+    out = depart(clean(), "normalized.margin", ("p25", 0), "pricing", ["A2.s1"])                # down: V4 only (A2 is filed)
+    out["departures"][0]["input"] = "normalized.anchor"
+    out["departures"].append({"input": "normalized.step", "driver": "pricing", "evidence": ["A2.s1"]})
+    out["departures"].append({"input": "normalized.year", "driver": "pricing", "evidence": ["A2.s1"]})
+    out["uncertain"] = ["normalized.anchor", "terminal_g"]
+    res = run(ctx, out)
+    assert res["status"] in ("ok", "ok_with_reverts") and [d["input"] for d in res["departures"]] == ["normalized.margin", "long_run_op_margin"]
+    assert "departure_key_alias: normalized.anchor read as normalized.margin" in res["annotations"]
+    assert "departure_alias_duplicate_dropped: normalized.step" in res["annotations"]
+    assert "departure_not_a_key_dropped: normalized.year" in res["annotations"]
+    assert set(res["scenarios"]["keys"]) == {"normalized.margin", "terminal_g"}
+
+
+def test_a_long_run_anchored_on_normalized_inherits_its_entry(ctx):
+    out = depart(clean(), "normalized.margin", ("p25", 0), "pricing", ["A2.s1"])                # the long run follows at (normalized, 0)
+    res = run(ctx, out)
+    assert res["status"] == "ok" and "long_run_op_margin" not in res["errors"]
+    assert res["directions"]["long_run_op_margin"] == "down"

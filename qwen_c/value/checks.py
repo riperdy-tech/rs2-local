@@ -17,7 +17,7 @@ import math
 
 from qwen_c.value import desk, forecast, forecast_fin, menu
 
-CHECKS_VERSION = "m3q.checks.v12"   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
+CHECKS_VERSION = "m3q.checks.v13"   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 PROB = {"bear": 0.25, "base": 0.5, "bull": 0.25}                           # §5: fixed
@@ -187,6 +187,7 @@ def check(reply, ids, b, bar, r, fy_ends=(), route="operating"):
         neutral = menu.resolve(menu.neutral_base(route, m), {}, m)
         if any(v is None for v in neutral.values()):                      # no growth anchor, or the anchor not below r
             return dict(res, status="no_call", reason="record_neutral_unavailable", detail=str(neutral))
+        reply, res["annotations"] = menu.normalize_reply(reply, route)        # v13: aliases of the normalized key, annotated
         try:
             err, base = _shape(reply, ids, m)
         except (KeyError, TypeError, ValueError, AttributeError) as e:    # model content only: never raises (ruling 22)
@@ -201,7 +202,7 @@ def check(reply, ids, b, bar, r, fy_ends=(), route="operating"):
 
 def _check(reply, base, ids, b, bar, r, fy_ends, m, neutral, res):
     route, keys = m["route"], menu.KEYS[m["route"]]
-    entries = {d["input"]: d for d in reply.get("departures") or []}
+    entries = {d["input"]: d for d in reply.get("departures") or []}; entries.update({k: e for k in keys if k not in entries for e in [menu.inherited(k, base, entries, route)] if e})
     guidance, fy0 = reply.get("guidance") or {}, b["fy0"]
     unread, pins, first = {}, {}, True               # key -> why its guidance cannot be read; key -> the rule that reverted it
     while True:
@@ -355,8 +356,7 @@ def _neutral(b, bar, r, route, how):
 
 
 def _neutral_fin(b, bar, r):
-    """The record-neutral financial reply: ROE at the record median throughout, book growth and terminal growth at the long-run anchor
-    (at most half the median ROE), a ten-year fade."""
+    """The record-neutral financial reply: ROE at the record median, growth at the anchor (at most half the median ROE), fade 10."""
     if b.get("g_anchor") is None or not bar["median"] > 0:
         return None, "record_neutral_unavailable: no growth anchor or a median ROE <= 0"
     return _neutral(b, bar, r, "financial", lambda sc: f"roe {bar['median']:.4f}, growth {sc['terminal_g']:.4f}, r {r:.4f}, F {NEUTRAL_FADE}")
