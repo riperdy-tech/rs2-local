@@ -312,3 +312,53 @@ def test_only_interest_scales_with_revenue_in_the_bridge():
     k_int, k_other = b["k0_interest"], b["k0"] - b["k0_interest"]
     x = inputs.bridge_x_margin(b, [0.16], [200.0], [1.0])[0]
     assert x == pytest.approx((0.16 * 200 + 1.0 - k_int * 2 - k_other) * (1 - b["tau"]) / 200)
+
+
+# ---- F6 (F_SPEC_valuation_menu §8) -------------------------------------------------------------------------------------------------
+
+def test_no_income_tax_filed_is_a_zero_rate_stamped():
+    pt = {"values": [dict(v, stamp="pretax_from_net_income_no_tax_filed") for v in series([10, 11, 12, 12.5, 13])["values"]]}
+    f = facts(pretax_income=pt, net_income=series([10, 11, 12, 12.5, 13]), eps_diluted=series([1.0, 1.1, 1.2, 1.25, 1.3]))
+    del f["tax_provision"]
+    assert inputs.tax_rate(f, ENDS[-1]) == (0.0, "tax_zero_no_tax_filed")
+    b = base(f)
+    assert b["tau"] == 0.0 and "tax_zero_no_tax_filed" in b["stamps"]
+    del f["pretax_income"]["values"][-1]["stamp"]                         # a filed pretax line without the derivation: refused as before
+    f["net_income"] = series([10, 11, 12, 12.5, 9])
+    with pytest.raises(desk.DeskRefusal) as e:
+        inputs.tax_rate(f, ENDS[-1])
+    assert e.value.code == "tax_unavailable"
+
+
+def test_ifrs16_lease_liabilities_join_debt_when_lease_interest_is_inside_the_interest():
+    # interest 1 includes lease interest 0.8; borrowings 20 against interest 1 would be kd 5%; with leases 60 the basis is one
+    f = facts(lease_interest_ifrs16=series([0.8]), lease_liabilities_ifrs16=series([40, 40]),
+              lease_liabilities_current_ifrs16=series([4]))
+    b0, b = base(), base(f)
+    assert b["debt0"] == 60 and b["kd"] == pytest.approx(1 / 60) and b["debt_basis"] == "components+lease_liabilities"
+    assert "debt_includes_ifrs16_lease_liabilities" in b["stamps"]
+    assert b["w"] == pytest.approx(b0["w"] + 4 / 100)                       # the current lease part leaves working capital, as current debt
+    assert b["delta"] == pytest.approx(53 / (53 + 46))
+    nocur = base(facts(lease_interest_ifrs16=series([0.8]), lease_liabilities_ifrs16=series([40, 40])))
+    assert "current_lease_liabilities_not_separated" in nocur["stamps"] and nocur["w"] == pytest.approx(b0["w"])
+
+
+def test_lease_liabilities_stay_out_when_the_lease_interest_is_not_inside_the_interest_or_a_year_is_missing():
+    for over in ({"lease_interest_ifrs16": series([1.5]), "lease_liabilities_ifrs16": series([40, 40])},     # lease interest > interest
+                 {"lease_interest_ifrs16": series([0.8]), "lease_liabilities_ifrs16": series([40])},          # no opening balance
+                 {"lease_liabilities_ifrs16": series([40, 40])}):                                              # no lease interest filed
+        b = base(facts(**over))
+        assert b["debt0"] == 20 and "debt_includes_ifrs16_lease_liabilities" not in b["stamps"]
+
+
+def test_kd_takes_the_financing_interest_outside_nonoperating_interest():
+    # nonoperating interest 0.1 on debt 20 is 0.5%, below the band; the financing arm's 1.5 inside operating expenses joins it for kd
+    ie = series([0.1, 0.1, 0.1, 0.1, 0.1], tag="InterestExpenseNonoperating")
+    with pytest.raises(desk.DeskRefusal) as e:
+        base(facts(interest_expense=ie))
+    assert e.value.code == "kd_out_of_band"
+    b = base(facts(interest_expense=ie, financing_interest=series([1.5])))
+    assert b["kd"] == pytest.approx(1.6 / 20) and "kd_includes_financing_interest" in b["stamps"]
+    assert b["k0_interest"] == pytest.approx(0.1)                            # the bridge keeps the nonoperating interest only
+    with pytest.raises(desk.DeskRefusal):                                    # any other interest tag may already hold it: not added
+        base(facts(interest_expense=series([0.1, 0.1, 0.1, 0.1, 0.1], tag="InterestExpense"), financing_interest=series([1.5])))

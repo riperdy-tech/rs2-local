@@ -18,9 +18,9 @@ import statistics
 
 from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
-from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION
+from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION, PRETAX_FROM_NI, has_stamp
 
-INPUTS_VERSION = "m3q.inputs.v8"   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v9"   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -38,6 +38,7 @@ ZERO_TAX_TOL = 0.02          # F_SPEC §6 tax (a): net income within 2% of preta
 NEAR_ZERO_TAX = 0.01         # F_SPEC v1.2: a measured median within 1 point of 0 is a zero rate, stamped
 DEBT_TOTAL_EXCLUDES_SHORT = {"LongTermDebt", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"}
 CURRENT_INCLUDES_SHORT = {"DebtCurrent", "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings"}
+DEBT_INCLUDES_LEASES = {"DebtAndCapitalLeaseObligations", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"}
 
 
 def _by_end(f, concept):
@@ -51,7 +52,8 @@ def _tag(f, concept, end):
 def tax_rate(f, e0=None):
     """V8: (tau, stamp). The in-band years (provision / pretax in [0, 0.35], positive pretax) of the last 8: with >= 3 of them, their median
     unless the latest year is in band and within 5 points of it (then the latest); with fewer, the latest if in band; else a persistent
-    rate (>= 3 measured years, all >= 0, within 5 points): their median. F_SPEC §6: else, with no provision filed for the base year `e0`
+    rate (>= 3 measured years, all >= 0, within 5 points): their median. F6: else, with no income-tax fact filed at all (the base year's
+    pretax income derived by facts._derive), a zero rate. F_SPEC §6: else, with no provision filed for the base year `e0`
     and its filed net income within 2% of pretax income less NCI, a zero rate; else, with >= 3 measured years, zero when their median
     is within 1 point of 0 (v1.2), else their UNCLAMPED median when it lies in [0, 1); else refused. Never a clamped default."""
     tax, pre = _by_end(f, "tax_provision"), _by_end(f, "pretax_income")
@@ -70,6 +72,8 @@ def tax_rate(f, e0=None):
     if len(recent) >= 3 and min(recent) >= 0 and max(recent) - min(recent) <= PERSISTENT_SPREAD and max(recent) < 1:
         return statistics.median(recent), "tax_rate_persistent_outside_band"
     e0 = e0 if e0 is not None else max(pre, default=None)
+    if any(v["end"] == e0 and has_stamp(v, PRETAX_FROM_NI) for v in (f.get("pretax_income") or {}).get("values", [])):
+        return 0.0, "tax_zero_no_tax_filed"                                # F6: no income-tax fact of any kind is filed (facts._derive)
     ni, nci = _by_end(f, "net_income").get(e0), _by_end(f, "nci_income").get(e0, 0.0)
     if e0 in pre and e0 not in tax and ni is not None and abs(ni - (pre[e0] - nci)) <= ZERO_TAX_TOL * abs(pre[e0] - nci):
         return 0.0, "tax_zero_no_provision"
@@ -195,11 +199,31 @@ def base(f, *, market_cap, bill_rate):
         if debt0 > c_l:
             raise DeskRefusal("debt_without_interest", f"debt {debt0:.6g} at {e0} with no filed interest expense")
         stamps.append("kd_unused_delta_zero")                             # F_SPEC §6: net debt <= 0, so delta = 0
-    kd = interest / ((debt0 + debt_prev) / 2) if interest and debt0 + debt_prev > 0 else 0.0
+    # F6: IFRS 16 puts the interest on lease liabilities in finance costs. Where the base year's filed lease interest lies inside the
+    # interest read, the lease liabilities (both years) are debt, so kd, delta, the capital and the interest added back share one basis;
+    # their current part leaves working capital as current debt does
+    li, ll = _by_end(f, "lease_interest_ifrs16").get(e0), _by_end(f, "lease_liabilities_ifrs16")
+    lease_cur = 0.0
+    if (interest and li is not None and 0 < li <= interest and e0 in ll and prev in ll and how0 != "no_debt_filed"
+            and how0 not in DEBT_INCLUDES_LEASES):
+        debt0, debt_prev, how0 = debt0 + ll[e0], debt_prev + ll[prev], f"{how0}+lease_liabilities"
+        stamps.append("debt_includes_ifrs16_lease_liabilities")
+        if e0 in _by_end(f, "lease_liabilities_current_ifrs16"):
+            lease_cur = _by_end(f, "lease_liabilities_current_ifrs16")[e0]
+        else:
+            stamps.append("current_lease_liabilities_not_separated")
+    # F6: InterestExpenseNonoperating excludes, by its definition, the interest a financing arm reports inside operating expenses
+    # (FinancingInterestExpense), while the debt tags carry that arm's debt: kd takes both interests (kd only; the bridge keeps the former)
+    kd_interest = interest
+    fin = _by_end(f, "financing_interest").get(e0)
+    if interest and fin is not None and _tag(f, "interest_expense", e0) == "InterestExpenseNonoperating":
+        kd_interest = interest + fin
+        stamps.append("kd_includes_financing_interest")
+    kd = kd_interest / ((debt0 + debt_prev) / 2) if interest and debt0 + debt_prev > 0 else 0.0
     if interest and debt0 + debt_prev > 0 and not KD_BAND[0] <= kd <= KD_BAND[1]:
         raise DeskRefusal("kd_out_of_band", f"kd = interest / average debt = {kd:.4f}, outside {KD_BAND}")
     cur_debt = _by_end(f, "debt_current").get(e0, 0.0) + (_by_end(f, "debt_short").get(e0, 0.0)
-                                                           if _tag(f, "debt_current", e0) not in CURRENT_INCLUDES_SHORT else 0.0)
+                                                           if _tag(f, "debt_current", e0) not in CURRENT_INCLUDES_SHORT else 0.0) + lease_cur
     nwc0 = (ac[e0] - cash[e0] - _by_end(f, "st_investments").get(e0, 0.0)) - (lc[e0] - cur_debt)
     w = nwc0 / rev[e0]
     if not (prev in eq and prev in cash):
