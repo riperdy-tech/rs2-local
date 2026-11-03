@@ -1309,7 +1309,7 @@ REFERENCE_CLOSURE_FILE = HERE / "cache" / "reference_closure.json"
 REFERENCE_CLOSURE_REVISION = 18
 
 
-def reference_closure(path=None):
+def reference_closure(path=None, *, check_age=True):
     """(erp, asof, provenance) - rs2's market-consistent equity risk premium (revision 18, brief section 2), or
     (None, asof or None, the reason). `reference_closure_erp` is the premium at which the reference's own capitalisation-weighted
     value of the market equals the market's capitalisation (tools/reference_closure.py --build writes cache/reference_closure.json
@@ -1321,7 +1321,9 @@ def reference_closure(path=None):
     artifact the builder would not have published: a bound flag (no interior root), a gap above 1e-6, a revision other than 18,
     or fewer than 300 members or less than 60% of the aggregate's capitalisation, or one that does not record
     `aggregate.constituents_without_marker` as 0 (amendment 2: an artifact solved on a history that lacked brief A's marker for a name of
-    the aggregate - or one built before that was recorded - is not one the book may be valued on)."""
+    the aggregate - or one built before that was recorded - is not one the book may be valued on).
+    check_age=False skips only the age rule (every other rule holds); its one caller is the archival cost-of-equity mode of
+    qwen_c/value/coe.py, which reads a pinned copy whose sha256 it has checked (J2 v0.2 section 7 item 1)."""
     p = Path(path) if path is not None else REFERENCE_CLOSURE_FILE
     doc = load_json(p)
     if not isinstance(doc, dict):
@@ -1335,7 +1337,7 @@ def reference_closure(path=None):
     except ValueError:
         return None, asof, "reference_closure_asof_unreadable"
     max_age = CONFIG["anchor_max_age_days"]
-    if not (0 <= age <= max_age):
+    if check_age and not (0 <= age <= max_age):     # check_age=False: only qwen_c.value.coe's archival mode (a pinned, hashed copy)
         return None, asof, f"reference_closure_stale({asof}, {age} days, limit {max_age})"
     # the artifact must be one the builder would publish: an interior root, the identity closed, this revision, the floors met
     if doc.get("flag") is not None:
