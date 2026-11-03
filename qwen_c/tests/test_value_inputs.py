@@ -182,14 +182,66 @@ def test_zero_tax_is_a_measured_value():
     assert b["tau"] == 0.0
 
 
-def test_persistent_high_rate_is_used_and_an_erratic_one_refused():
+def test_persistent_high_rate_is_used_an_erratic_one_stamped_and_one_at_or_above_100pct_refused():
     import statistics
     b = base(facts(tax_provision=series([4.0, 4.4, 4.9, 5.0, 5.3])))       # 40-41%
     assert "tax_rate_persistent_outside_band" in b["stamps"]
     assert b["tau"] == pytest.approx(statistics.median([0.4, 0.4, 4.9 / 12, 0.4, 5.3 / 13]))
+    b = base(facts(tax_provision=series([4.0, 6.0, 4.9, 7.0, 5.3])))      # F_SPEC §6 tax (b): the unclamped median, stamped
+    assert b["tau"] == pytest.approx(statistics.median([0.4, 6 / 11, 4.9 / 12, 7 / 12.5, 5.3 / 13]))
+    assert "tax_rate_median_outside_band" in b["stamps"]
     with pytest.raises(desk.DeskRefusal) as e:
-        base(facts(tax_provision=series([4.0, 6.0, 4.9, 7.0, 5.3])))
+        base(facts(tax_provision=series([11.0, 12.0, 4.9, 13.0, 14.0])))  # a median of 100% or more: never clamped
     assert e.value.code == "tax_unavailable"
+
+
+# ---- F_SPEC_valuation_menu §6 (F5): stamps instead of gates, one test per changed code ------------------------------------------------
+
+def test_tax_zero_when_no_provision_is_filed_and_net_income_is_pretax_less_nci():
+    f = facts(net_income=series([8, 8.8, 9.6, 10, 13.0]), tax_provision={"values": []})          # no provision filed (CMRE, GASS)
+    b = base(dict(f, eps_diluted=series([0.8, 0.88, 0.96, 1.0, 1.3])))
+    assert b["tau"] == 0.0 and "tax_zero_no_provision" in b["stamps"]
+    with pytest.raises(desk.DeskRefusal) as e:                            # net income 10.4 is not pretax 13: not a zero-tax filer
+        base(dict(f, net_income=series([8, 8.8, 9.6, 10, 10.4])))
+    assert e.value.code == "tax_unavailable"
+
+
+def test_a_20f_filer_with_an_eps_gap_is_valued_with_its_stamps():
+    rev = series([80, 85, 90, 95, 100])
+    rev["values"] = [dict(v, form="20-F") for v in rev["values"]]
+    b = base(facts(revenue=rev, diluted_shares=series([1, 1, 1, 1, 1])))     # NI / shares 10x the filed EPS: an ADS ratio
+    assert {"per_share_basis_unverified", "shares_scale_unverified_ads"} <= set(b["stamps"])
+    with pytest.raises(desk.DeskRefusal) as e:                            # a 10-K filer stays a no-call
+        base(facts(diluted_shares=series([1, 1, 1, 1, 1])))
+    assert e.value.code == "shares_scale_unverified"
+
+
+def test_kd_is_unused_when_delta_is_zero():
+    f = facts(cash=series([5, 5, 5, 6, 107]))                             # cash covers debt 20: net debt 0, delta 0
+    f["interest_expense"]["values"] = [v for v in f["interest_expense"]["values"] if v["end"] != ENDS[-1]]
+    b = base(f)
+    assert b["delta"] == 0.0 and b["kd"] == 0.0 and "kd_unused_delta_zero" in b["stamps"]
+    g = facts(cash=series([5, 5, 5, 6, 107]))
+    del g["debt_current"], g["debt_noncurrent"]                           # interest 1 / 1% = 100 of debt at most: cash 107 covers it
+    b = base(g)
+    assert b["delta"] == 0.0 and {"kd_unused_delta_zero", "debt_unresolved_bounded_by_interest"} <= set(b["stamps"])
+
+
+def test_operating_income_from_pretax_plus_interest_when_not_filed():
+    f = facts()
+    del f["operating_income"]
+    b = base(f)
+    assert b["oi0"] == 13 + 1 and "oi_from_pretax_plus_interest" in b["stamps"]
+    assert b["record"]["op_margin"]["2025-12-31"] == pytest.approx(14 / 100)
+    del f["interest_expense"], f["debt_current"], f["debt_noncurrent"]
+    with pytest.raises(desk.DeskRefusal) as e:                            # either missing: a no-call
+        base(f)
+    assert e.value.code == "bridge_unavailable"
+
+
+def test_record_revenue_growth_over_consecutive_fiscal_years():
+    g = base()["record"]["rev_growth"]
+    assert list(g) == ENDS[1:] and g["2025-12-31"] == pytest.approx(100 / 95 - 1)
 
 
 # ---- financial route base ---------------------------------------------------------------------------------------------------------

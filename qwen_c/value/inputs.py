@@ -20,7 +20,7 @@ from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION
 
-INPUTS_VERSION = "m3q.inputs.v7"   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v8"   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -34,6 +34,7 @@ NCI_MATERIAL, NCI_DOMINANT = 0.10, 0.25   # N9
 VINTAGE_LIFE = (5, 40)       # N8
 VINTAGE_RATIO_TOL = 0.5
 DELTA_CAP = 0.75             # B12b (OPINION_B12b_fable.md): the book delta's ceiling
+ZERO_TAX_TOL = 0.02          # F_SPEC §6 tax (a): net income within 2% of pretax income less NCI
 DEBT_TOTAL_EXCLUDES_SHORT = {"LongTermDebt", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"}
 CURRENT_INCLUDES_SHORT = {"DebtCurrent", "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings"}
 
@@ -46,10 +47,12 @@ def _tag(f, concept, end):
     return next((v["tag"] for v in (f.get(concept) or {}).get("values", []) if v["end"] == end), None)
 
 
-def tax_rate(f):
+def tax_rate(f, e0=None):
     """V8: (tau, stamp). The in-band years (provision / pretax in [0, 0.35], positive pretax) of the last 8: with >= 3 of them, their median
     unless the latest year is in band and within 5 points of it (then the latest); with fewer, the latest if in band; else a persistent
-    rate (>= 3 measured years, all >= 0, within 5 points): their median; else refused."""
+    rate (>= 3 measured years, all >= 0, within 5 points): their median. F_SPEC §6: else, with no provision filed for the base year `e0`
+    and its filed net income within 2% of pretax income less NCI, a zero rate; else, with >= 3 measured years, their UNCLAMPED median
+    when it lies in [0, 1); else refused. Never a clamped default."""
     tax, pre = _by_end(f, "tax_provision"), _by_end(f, "pretax_income")
     years = sorted(set(tax) & set(pre))
     rates = [(e, tax[e] / pre[e]) for e in years if pre[e] > 0][-8:]
@@ -65,6 +68,12 @@ def tax_rate(f):
     recent = [t for _, t in rates]
     if len(recent) >= 3 and min(recent) >= 0 and max(recent) - min(recent) <= PERSISTENT_SPREAD and max(recent) < 1:
         return statistics.median(recent), "tax_rate_persistent_outside_band"
+    e0 = e0 if e0 is not None else max(pre, default=None)
+    ni, nci = _by_end(f, "net_income").get(e0), _by_end(f, "nci_income").get(e0, 0.0)
+    if e0 in pre and e0 not in tax and ni is not None and abs(ni - (pre[e0] - nci)) <= ZERO_TAX_TOL * abs(pre[e0] - nci):
+        return 0.0, "tax_zero_no_provision"
+    if len(recent) >= 3 and 0 <= statistics.median(recent) < 1:
+        return statistics.median(recent), "tax_rate_median_outside_band"
     raise DeskRefusal("tax_unavailable", f"no usable measured tax rate (latest {rates[-1][1] if rates else None}); never a stamped default")
 
 
@@ -104,9 +113,13 @@ def base(f, *, market_cap, bill_rate):
         stamps.append("per_share_basis_unverified")                         # ruling 18: no ADS ratio is applied
     else:
         stamps.append("split_after_fy0_unchecked")                          # CROSS_CHECK_Q2 #18: split detection not built
-    tau, s = tax_rate(f)
+    tau, s = tax_rate(f, e0)
     stamps.append(s)
     ni, da, cx, am, pt, oi = (_by_end(f, k) for k in ("net_income", "da", "capex", "amortization", "pretax_income", "operating_income"))
+    if not oi:                                                             # F_SPEC §6: OperatingIncomeLoss not filed in any year
+        ie_all = _by_end(f, "interest_expense")
+        oi = {e: pt[e] + ie_all[e] for e in pt if e in ie_all}
+        stamps.append("oi_from_pretax_plus_interest")
     for name, series in (("net_income", ni), ("da", da), ("capex", cx), ("pretax_income", pt), ("operating_income", oi)):
         if e0 not in series:
             raise DeskRefusal("input_missing" if name not in ("operating_income",) else "bridge_unavailable", f"{name} for the latest fiscal year {e0}")
@@ -165,18 +178,22 @@ def base(f, *, market_cap, bill_rate):
     debt_prev, _ = debt_total(f, prev)
     interest = ie.get(e0)
     if debt0 is None:
-        if interest:
+        # F_SPEC §6: kd is unused when delta = 0 (desk.equity_ronic). With no debt tag, delta is 0 when even the most debt the filed
+        # interest allows at the band's lowest rate (interest / KD_BAND[0]) is covered by cash and short-term investments
+        if interest and interest / KD_BAND[0] > c_l:
             raise DeskRefusal("debt_unavailable", f"interest expense {interest:.6g} is filed for {e0} but no debt tag resolves")
         debt0, how0 = 0.0, "no_debt_filed"
-        stamps.append("no_debt_filed")
+        stamps += ["no_debt_filed"] + (["debt_unresolved_bounded_by_interest", "kd_unused_delta_zero"] if interest else [])
     if debt_prev is None:
         debt_prev = 0.0 if how0 == "no_debt_filed" else None
     if debt_prev is None:
         raise DeskRefusal("debt_unavailable", f"no debt tag resolves for the opening year {prev}")
     if debt0 > 0 and not interest:
-        raise DeskRefusal("debt_without_interest", f"debt {debt0:.6g} at {e0} with no filed interest expense")
-    kd = interest / ((debt0 + debt_prev) / 2) if debt0 + debt_prev > 0 else 0.0
-    if debt0 + debt_prev > 0 and not KD_BAND[0] <= kd <= KD_BAND[1]:
+        if debt0 > c_l:
+            raise DeskRefusal("debt_without_interest", f"debt {debt0:.6g} at {e0} with no filed interest expense")
+        stamps.append("kd_unused_delta_zero")                             # F_SPEC §6: net debt <= 0, so delta = 0
+    kd = interest / ((debt0 + debt_prev) / 2) if interest and debt0 + debt_prev > 0 else 0.0
+    if interest and debt0 + debt_prev > 0 and not KD_BAND[0] <= kd <= KD_BAND[1]:
         raise DeskRefusal("kd_out_of_band", f"kd = interest / average debt = {kd:.4f}, outside {KD_BAND}")
     cur_debt = _by_end(f, "debt_current").get(e0, 0.0) + (_by_end(f, "debt_short").get(e0, 0.0)
                                                            if _tag(f, "debt_current", e0) not in CURRENT_INCLUDES_SHORT else 0.0)
@@ -224,7 +241,9 @@ def base(f, *, market_cap, bill_rate):
     if eps:
         implied = ni[e0] / shares
         if abs(implied / eps - 1) > SHARES_TOL and abs(implied - eps) > EPS_ROUNDING:   # N15: EPS is filed to the cent
-            raise DeskRefusal("shares_scale_unverified", f"NI / diluted shares {implied:.6g} against filed diluted EPS {eps:.6g}")
+            if "per_share_basis_unverified" not in stamps:                    # F_SPEC §6: a 20-F/40-F filer (an ADS ratio) is valued
+                raise DeskRefusal("shares_scale_unverified", f"NI / diluted shares {implied:.6g} against filed diluted EPS {eps:.6g}")
+            stamps.append("shares_scale_unverified_ads")
     else:
         stamps.append("shares_unreconciled_no_eps")
     stamps.append("shares_weighted_average_diluted")
@@ -249,7 +268,8 @@ def base(f, *, market_cap, bill_rate):
             "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps,
             "da_rule": "vintages" if ppe else "pooled",
             "record": {"op_margin": {e: oi[e] / rev[e] for e in ends if e in oi}, "capex_ratio": capex_record,
-                       "rev_growth_max": max(rev[ends[i]] / rev[ends[i - 1]] - 1 for i in range(1, len(ends)))}}
+                       "rev_growth_max": max(rev[ends[i]] / rev[ends[i - 1]] - 1 for i in range(1, len(ends))),
+                       "rev_growth": {c[i]: rev[c[i]] / rev[c[i - 1]] - 1 for c in [_year_chain(ends)] for i in range(1, len(c))}}}  # F_SPEC §2.1
 
 
 def bridge_x_margin(b, op_margins, revenues, amort=None):
@@ -349,7 +369,9 @@ def base_financial(f):
     if eps:
         implied = ni[e0] / shares
         if abs(implied / eps - 1) > SHARES_TOL and abs(implied - eps) > EPS_ROUNDING:
-            raise DeskRefusal("shares_scale_unverified", f"income to common / diluted shares {implied:.6g} against filed diluted EPS {eps:.6g}")
+            if "per_share_basis_unverified" not in stamps:                    # F_SPEC §6: a 20-F/40-F filer (an ADS ratio) is valued
+                raise DeskRefusal("shares_scale_unverified", f"income to common / diluted shares {implied:.6g} against filed diluted EPS {eps:.6g}")
+            stamps.append("shares_scale_unverified_ads")
     else:
         stamps.append("shares_unreconciled_no_eps")
     aoci = _by_end(f, "aoci").get(e0)
