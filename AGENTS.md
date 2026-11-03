@@ -139,14 +139,10 @@ Depth publishing lives in `orchestrate_depth.py` and targets `CONFIG['screener_p
 resolved through `paths.py`. It refuses to run if that path is not a git clone. Never repoint it at
 the shared `stock-screener` tree — see non-negotiable 6 in the workspace file.
 
-`api_llm/cloud_backstop.py` reads that same clone but never writes to it: it counts the published
-overlay and fails closed, because a live overlay is never empty and a count of zero means the guard
-is blind. Do not "fix" that branch into a warning — being blind is exactly the wipe it prevents.
-
 Scheduling is the Windows task "RS2-Depth-Orchestrator" (`register_depth_task.ps1`), every four
 hours. Pause with `cache/DEPTH_PAUSED`; monitor with `status.py` or `telegram_status_bot.py`.
-`DEPTH_PAUSED` does **not** stop the cloud continuity arm (`api_llm/cloud_backstop.py`, GitHub
-Actions) — it gates only on off-peak hours and PC heartbeat and reads nothing under `cache/`.
+The DeepSeek cloud continuity arm (`api_llm/` and its GitHub Actions workflow) was disabled on GitHub
+and archived to `_archive/retired_20261103/` on 2026-11-03 (operator). There is no cloud arm now.
 
 The pre-Charter five-stage pipeline (`run_rs2.py`, `orchestrate.py` and their Modelfiles) is
 retired under `_archive/retired_20260920/`. It is history, not a fallback — do not restore a path

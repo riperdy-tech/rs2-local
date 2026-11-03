@@ -50,3 +50,6 @@ searxng/settings.yml
 api_llm/deep_api/
 api_llm/_deep_api_*
 searxng/settings.yml.bak-*
+
+# The archived cloud arm's run output (api_llm/ moved to _archive 2026-11-03); its tracked files stay tracked.
+_archive/retired_20261103/api_llm/

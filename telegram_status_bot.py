@@ -177,7 +177,16 @@ def main():
     if not (tok and chat):
         print("no telegram_bot_token/telegram_chat_id in .secrets.json — exiting")
         return
-    me = _api(tok, "getMe", timeout=20)
+    # The task starts at logon, often before DNS is up; a failed getMe there killed the bot from 2026-10-20 to 11-03.
+    while True:
+        try:
+            me = _api(tok, "getMe", timeout=20)
+            break
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            print(f"getMe error (retrying in 60s): {str(e)[:120]}")
+            time.sleep(60)
     print(f"listening as @{me.get('result', {}).get('username')} for chat {chat}"
           + (" | web queue: on" if _sb_cfg()[0] else " | web queue: off (no supabase keys)"))
     off = (_load(OFFSET) or {}).get("offset", 0)

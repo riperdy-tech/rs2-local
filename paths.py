@@ -88,6 +88,11 @@ _CANDIDATES = {
         "screener-publish/public/data/sec_facts",
         "stock-screener/public/data/sec_facts",
     ),
+    # The P6.7 B2 prospective recall test (tools/b2_recall/b2_day.py, moved out of a Claude temp scratchpad 2026-11-03): its frozen
+    # gather worktree (rs2-B2), the population (recall/population.json) and the logs. Data in stocks-workspace, kept off this public repo.
+    "b2_recall_dir": (
+        "stocks-workspace/data/b2_recall",
+    ),
 }
 
 # Per-key environment overrides. `anchors_dir` deliberately reads MRI_ANCHORS_DIR first and then
@@ -104,6 +109,7 @@ _ENV = {
     "priors_dir": ("RS2_PRIORS_DIR",),
     "priors_inputs_dir": ("RS2_PRIORS_INPUTS_DIR",),
     "screener_sec_facts_dir": ("SCREENER_SEC_FACTS_DIR",),
+    "b2_recall_dir": ("RS2_B2_RECALL_DIR",),
 }
 
 

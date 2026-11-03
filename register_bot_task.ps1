@@ -20,7 +20,7 @@ $log  = "$root\cache\telegram_bot_task.log"
 $name = "RS2-Telegram-Bot"
 
 # Wrap in cmd so stdout/stderr append to a log (Task Scheduler doesn't capture them itself).
-$cmd = "/c `"`"$py`" `"$root\telegram_status_bot.py`" >> `"$log`" 2>&1`""
+$cmd = "/c `"`"$py`" -u `"$root\telegram_status_bot.py`" >> `"$log`" 2>&1`""
 $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\cmd.exe" -Argument $cmd -WorkingDirectory $root
 
 $t = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"

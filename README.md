@@ -26,9 +26,8 @@ AI contradiction audit) before anything publishes.
 | Sweep | `orchestrate_depth.py` | the LIVE depth-tier pipeline: research (cached, bounded) → seeded samples with tools → plausibility guard → band-direction verdict → overlay/publish. |
 | Per ticker | `depth_pipeline.py` | research → consensus (`tools/audit_202608/consensus_valuation.py`) → fiduciary contract gate → `verdict_depth.json` + ledger, then `depth_sanity` audits it in-process. |
 
-Monitoring: `status.py` / `telegram_status_bot.py`. A powered-off PC is covered by the cloud
-backstop (`api_llm/cloud_backstop.py`, GitHub Actions), which imports `orchestrate_depth` — the
-same live pipeline, not a second one.
+Monitoring: `status.py` / `telegram_status_bot.py`. The cloud backstop (`api_llm/`, GitHub Actions)
+was archived to `_archive/retired_20261103/` on 2026-11-03; a powered-off PC is not covered.
 
 ### Retired: the v2.0 generation
 
