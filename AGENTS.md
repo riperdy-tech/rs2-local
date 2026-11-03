@@ -148,6 +148,11 @@ The pre-Charter five-stage pipeline (`run_rs2.py`, `orchestrate.py` and their Mo
 retired under `_archive/retired_20260920/`. It is history, not a fallback — do not restore a path
 from it to work around a defect in the depth tier.
 
+The analyst model is served through `tools/audit_202608/llm_provider.py` with `depth_provider` `ollama` or
+`ollama_raw` only. The Muse / llama.cpp provider (`llamacpp_server.py`, `llamacpp` config block) and the retired
+Modelfiles (plain MTP5, v31, v32, the Q4 family) were archived 2026-11-03 under `_archive/retired_20261103/`
+(`README_muse.md`); `"llamacpp"` in config is refused.
+
 `README.md` is the long-form description and is kept current with the code. If this file, the
 README and the code disagree, the code wins — and per section 0 you fix the document in the same
 change.

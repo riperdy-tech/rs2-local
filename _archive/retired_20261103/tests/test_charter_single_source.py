@@ -12,6 +12,7 @@ ledger were produced under different definitions of MoS, Kelly, sizing and the m
 
 The fix is a single source file (`prompts/charter_v3.0.md`). This test is what keeps it single.
 """
+import hashlib
 import sys
 from pathlib import Path
 
@@ -19,17 +20,16 @@ HERE = Path(__file__).resolve().parents[3]          # repo root
 sys.path.insert(0, str(HERE / "api_llm"))
 
 
-def _modelfile_system():
-    """The SYSTEM block the live local model was built from, normalized the same way."""
-    text = (HERE / "RS2-Analyst-Deep-MTP5.Modelfile").read_text(encoding="utf-8-sig")
-    body = text.split('SYSTEM """', 1)[1]
-    return body.split('"""', 1)[0].replace("\r\n", "\n").strip("\n")
+# 2026-11-03: RS2-Analyst-Deep-MTP5.Modelfile is archived (_archive/retired_20261103/). The sha256 of its SYSTEM block, normalized
+# as this test always did (text after 'SYSTEM """' up to the closing '"""', CRLF -> LF, outer newlines stripped), replaces the
+# file read; it is the SYSTEM_MTP5_SHA256 test_no_model_visible_change.py pinned for that Modelfile until the same date.
+MODELFILE_SYSTEM_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
 
 
 def test_cloud_arm_sends_the_same_charter_as_the_local_model():
     import api_chat
 
-    assert api_chat._system_prompt().strip() == _modelfile_system()
+    assert hashlib.sha256(api_chat._system_prompt().strip().encode("utf-8")).hexdigest() == MODELFILE_SYSTEM_SHA256
 
 
 def test_cloud_arm_carries_v3_and_not_the_retired_v2_framework():
@@ -61,7 +61,7 @@ def test_cloud_deep_arm_reads_the_charter_not_a_retired_modelfile():
 def test_cloud_deep_arm_sends_the_same_charter_as_the_local_model():
     import deep_api_run
 
-    assert deep_api_run._rs2_framework().strip() == _modelfile_system()
+    assert hashlib.sha256(deep_api_run._rs2_framework().strip().encode("utf-8")).hexdigest() == MODELFILE_SYSTEM_SHA256
 
 
 def test_cloud_deep_arm_carries_v3_and_not_the_retired_v2_framework():

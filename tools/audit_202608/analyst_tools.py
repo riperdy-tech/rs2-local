@@ -1170,9 +1170,10 @@ def report_is_deliverable(text):
     return len(body) >= REPORT_MIN_CHARS
 
 
-# What the llamacpp provider's response carries (llm_provider): the engine record that answered, llama-server's draft counters,
+# What the llamacpp provider's response carried (llm_provider): the engine record that answered, llama-server's draft counters,
 # whether reasoning markers were left in the content, the sampling fields it stripped, the options it ignored, and whether it
-# injected the SYSTEM text.
+# injected the SYSTEM text. 2026-11-03: that provider is archived (_archive/retired_20261103/README_muse.md); the keys are
+# still copied when a response carries them, and an Ollama response carries none.
 TURN_PROVENANCE_KEYS = ("engine", "draft_n", "draft_n_accepted", "reasoning_in_content", "sampling_stripped",
                         "ignored_options", "system_injected")
 
@@ -1196,7 +1197,7 @@ def turn_metrics(resp):
         "load_s": round((resp.get("load_duration") or 0) / 1e9, 2),
         "done_reason": resp.get("done_reason"),
         "n_tool_calls": len((resp.get("message") or {}).get("tool_calls") or []),
-        # Muse integration, M5: the named cause of a refused turn (llamacpp provider only; an Ollama 500 has none)
+        # Muse integration, M5: the named cause of a refused turn (a provider's named HTTP 500, e.g. ollama_raw's; an Ollama 500 has none)
         **({"server_error_cause": resp["server_error_cause"]} if resp.get("server_error_cause") else {}),
         # Muse integration, M6 (P7 step 0's harness patch, re-implemented): engine provenance and draft counters ride on the turn
         # when the serving path reports them; an Ollama response has none of these keys, so its record is unchanged.
