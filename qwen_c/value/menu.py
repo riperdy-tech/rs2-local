@@ -4,7 +4,8 @@ number by code.
 menus(b, bar, r, route): the offered options of each input with their numbers (None prints "not available").
 read_guidance: the number a `guidance` option takes from its one cited sentence (§2.2), or why it cannot be read.
 resolve: {departure key: number} of a reply's options; capex is its five yearly ratios. scenario: those numbers in the shape
-forecast.assemble (forecast_fin.assemble) takes. departed: whether a key's number differs from the record-neutral reply's (§3).
+forecast.assemble (forecast_fin.assemble) takes. departed: whether a key's number differs from the record-neutral reply's (§3), which
+is neutral_base(route, m): year 1 at ytd wherever the latest 10-Q effective at T measures it (F11, spec v1.3).
 neighbours / pick: the per-key Bear and Bull settings of the uncertain keys (§5).
 The model never types a number: a menu value, a grid step or a figure read from a cited sentence is all it can reach.
 """
@@ -13,7 +14,7 @@ import statistics
 from qwen_c import contract
 from qwen_c.value import forecast
 
-MENU_VERSION = "m3q.menu.v1"
+MENU_VERSION = "m3q.menu.v2"   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
 STEPS = (-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3)            # points added to an anchor
 YEARS = (3, 4, 5)
 FADES = (10, 5, 15, 20)
@@ -39,6 +40,9 @@ NEUTRAL = {"operating": {"rev_growth.y1": "anchor", "rev_growth.y2": "anchor", "
                          "normalized.roe": ("median", 0), "normalized.book_growth": "neutral", "long_run_roe": ("normalized", 0),
                          "fade_years": 10, "terminal_g": "neutral"}}
 NEUTRAL_YEAR = 3
+# F11: the operating year-1 keys whose menu carries `ytd` (the year-to-date pair of the latest 10-Q effective at T), and the menu each reads.
+# Where ytd is measured it is the record-neutral option of the key (neutral_option); where not, NEUTRAL stands
+YTD_KEYS = {"rev_growth.y1": "growth_y1", "op_margin.y1": "margin_y1"}
 # where a reverted key is pinned: its neutral option, except a long run anchored on normalized, which takes the neutral NUMBER (median)
 # so that it stays reverted while normalized departs (BUILD_NOTES)
 REVERT = {"long_run_op_margin": ("median", 0), "long_run_roe": ("median", 0)}
@@ -67,8 +71,9 @@ def neutral_ronic(b, r):
 
 
 def menus(b, bar, r, route):
-    """{"growth", "margin", "anchor", "terminal_g", ("ronic", "capex")}: {option: number or None}, the record-neutral option first;
-    plus the context the resolution needs. `b` carries g_anchor."""
+    """{"growth", "margin", "anchor", "terminal_g", ("ronic", "capex", "growth_y1", "margin_y1")}: {option: number or None}, the
+    record-neutral option first; plus the context the resolution needs. `b` carries g_anchor, and b["ytd"] (F11) the year-to-date pair
+    whose growth and margin (a margin only inside (-1, 1), as the record's) lead year 1's menus."""
     ga, rec = b.get("g_anchor"), b.get("record") or {}
     med_g, last_g = _record_growth(rec.get("rev_growth" if route == "operating" else "book_growth") or {})
     m = {"route": route, "bar": bar, "r": r, "R0": b.get("R0"), "ga": ga,
@@ -76,6 +81,11 @@ def menus(b, bar, r, route):
     tg = {"anchor": ga, "half_anchor": None if ga is None else ga / 2, "zero": 0.0, "decline": med_g if med_g is not None and med_g < 0 else None}
     if route == "operating":
         m["growth"] = {"anchor": ga, "record_median": med_g, "last": last_g, "zero": 0.0}
+        y = b.get("ytd") or {}
+        yg, ym = y.get("rev_growth"), _ok(y.get("op_margin"))
+        # F11: ytd leads year 1's line when measured (the record-neutral option is printed first), else it trails as "not available"
+        m["growth_y1"] = {"ytd": yg, **m["growth"]} if yg is not None else {**m["growth"], "ytd": None}
+        m["margin_y1"] = {"ytd": ym, **m["margin"]} if ym is not None else {**m["margin"], "ytd": None}
         n, r0 = neutral_ronic(b, r), b.get("ronic0")
         up = r0 is not None and r0 > n * (1 + TOL_RONIC)
         m["ronic"] = {"no_growth_value": n, **{k: (1.0 / (1.0 / n + (1.0 / r0 - 1.0 / n) * f) if up else None)
@@ -94,11 +104,21 @@ def menus(b, bar, r, route):
     return m
 
 
-def offered(m, kind):
-    """{option: number or None} of a kind other than norm and long (an anchor plus a grid step)."""
+def offered(m, kind, key=None):
+    """{option: number or None} of a kind other than norm and long (an anchor plus a grid step); a year-1 key of the operating route
+    reads its own menu, with ytd (F11)."""
     if kind == "fade":
         return {f: f for f in FADES}
+    if key in YTD_KEYS and YTD_KEYS[key] in m:
+        return m[YTD_KEYS[key]]
     return m[{"tg": "terminal_g"}.get(kind, kind)]
+
+
+def neutral_option(m, key):
+    """The record-neutral option of a key: ytd for a year-1 key whose ytd is measured (F11), else NEUTRAL."""
+    if key in YTD_KEYS and YTD_KEYS[key] in m and m[YTD_KEYS[key]]["ytd"] is not None:
+        return "ytd"
+    return NEUTRAL[m["route"]][key]
 
 
 def option(base, key):
@@ -129,12 +149,12 @@ def set_option(base, key, value):
     return out
 
 
-def neutral_base(route):
-    """The record-neutral reply's base options."""
+def neutral_base(route, m=None):
+    """The record-neutral reply's base options; with the menus `m`, year 1 takes ytd where it is measured (F11)."""
     g, mg, lr = ("rev_growth", "op_margin", "long_run_op_margin") if route == "operating" else ("book_growth", "roe", "long_run_roe")
     base = {g: {}, mg: {}, "normalized": {"year": NEUTRAL_YEAR}, lr: {}}
     for key, opt in NEUTRAL[route].items():
-        base = set_option(base, key, opt)
+        base = set_option(base, key, opt if m is None else neutral_option(m, key))
     return base
 
 
@@ -204,7 +224,7 @@ def resolve(base, guided, m, overrides=None):
             a, step = opt
             out[key] = (out[NORM[m["route"]]] if a == "normalized" else m["anchor"][a]) + float(step) * 0.01
         else:
-            out[key] = offered(m, kind)[opt]
+            out[key] = offered(m, kind, key)[opt]
     return out
 
 
@@ -269,7 +289,7 @@ def neighbours(key, base, nums, m, guided):
         f = sorted(FADES)
         i = f.index(v)
         return (f[i - 1] if i else None), (f[i + 1] if i + 1 < len(f) else None)
-    pts = [x for x in offered(m, kind).values() if x is not None] + ([guided[key]] if key in guided and kind != "capex" else [])
+    pts = [x for x in offered(m, kind, key).values() if x is not None] + ([guided[key]] if key in guided and kind != "capex" else [])
     if kind == "capex":
         pts += [capex_path(guided[key], m)] if key in guided else []
         mean = sum(v) / 5

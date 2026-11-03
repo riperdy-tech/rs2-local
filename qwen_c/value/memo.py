@@ -4,7 +4,7 @@ beneath it; then the scenarios, the reverts and stamps, the annotations, and the
 The memo carries the authority line: diagnostic only (B9). Stated limit (§2.2): code cannot tell a GAAP operating margin from an adjusted
 margin printed in the same unit, so every guidance sentence is printed in full for a reader to judge.
 """
-MEMO_VERSION = "m3q.memo.v5"   # v5 2026-11-03 F_SPEC_valuation_menu §5: code's text from options, drivers and cited sentences   # v4 Q3c: the record-neutral reference   # v3, v2 (see git)
+MEMO_VERSION = "m3q.memo.v6"   # v6 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): a ytd input prints its period and filing   # v5 2026-11-03 F_SPEC_valuation_menu §5: code's text from options, drivers and cited sentences   # v4 Q3c: the record-neutral reference   # v3, v2 (see git)
 
 
 def _pct(x):
@@ -47,6 +47,10 @@ def render(result):
     for k, opt in (chk.get("options") or {}).items():
         line = (f"- **{k}**: {_opt(opt)}, {_num(chk['numbers'][k])} (record-neutral {_num(chk['neutral'][k])}), "
                 f"{chk['directions'][k]}")
+        if opt == "ytd":                                                 # F11: the period and filing of the year-to-date pair
+            y = (result.get("base") or {}).get("ytd") or {}
+            line += (f"; year to date {y.get('start')} to {y.get('end')} against {y.get('prior_start')} to {y.get('prior_end')}, "
+                     f"{y.get('form')} {y.get('accn')} filed {y.get('filed')}")
         cited = []
         if k in deps:
             line += f"; driver {deps[k]['driver']}"

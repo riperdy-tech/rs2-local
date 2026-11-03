@@ -10,7 +10,7 @@ Changing any text here changes what the model is told: bump VALUATION_PROMPT_VER
 from qwen_c import tasks
 from qwen_c.value import menu, sentences
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v9"   # v9 2026-11-03 F8: the short sentence marker <17>   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
+VALUATION_PROMPT_VERSION = "m3q.prompt.v10"   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): [V0] year 1's own MENU lines with ytd first where measured, and the year-to-date line   # v9 2026-11-03 F8: the short sentence marker <17>   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
 PRICE_LINES = ("price:", "marketCap:", "price as-of")
 NL = "\n"
 
@@ -81,9 +81,12 @@ def _menu_lines(b, bar, r, coe_prov, route):
                                        for k, v in d.items()) + extra
     keys = list(menu.KEYS[route])
     g, mg, lr = keys[0].split(".")[0], keys[2].split(".")[0], keys[6]
-    out = ["MENU (option and the number code uses; the first option is the record-neutral one).",
-           line(f"{g}.y1, {g}.y2, {keys[5]}", m["growth"], "; guidance"),
-           line(f"{mg}.y1, {mg}.y2", m["margin"], "; guidance"),
+    if route == "operating":                                             # F11: year 1 has its own line, with ytd
+        growth = [line(f"{g}.y1", m["growth_y1"], "; guidance"), line(f"{g}.y2, {keys[5]}", m["growth"], "; guidance"),
+                  line(f"{mg}.y1", m["margin_y1"], "; guidance"), line(f"{mg}.y2", m["margin"], "; guidance")]
+    else:
+        growth = [line(f"{g}.y1, {g}.y2, {keys[5]}", m["growth"], "; guidance"), line(f"{mg}.y1, {mg}.y2", m["margin"], "; guidance")]
+    out = ["MENU (option and the number code uses; the first option is the record-neutral one).", *growth,
            line(f"normalized.anchor and {lr}.anchor", m["anchor"], f"; {lr}.anchor also normalized (the normalized number)"),
            f"normalized.step and {lr}.step (points added to the anchor): 0, " + ", ".join(f"{s:g}" for s in menu.STEPS if s),
            "normalized.year: 3, 4, 5", "fade_years (years from year 6 to the long run): 10, 5, 15, 20"]
@@ -126,8 +129,20 @@ def render_base(b, bar, r, coe_prov):
              f"capital expenditure {b['c_ratio']:.4f} and depreciation {b['d_ratio']:.4f} of revenue (pooled); the desk depreciates by "
              f"the {b.get('da_rule', 'pooled')} rule" + (" (filed plant ages)" if b.get('da_rule') == "vintages" else "") + ".",
              f"Cost of equity {r:.4f} (risk-free {coe_prov['rf']:.4f}, long-run growth anchor {coe_prov['g_anchor']:.4f}, "
-             f"loading {coe_prov['loading_adjusted']:.3f}, equity premium {coe_prov['closure_erp']:.4f})."]
+             f"loading {coe_prov['loading_adjusted']:.3f}, equity premium {coe_prov['closure_erp']:.4f}).",
+             ytd_line(b.get("ytd"))]
     return "\n".join(lines + _menu_lines(b, bar, r, coe_prov, "operating"))
+
+
+def ytd_line(y):
+    """F11: the year-to-date pair behind year 1's ytd option, or why there is none."""
+    if not y or y.get("rev_growth") is None:
+        return f"Year 1 to date: not available ({(y or {}).get('absent') or 'not measured'})."
+    s = (f"Year 1 to date ({y['form']} {y['accn']}, filed {y['filed']}): revenue {y['revenue']:,.0f} from {y['start']} to {y['end']} "
+         f"against {y['revenue_prior']:,.0f} from {y['prior_start']} to {y['prior_end']}, growth {y['rev_growth']:.4f}")
+    if y.get("operating_income") is None:
+        return s + f"; operating margin not available ({y.get('op_margin_absent')})."
+    return s + f"; operating income {y['operating_income']:,.0f}, margin {y['operating_income'] / y['revenue']:.4f}."
 
 
 def base_item(b, bar, r, coe_prov):

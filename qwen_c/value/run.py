@@ -1,5 +1,5 @@
 """run.py - one valuation of one company (SPEC_m3q §2; WO_Q5b): filed facts -> the measured base -> the cost of equity -> the filed
-record -> the valuation_inputs prompt (v8: menus and sentence IDs) -> the model -> checks v11 -> one repair turn on reply errors ->
+record -> the valuation_inputs prompt (v8: menus and sentence IDs) -> the model -> checks v12 -> one repair turn on reply errors ->
 result.json and memo.md (F_SPEC_valuation_menu §5).
 
 The model call, the reply parsing and the overflow checks are qwen_c.runner's own (call, parse_reply, reply_problem), so a valuation

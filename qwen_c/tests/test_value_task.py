@@ -8,7 +8,7 @@ from qwen_c import tasks
 from qwen_c.value import checks, menu, task
 from qwen_c.tests import test_value_checks as OP
 
-PINNED = "553705b3b86ececed67c589d20168bf7cdf3529c3aab269811dc84a3dbc12918"   # m3q.prompt.v9
+PINNED = "084f6ff5433b8a704b4da8ab03175a80789b3d571905d2fe4af6f1fee9036c62"   # m3q.prompt.v10 (v9: 553705b3...)
 V7_INSTRUCTION_CHARS = 4065                                                     # m3q.prompt.v7's INSTRUCTION, shape included
 
 
@@ -26,7 +26,7 @@ def test_system_is_the_shared_text_and_the_formation_tasks_are_untouched():
 
 
 def test_the_instruction_is_at_most_half_of_v7_and_names_no_figure_rules():
-    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v9" and len(task.INSTRUCTION) <= V7_INSTRUCTION_CHARS / 2
+    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v10" and len(task.INSTRUCTION) <= V7_INSTRUCTION_CHARS / 2
     for gone in ("quote", "bare adjective", "figures a cited item prints", "prob"):
         assert gone not in task.INSTRUCTION
 
@@ -68,7 +68,9 @@ def _fixed_message():
                                            "sector: Tech"])},
                        {"fact_id": "P1", "kind": "annual_section", "period": "2025-12-31", "text": "We sell widgets. Demand grew 4%."}]}
     rec = [{"fact_id": "Y2025-12-31", "text": "Filed annual record, fiscal year ended 2025-12-31: revenue $100.0 million."}]
-    return task.user_message(pk, rec, *_base_args())
+    b, bar, r, prov = _base_args()
+    from qwen_c.tests.test_value_ytd import YTD                         # v10 (F11): the pinned template carries year 1's ytd lines
+    return task.user_message(pk, rec, dict(b, ytd=YTD), bar, r, prov)
 
 
 def test_price_blind_masks_the_screener_row():

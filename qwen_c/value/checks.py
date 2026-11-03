@@ -1,4 +1,4 @@
-"""checks.py - the checks on one valuation_inputs reply of prompt v8 (F_SPEC_valuation_menu §3-§5; checks v11).
+"""checks.py - the checks on one valuation_inputs reply of prompt v8 (F_SPEC_valuation_menu §3-§5; checks v12: year 1 neutral at ytd, F11).
 
 check(reply, ids, b, bar, r, fy_ends, route) returns
   {"status": "ok" | "ok_with_reverts" | "reply_invalid" | "no_call", "errors": {key: [why]}, "options", "numbers", "neutral",
@@ -17,7 +17,7 @@ import math
 
 from qwen_c.value import desk, forecast, forecast_fin, menu
 
-CHECKS_VERSION = "m3q.checks.v11"   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
+CHECKS_VERSION = "m3q.checks.v12"   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 PROB = {"bear": 0.25, "base": 0.5, "bull": 0.25}                           # §5: fixed
@@ -61,7 +61,7 @@ def _choice_error(key, kind, opt, m):
         if a not in anchors or isinstance(step, bool) or step not in menu.STEPS:
             return f"anchor one of {anchors}, step one of {menu.STEPS}"
         return None
-    menu_ = menu.offered(m, kind)
+    menu_ = menu.offered(m, kind, key)
     if opt == "guidance" and key in menu.METRICS:
         return None
     if isinstance(opt, bool) or not isinstance(opt, (str, int)) or opt not in menu_:
@@ -184,7 +184,7 @@ def check(reply, ids, b, bar, r, fy_ends=(), route="operating"):
            "stamps": list(ALWAYS_STAMPS) + (list(FIN_STAMPS) if route == "financial" else [])}
     try:
         m = menu.menus(b, bar, r, route)
-        neutral = menu.resolve(menu.neutral_base(route), {}, m)
+        neutral = menu.resolve(menu.neutral_base(route, m), {}, m)
         if any(v is None for v in neutral.values()):                      # no growth anchor, or the anchor not below r
             return dict(res, status="no_call", reason="record_neutral_unavailable", detail=str(neutral))
         try:
@@ -207,7 +207,7 @@ def _check(reply, base, ids, b, bar, r, fy_ends, m, neutral, res):
     while True:
         opts = base
         for k in list(unread) + list(pins):
-            opts = menu.set_option(opts, k, menu.REVERT.get(k, menu.NEUTRAL[route][k]))
+            opts = menu.set_option(opts, k, menu.REVERT.get(k, menu.neutral_option(m, k)))
         guided, bad = _read_guidance(opts, guidance, ids, m, fy0, fy_ends)
         if bad:
             unread.update(bad)
@@ -248,7 +248,7 @@ def _read_guidance(opts, guidance, ids, m, fy0, fy_ends):
     y1 = next(iter(keys))
     for k in keys:
         if menu.option(opts, k) == "guidance":
-            g1 = guided[y1] if y1 in guided else menu.offered(m, "growth").get(menu.option(opts, y1))
+            g1 = guided[y1] if y1 in guided else menu.offered(m, "growth", y1).get(menu.option(opts, y1))
             x, why = menu.read_guidance(guidance[k], k, ids, g1, m, fy0, lambda p: fiscal_year_of(p, fy_ends))
             if why:
                 return guided, {k: why}
@@ -343,7 +343,7 @@ def _annotate(sc, nums, inp, base_v, b, bar, r, m, res):
 def _neutral(b, bar, r, route, how):
     """(value, how) of the record-neutral reply (menu.NEUTRAL); `how(sc)` describes its scenario. None when it cannot be valued."""
     m = menu.menus(b, bar, r, route)
-    nb = menu.neutral_base(route)
+    nb = menu.neutral_base(route, m)
     nums = menu.resolve(nb, {}, m)
     if any(v is None for v in nums.values()):
         return None, "record_neutral_unavailable: rate_not_above_terminal_growth"
@@ -363,11 +363,12 @@ def _neutral_fin(b, bar, r):
 
 
 def _neutral_op(b, bar, r):
-    """The record-neutral operating reply: margins at the record median throughout, revenue and terminal growth at the long-run anchor,
-    the no-growth-value RONIC (equity return r) as terminal RONIC, a ten-year fade, the pooled capex."""
+    """The record-neutral operating reply (menu.neutral_base: year 1 at ytd where measured (F11), else record-median margins and anchor growth)."""
     if b.get("g_anchor") is None:
         return None, "record_neutral_unavailable: no growth anchor"
-    return _neutral(b, bar, r, "operating", lambda sc: f"margin {bar['median']:.4f}, growth {b['g_anchor']:.4f}, terminal RONIC "
+    y1 = lambda sc: "" if (sc["rev_growth"][0], sc["op_margin"][0]) == (b["g_anchor"], bar["median"]) else \
+        f"year 1 growth {sc['rev_growth'][0]:.4f} and margin {sc['op_margin'][0]:.4f}, "
+    return _neutral(b, bar, r, "operating", lambda sc: f"{y1(sc)}margin {bar['median']:.4f}, growth {b['g_anchor']:.4f}, terminal RONIC "
                                                        f"{sc['terminal_ronic']:.4f} (equity return r {r:.4f}), F {NEUTRAL_FADE}")
 
 
