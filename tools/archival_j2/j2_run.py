@@ -65,7 +65,26 @@ def packets(pool, idx, screener_repo):
     return 0
 
 
-def run(pool, idx, limit, ticker):
+def run(pool, limit, ticker):
+    """The valuations, in rounds: each round re-reads the packets (packets() may still be writing runs.json) and fills slots.json; it
+    ends when every pool name has a packet entry and no slot is left."""
+    path = DIR / "slots.json"
+    idx = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"slots": {}, "git": None}
+    n_run = 0
+    while True:
+        pk_all = json.loads((DIR / "runs.json").read_text(encoding="utf-8"))["packets"]
+        rc, did = _round(pool, idx, pk_all, limit, ticker, n_run)
+        if rc is not None:
+            return rc
+        n_run += did
+        if not did:
+            if all(n["ticker"] in pk_all for n in pool["pool"]):
+                return 0
+            time.sleep(120)
+
+
+def _round(pool, idx, pk_all, limit, ticker, n_run):
+    """(exit code or None, slots run this round)."""
     if git("status", "--porcelain", "--untracked-files=no"):
         sys.exit("STOP: the rs2-local tree has uncommitted changes to tracked files")
     head = git("rev-parse", "HEAD")
@@ -73,9 +92,9 @@ def run(pool, idx, limit, ticker):
         sys.exit(f"STOP: the index was filled at {idx['git']}, the tree is at {head}")
     idx["git"] = head
     env = dict(os.environ, RS2_ARCHIVAL_COE_DIR=str(DIR / "coe_pinned"), PYTHONIOENCODING="utf-8")
-    runs, n_run = ROOT / "cache" / "m3q" / "runs", 0
+    runs, did = ROOT / "cache" / "m3q" / "runs", 0
     for n in pool["pool"]:
-        t, pk = n["ticker"], idx["packets"].get(n["ticker"]) or {}
+        t, pk = n["ticker"], pk_all.get(n["ticker"]) or {}
         if not pk.get("packet") or (ticker and t != ticker):
             continue
         src = Path(pk["packet"]).read_bytes()
@@ -86,20 +105,20 @@ def run(pool, idx, limit, ticker):
             key = f"{t}:{seed}"
             if key in idx["slots"]:
                 continue
-            if limit is not None and n_run >= limit:
-                save(DIR / "runs.json", idx)
-                return 0
+            if limit is not None and n_run + did >= limit:
+                save(DIR / "slots.json", idx)
+                return 0, did
             if (ROOT / "cache" / "j2_yield.flag").exists():                 # another session asked for the GPU: stop between slots
-                save(DIR / "runs.json", idx)
+                save(DIR / "slots.json", idx)
                 print("yield: cache/j2_yield.flag", flush=True)
-                return 5
+                return 5, did
             rd = runs / f"{t}_{re.sub(r'[^0-9TZ]', '', T)}_{sha(src)[:12]}_{seed}"
             if rd.exists():
                 k = 1
                 while rd.with_name(f"{rd.name}_aside{k}").exists():
                     k += 1
                 os.rename(rd, rd.with_name(f"{rd.name}_aside{k}"))
-            n_run += 1
+            did += 1
             t0 = time.time()
             r = subprocess.run([sys.executable, "-m", "qwen_c.value.run", pk["packet"], "--cik", n["cik"], "--sector", str(n["sector"]),
                                 "--market-cap", str(n["market_cap"]), "--family", n["family"], "--seed", str(seed)],
@@ -109,15 +128,15 @@ def run(pool, idx, limit, ticker):
             pinned = "coe_archival_pinned" in ((body.get("coe") or {}).get("stamps") or [])
             if (not body or body.get("status") == "engine_defect" or (body.get("versions") or {}).get("git", [None])[0] != head
                     or (body.get("status") != "no_call" and not pinned)):
-                save(DIR / "runs.json", idx)
+                save(DIR / "slots.json", idx)
                 print(t, seed, "STOP:", body.get("status") or "crash", "pinned" if pinned else "not pinned", (r.stderr or r.stdout)[-400:],
                       flush=True)
-                return 7
+                return 7, did
             idx["slots"][key] = {"status": body["status"], "reason": body.get("reason"), "result": str(res),
                                  "result_sha256": sha(res.read_bytes()), "seconds": round(time.time() - t0, 1)}
-            save(DIR / "runs.json", idx)
+            save(DIR / "slots.json", idx)
             print(t, seed, body["status"], body.get("reason") or "", idx["slots"][key]["seconds"], flush=True)
-    return 0
+    return None, did
 
 
 def main():
@@ -137,7 +156,7 @@ def main():
         if not a.screener_repo:
             sys.exit("packets needs --screener-repo")
         return packets(pool, idx, a.screener_repo)
-    return run(pool, idx, a.limit, a.ticker)
+    return run(pool, a.limit, a.ticker)
 
 
 if __name__ == "__main__":
