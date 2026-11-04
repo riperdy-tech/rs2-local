@@ -317,3 +317,24 @@ def test_realised_reads_only_the_pinned_documents(tmp_path):
     run.pool[0]["sec_documents"]["companyfacts"]["sha256"] = "f" * 64            # not the bytes the pool recorded
     with pytest.raises(sec_store.NotInStore):
         run.write().score()
+
+
+def test_a_fix_commit_after_a_stop_is_read_per_slot(tmp_path):
+    # j2_run --continue-from: slots before the fix carry no commit of their own (the first commit, git_changes[0].from); later ones do
+    run = Run(tmp_path)
+    run.add("A")
+    run.add("B")
+    for seed in S.SEEDS:
+        run.results[("B", seed)]["versions"]["git"] = ["b" * 40, False]
+    run.write()
+    sl = json.loads((tmp_path / "slots.json").read_text())
+    sl.update(git="b" * 40, git_changes=[{"from": GIT, "to": "b" * 40, "utc": "2026-11-04T08:00:00Z"}])
+    for seed in S.SEEDS:
+        sl["slots"][f"B:{seed}"]["git"] = "b" * 40
+    (tmp_path / "slots.json").write_text(json.dumps(sl))
+    run.score()
+    (tmp_path / "score.json").unlink()
+    sl["slots"]["B:1000"]["git"] = GIT                                  # the slot says the first commit, its result says the fix
+    (tmp_path / "slots.json").write_text(json.dumps(sl))
+    with pytest.raises(S.Stop, match="another commit"):
+        run.score()

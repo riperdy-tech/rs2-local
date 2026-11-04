@@ -162,7 +162,8 @@ def read_results(t, pk, slots, head):
             raise Stop(f"{t}:{seed} result.json is not its slot's (ticker, seed, packet or status)")
         if r["status"] not in KNOWN:
             raise Stop(f"{t}:{seed} status {r['status']!r} is not one the scorer knows")
-        if head is not None and ((r.get("versions") or {}).get("git") or [None])[0] != head:
+        want = s.get("git") or head                                            # a slot before a --continue-from fix: the first commit
+        if want is not None and ((r.get("versions") or {}).get("git") or [None])[0] != want:
             raise Stop(f"{t}:{seed} was valued at another commit than slots.json records")
         if r.get("base") is not None and PINNED_STAMP not in ((r.get("coe") or {}).get("stamps") or []):
             raise Stop(f"{t}:{seed} has a cost of equity without the {PINNED_STAMP} stamp")
@@ -258,7 +259,8 @@ def score(d, pool_sha256=POOL_SHA256):
     runs, sl = json.loads(runs_b), json.loads(slots_b)
     if runs.get("pool_sha256") != pool_sha256:
         raise Stop("runs.json was begun on another pool.json")
-    packets, slots, head = runs["packets"], sl["slots"], sl.get("git")
+    packets, slots = runs["packets"], sl["slots"]
+    head = sl["git_changes"][0]["from"] if sl.get("git_changes") else sl.get("git")      # the commit of the slots without their own
     store = Path(pool["store"])
     missing = [n["ticker"] for n in pool["pool"] if n["ticker"] not in packets]
     if missing:
