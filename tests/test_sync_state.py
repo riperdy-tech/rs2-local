@@ -261,3 +261,46 @@ def test_cloud_state_rows_taken_only_when_cloud_stamped_and_newer(tmp_path, monk
     assert st["BBB"]["ok"] is True                       # older cloud row ignored
     assert st["CCC"]["ok"] is True                       # PC's own row copied through: ignored
     assert st["DDD"]["retries"] == 1                     # cloud failure spends the shared budget
+
+
+def test_uncommitted_paper_books_files_survive_the_reset_and_are_backed_up(tmp_path, monkeypatch):
+    # 2026-11-04: the hourly reset rolled an archival runner's uncommitted index back to its last committed copy
+    clone = _make_repos(tmp_path)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setattr(sync_state, "CACHE", cache)
+    idx = clone / "paper_books" / "run" / "slots.json"
+    idx.parent.mkdir(parents=True)
+    idx.write_text('{"slots": 8}', encoding="utf-8")
+    _git(clone, "add", "-A")
+    _git(clone, "commit", "-m", "eight")
+    _git(clone, "push")
+    idx.write_text('{"slots": 71}', encoding="utf-8")                  # modified, not committed
+    (idx.parent / "new.json").write_text("{}", encoding="utf-8")       # untracked
+    assert "synced" in sync_state.main(repo_dir=clone)
+    assert idx.read_text(encoding="utf-8") == '{"slots": 71}' and (idx.parent / "new.json").exists()
+    show = subprocess.run(["git", "-C", str(clone), "show", "@{u}:paper_books/run/slots.json"], capture_output=True, text=True, check=True)
+    assert show.stdout == '{"slots": 71}'
+
+
+def test_a_paper_books_file_changed_on_both_sides_stops_the_sync(tmp_path, monkeypatch):
+    clone = _make_repos(tmp_path)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setattr(sync_state, "CACHE", cache)
+    f = clone / "paper_books" / "w.json"
+    f.parent.mkdir()
+    f.write_text("a", encoding="utf-8")
+    _git(clone, "add", "-A")
+    _git(clone, "commit", "-m", "a")
+    _git(clone, "push")
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", str(tmp_path / "origin.git"), str(other)], check=True, capture_output=True)
+    _git(other, "config", "user.email", "t@t")
+    _git(other, "config", "user.name", "t")
+    (other / "paper_books" / "w.json").write_text("upstream", encoding="utf-8")
+    _git(other, "commit", "-am", "upstream")
+    _git(other, "push")
+    f.write_text("local", encoding="utf-8")
+    assert sync_state.main(repo_dir=clone).startswith("error: uncommitted paper_books")
+    assert f.read_text(encoding="utf-8") == "local"

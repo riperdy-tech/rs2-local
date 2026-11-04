@@ -34,6 +34,7 @@ STATE_FILES = [
     "reference_ledger.jsonl",   # revision 18 brief section 5.3: the forward ledger of the reference (append-only)
 ]
 DELTA = Path("cloud_pending") / "depth_ledger_delta.jsonl"
+CARRY_DIR = "paper_books"   # written outside this sync: uncommitted files there survive its reset
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -185,9 +186,21 @@ def _sync(repo_dir: Path | None = None) -> str:
     fetch = _git(repo, "fetch")
     if fetch.returncode != 0:
         return "error: fetch failed: " + (fetch.stderr or fetch.stdout).strip()[:300]
+    # paper_books/ is written by long runs (the formation and archival runners) that commit later or never; the reset must not take their
+    # uncommitted files (2026-11-04: it rolled the J2 index back 63 slots). They are carried across the reset and backed up below. A file
+    # that upstream also changed is never overwritten: the sync stops until the two are reconciled.
+    carry = _git(repo, "ls-files", "-m", "-o", "--exclude-standard", "-z", "--", CARRY_DIR).stdout.split("\0")
+    carry = sorted({c for c in carry if c and (repo / c).is_file()})
+    clash = set(carry) & set(_git(repo, "diff", "--name-only", "HEAD", "@{u}", "--", CARRY_DIR).stdout.split())
+    if clash:
+        return f"error: uncommitted {CARRY_DIR} files also changed upstream, not reset: {sorted(clash)[:5]}"
+    kept = {c: (repo / c).read_bytes() for c in carry}
     reset = _git(repo, "reset", "--hard", "@{u}")
     if reset.returncode != 0:
         return "error: reset failed: " + (reset.stderr or reset.stdout).strip()[:300]
+    for c, b in kept.items():
+        (repo / c).parent.mkdir(parents=True, exist_ok=True)
+        (repo / c).write_bytes(b)
 
     imported = _import_cloud_delta(repo)
     imported_mem = _import_cloud_membership(repo)
