@@ -17,7 +17,7 @@ import math
 
 from qwen_c.value import desk, forecast, forecast_fin, menu
 
-CHECKS_VERSION = "m3q.checks.v13"   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
+CHECKS_VERSION = "m3q.checks.v14"   # v14 2026-11-04 J2: the outside-record annotation only on the keys the bar or growth_max spans (a guided capex crashed it)   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 PROB = {"bear": 0.25, "base": 0.5, "bull": 0.25}                           # §5: fixed
@@ -234,7 +234,7 @@ def _check(reply, base, ids, b, bar, r, fy_ends, m, neutral, res):
     if res["reverts"]:
         res["status"] = "ok_with_reverts"
     surviving = [entries[k] for k in keys if k in dep and k in entries]
-    res["annotations"] += [f"{menu.option(opts, k)}_outside_record: {k} {_n(nums[k])}" for k in keys if ((k in guided and k in dep and k not in pins) or menu.option(opts, k) == "ytd") and (
+    res["annotations"] += [f"{menu.option(opts, k)}_outside_record: {k} {_n(nums[k])}" for k in keys if keys[k] in ("margin", "norm", "long", "growth") and ((k in guided and k in dep and k not in pins) or menu.option(opts, k) == "ytd") and (
         not m["bar"]["min"] <= nums[k] <= m["bar"]["max"] if keys[k] != "growth" else m["growth_max"] is not None and nums[k] > m["growth_max"])]   # v1.3: ytd too
     res.update(options={k: menu.option(opts, k) for k in keys}, year=opts["normalized"]["year"], numbers=nums, neutral=neutral,
                guided=guided, departures=surviving, directions={k: menu.direction(k, nums, neutral, m) for k in keys})

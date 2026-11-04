@@ -312,3 +312,12 @@ def test_a_long_run_anchored_on_normalized_inherits_its_entry(ctx):
     res = run(ctx, out)
     assert res["status"] == "ok" and "long_run_op_margin" not in res["errors"]
     assert res["directions"]["long_run_op_margin"] == "down"
+
+
+def test_guided_capex_that_survives_n6_is_not_held_to_the_margin_bar(ctx):
+    # J2 2026-11-04: a guided capex departure kept by two fiscal years of filed evidence reached the outside-record annotation, which
+    # compared the operating-margin bar with capex's yearly tuple (TypeError, engine_defect). Capex has its own span rule (N6), no bar.
+    g = {"evidence": "C2.s1", "metric": "capex_level", "sign": "as_printed", "ordinal": 1}
+    res = run(ctx, depart(clean(), "capex", "guidance", "capex_program", ["C2.s1", "A2.s1", "Q1.s1"], g))
+    assert res["status"] == "ok" and reverted(res, "capex") == [] and res["guided"].get("capex") is not None
+    assert not any(a.startswith("guidance_outside_record: capex") for a in res["annotations"])

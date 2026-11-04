@@ -10,7 +10,9 @@ never redone).
 - run: `python -m qwen_c.value.run` per packet at seeds 1000 and 3000, from the repository root, with RS2_ARCHIVAL_COE_DIR set to the
   pinned set coe_pinned/ (operator ruling 2026-11-04; checked against its manifest by coe.py on every call). The tracked tree must be
   clean and every result must carry the commit of the first valuation. A crash, an engine_defect or a result without the
-  coe_archival_pinned stamp stops the pass (exit 7), so a code defect never fills a slot. GPU: run only inside a window agreed with the
+  coe_archival_pinned stamp stops the pass (exit 7), so a code defect never fills a slot. A fix commit after such a stop continues the
+  index only through `--continue-from <the index's commit>`, which must be an ancestor of HEAD; the change is appended to the index's
+  git_changes, and every slot keeps the commit of its own result. GPU: run only inside a window agreed with the
   "F03 benchmark workflows" session (STATE section 9). Creating cache/j2_yield.flag stops the pass at the next slot (exit 5).
 """
 import argparse
@@ -65,7 +67,7 @@ def packets(pool, idx, screener_repo):
     return 0
 
 
-def run(pool, limit, ticker):
+def run(pool, limit, ticker, cont=None):
     """The valuations, in rounds: each round re-reads the packets (packets() may still be writing runs.json) and fills slots.json; it
     ends when every pool name has a packet entry and no slot is left."""
     path = DIR / "slots.json"
@@ -73,7 +75,7 @@ def run(pool, limit, ticker):
     n_run = 0
     while True:
         pk_all = json.loads((DIR / "runs.json").read_text(encoding="utf-8"))["packets"]
-        rc, did = _round(pool, idx, pk_all, limit, ticker, n_run)
+        rc, did = _round(pool, idx, pk_all, limit, ticker, n_run, cont)
         if rc is not None:
             return rc
         n_run += did
@@ -83,13 +85,15 @@ def run(pool, limit, ticker):
             time.sleep(120)
 
 
-def _round(pool, idx, pk_all, limit, ticker, n_run):
+def _round(pool, idx, pk_all, limit, ticker, n_run, cont=None):
     """(exit code or None, slots run this round)."""
     if git("status", "--porcelain", "--untracked-files=no"):
         sys.exit("STOP: the rs2-local tree has uncommitted changes to tracked files")
     head = git("rev-parse", "HEAD")
     if idx.get("git") not in (None, head):
-        sys.exit(f"STOP: the index was filled at {idx['git']}, the tree is at {head}")
+        if cont != idx["git"] or subprocess.run(["git", "-C", str(ROOT), "merge-base", "--is-ancestor", cont, head]).returncode:
+            sys.exit(f"STOP: the index was filled at {idx['git']}, the tree is at {head} (--continue-from {idx['git']} after a fix)")
+        idx.setdefault("git_changes", []).append({"from": idx["git"], "to": head, "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
     idx["git"] = head
     env = dict(os.environ, RS2_ARCHIVAL_COE_DIR=str(DIR / "coe_pinned"), PYTHONIOENCODING="utf-8")
     runs, did = ROOT / "cache" / "m3q" / "runs", 0
@@ -133,7 +137,7 @@ def _round(pool, idx, pk_all, limit, ticker, n_run):
                       flush=True)
                 return 7, did
             idx["slots"][key] = {"status": body["status"], "reason": body.get("reason"), "result": str(res),
-                                 "result_sha256": sha(res.read_bytes()), "seconds": round(time.time() - t0, 1)}
+                                 "result_sha256": sha(res.read_bytes()), "seconds": round(time.time() - t0, 1), "git": head}
             save(DIR / "slots.json", idx)
             print(t, seed, body["status"], body.get("reason") or "", idx["slots"][key]["seconds"], flush=True)
     return None, did
@@ -145,6 +149,7 @@ def main():
     ap.add_argument("--screener-repo")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--ticker")
+    ap.add_argument("--continue-from", help="the index's commit, when a fix commit follows a stop")
     a = ap.parse_args()
     pool = json.loads((DIR / "pool.json").read_text(encoding="utf-8"))
     path = DIR / "runs.json"
@@ -156,7 +161,7 @@ def main():
         if not a.screener_repo:
             sys.exit("packets needs --screener-repo")
         return packets(pool, idx, a.screener_repo)
-    return run(pool, a.limit, a.ticker)
+    return run(pool, a.limit, a.ticker, a.continue_from)
 
 
 if __name__ == "__main__":
