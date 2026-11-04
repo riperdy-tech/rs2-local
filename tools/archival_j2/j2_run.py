@@ -11,7 +11,7 @@ never redone).
   pinned set coe_pinned/ (operator ruling 2026-11-04; checked against its manifest by coe.py on every call). The tracked tree must be
   clean and every result must carry the commit of the first valuation. A crash, an engine_defect or a result without the
   coe_archival_pinned stamp stops the pass (exit 7), so a code defect never fills a slot. GPU: run only inside a window agreed with the
-  "F03 benchmark workflows" session (STATE section 9).
+  "F03 benchmark workflows" session (STATE section 9). Creating cache/j2_yield.flag stops the pass at the next slot (exit 5).
 """
 import argparse
 import hashlib
@@ -89,6 +89,10 @@ def run(pool, idx, limit, ticker):
             if limit is not None and n_run >= limit:
                 save(DIR / "runs.json", idx)
                 return 0
+            if (ROOT / "cache" / "j2_yield.flag").exists():                 # another session asked for the GPU: stop between slots
+                save(DIR / "runs.json", idx)
+                print("yield: cache/j2_yield.flag", flush=True)
+                return 5
             rd = runs / f"{t}_{re.sub(r'[^0-9TZ]', '', T)}_{sha(src)[:12]}_{seed}"
             if rd.exists():
                 k = 1
