@@ -247,3 +247,43 @@ def test_the_memo_prints_the_ytd_period():
     text = memo.render(result)
     assert ("- **rev_growth.y1**: ytd, 0.1200 (record-neutral 0.1200), none; year to date 2026-01-01 to 2026-09-30 against 2025-01-01 "
             "to 2025-09-30, 10-Q 0009-26-000004 filed 2026-10-30") in text
+
+
+# ------------------------------------------------------------------ menu v4 / checks v15 (J2 revision 1): year 1 partly reported
+def ctx_rest():
+    b, bar, ids = ctx_ytd(dict(YTD, year1_start="2026-01-01"))
+    return b, bar, ids, menu.menus(b, bar, OP.R, "operating")
+
+
+def test_year_1_options_keep_the_reported_quarters_and_set_only_the_rest():
+    b, bar, _, m = ctx_rest()
+    r0, rest_prior = b["R0"], b["R0"] - 75e6
+    assert m["growth_y1"]["ytd"] == 0.12                                          # the neutral is unchanged
+    assert m["growth_y1"]["zero"] == pytest.approx((84e6 + rest_prior) / r0 - 1)   # zero growth on the rest of the year only
+    a = m["growth"]["anchor"]
+    assert m["growth_y1"]["anchor"] == pytest.approx((84e6 + rest_prior * (1 + a)) / r0 - 1) and m["growth"]["anchor"] == a
+    q4 = rest_prior * 1.12
+    p75 = m["margin"]["p75"]
+    assert m["margin_y1"]["p75"] == pytest.approx((15.12e6 + q4 * p75) / (84e6 + q4)) and m["margin_y1"]["ytd"] == 0.18
+    assert m["ytd_floor"] == pytest.approx(84e6 / r0 - 1)
+    assert "\nrev_growth.y1: ytd 0.1200; anchor " + f"{m['growth_y1']['anchor']:.4f}" in task.render_base(b, bar, OP.R, dict(OP.PROV))
+
+
+@pytest.mark.parametrize("y", [YTD, dict(YTD, year1_start="2026-01-01", quarter=4), dict(YTD, year1_start="2025-12-28")])
+def test_without_a_year_1_pair_that_leaves_part_of_the_year_the_menu_is_as_before(y):
+    b, bar, _ = ctx_ytd(y)
+    m = menu.menus(b, bar, OP.R, "operating")
+    assert m["growth_y1"]["anchor"] == m["growth"]["anchor"] and "ytd_floor" not in m
+
+
+def test_a_year_1_revenue_below_what_the_year_has_reported_reverts():
+    b, bar, ids, m = ctx_rest()
+    r = neutral_reply(b, bar)
+    r["base"] = menu.set_option(r["base"], "rev_growth.y1", "guidance")
+    r["guidance"] = {"rev_growth.y1": {"evidence": "P1.s1", "metric": "revenue_growth", "sign": "negative", "ordinal": 1}}
+    r["departures"] = [{"input": "rev_growth.y1", "driver": "guidance", "evidence": ["P1.s1"]}]
+    ids = dict(ids, **{"P1.s1": {"kind": "release", "period": "2026-10-30", "sentence": True,
+                                 "text": "The company now expects full-year revenue to decline 60%."}})
+    res = checks.check(r, ids, b, bar, OP.R, OP.ENDS)
+    assert res["status"] == "ok_with_reverts" and res["reverts"] == ["departure_reverted: rev_growth.y1 below_ytd_reported"], res.get("errors")
+    assert res["numbers"]["rev_growth.y1"] == 0.12

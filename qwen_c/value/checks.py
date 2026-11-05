@@ -17,7 +17,7 @@ import math
 
 from qwen_c.value import desk, forecast, forecast_fin, menu
 
-CHECKS_VERSION = "m3q.checks.v14"   # v14 2026-11-04 J2: the outside-record annotation only on the keys the bar or growth_max spans (a guided capex crashed it)   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
+CHECKS_VERSION = "m3q.checks.v15"   # v15 2026-11-05 J2 revision 1: a year-1 revenue below what the year has already reported reverts (below_ytd_reported)   # v14 2026-11-04 J2: the outside-record annotation only on the keys the bar or growth_max spans (a guided capex crashed it)   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 PROB = {"bear": 0.25, "base": 0.5, "bull": 0.25}                           # §5: fixed
@@ -134,8 +134,8 @@ def _domain(nums, m):
 # ------------------------------------------------------------------ evidence rules on departed keys (§4)
 def _rule(key, entry, nums, neutral, m, ids, fy_ends, guided=()):
     """The first evidence rule a departed key fails, or None. A key read from guidance needs no V3/V3g span (v1.2: annotated instead)."""
-    from_guidance = key in guided
-    kind, x, bar = menu.KEYS[m["route"]][key], nums[key], m["bar"]
+    kind, x, bar, from_guidance = menu.KEYS[m["route"]][key], nums[key], m["bar"], key in guided
+    if key == "rev_growth.y1" and m.get("ytd_floor") is not None and x < m["ytd_floor"]: return "below_ytd_reported"   # v15
     cited = [ids[i] for i in entry["evidence"]]
     filed = [c for c in cited if c["kind"] in FILED_KINDS]
     two = len({fiscal_year_of(c.get("period"), fy_ends) for c in filed} - {None}) >= 2

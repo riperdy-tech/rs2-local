@@ -8,7 +8,7 @@ from qwen_c import tasks
 from qwen_c.value import checks, menu, task
 from qwen_c.tests import test_value_checks as OP
 
-PINNED = "084f6ff5433b8a704b4da8ab03175a80789b3d571905d2fe4af6f1fee9036c62"   # m3q.prompt.v10 (v9: 553705b3...)
+PINNED = "f61b782d25d68e2c0c4a14ce890c6b0833dc530936ac06e6951af7ebdea6a0a7"   # m3q.prompt.v11 (v10: 084f6ff5..., v9: 553705b3...)
 V7_INSTRUCTION_CHARS = 4065                                                     # m3q.prompt.v7's INSTRUCTION, shape included
 
 
@@ -26,7 +26,7 @@ def test_system_is_the_shared_text_and_the_formation_tasks_are_untouched():
 
 
 def test_the_instruction_is_at_most_half_of_v7_and_names_no_figure_rules():
-    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v10" and len(task.INSTRUCTION) <= V7_INSTRUCTION_CHARS / 2
+    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v11" and len(task.INSTRUCTION) <= V7_INSTRUCTION_CHARS / 2
     for gone in ("quote", "bare adjective", "figures a cited item prints", "prob"):
         assert gone not in task.INSTRUCTION
 

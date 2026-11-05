@@ -10,7 +10,7 @@ Changing any text here changes what the model is told: bump VALUATION_PROMPT_VER
 from qwen_c import tasks
 from qwen_c.value import menu, sentences
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v10"   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): [V0] year 1's own MENU lines with ytd first where measured, and the year-to-date line   # v9 2026-11-03 F8: the short sentence marker <17>   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
+VALUATION_PROMPT_VERSION = "m3q.prompt.v11"   # v11 2026-11-05 J2 revision 1: "Year 1 options keep reported quarters." (menu v4)   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): [V0] year 1's own MENU lines with ytd first where measured, and the year-to-date line   # v9 2026-11-03 F8: the short sentence marker <17>   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
 PRICE_LINES = ("price:", "marketCap:", "price as-of")
 NL = "\n"
 
@@ -47,9 +47,10 @@ _RULES = (
     "\"guidance\", keyed by the input, give evidence, metric, sign (as_printed, or negative for a stated decline) and ordinal (the n-th figure in the metric's unit, years not "
     "counted; a range counts as its first figure).\n"
     "uncertain names 1 to 3 departure keys; code builds Bear and Bull from their neighbouring options. unknowns is free text.\n")
+_YEAR1 = "Year 1 options keep reported quarters.\n"    # v11: operating only (the financial route has no ytd); the instruction's budget allows no more
 
 INSTRUCTION = ("TASK valuation_inputs. Choose the inputs from which code values the company; you never state a number, a value or a "
-               "price. " + _RULES + "Reply in this shape:\n" + _SHAPE)
+               "price. " + _RULES + _YEAR1 + "Reply in this shape:\n" + _SHAPE)
 
 
 # WO_Q6: the financial route (banks, insurers; O3 retained equity). Its own text and version. Changing any text here: bump

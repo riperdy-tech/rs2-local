@@ -14,7 +14,7 @@ import statistics
 from qwen_c import contract
 from qwen_c.value import forecast
 
-MENU_VERSION = "m3q.menu.v3"   # v3 2026-11-04 E4: field-name aliases of the normalized key, the long run inheriting normalized's entry   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
+MENU_VERSION = "m3q.menu.v4"   # v4 2026-11-05 J2 revision 1: year 1's options other than ytd keep the reported quarters and set only the rest; the ytd floor   # v3 2026-11-04 E4: field-name aliases of the normalized key, the long run inheriting normalized's entry   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
 STEPS = (-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3)            # points added to an anchor
 YEARS = (3, 4, 5)
 FADES = (10, 5, 15, 20)
@@ -86,6 +86,15 @@ def menus(b, bar, r, route):
         # F11: ytd leads year 1's line when measured (the record-neutral option is printed first), else it trails as "not available"
         m["growth_y1"] = {"ytd": yg, **m["growth"]} if yg is not None else {**m["growth"], "ytd": None}
         m["margin_y1"] = {"ytd": ym, **m["margin"]} if ym is not None else {**m["margin"], "ytd": None}
+        rest = _year1_rest(y, b.get("R0"))
+        if rest:                                                          # v4: the reported quarters are kept; an option sets the rest
+            yc, q4p, q4 = rest
+            r0 = b["R0"]
+            m["growth_y1"] = {k: (v if k == "ytd" or v is None else (yc + q4p * (1 + v)) / r0 - 1) for k, v in m["growth_y1"].items()}
+            oi = y.get("operating_income")
+            if ym is not None and oi is not None:
+                m["margin_y1"] = {k: (v if k == "ytd" or v is None else (oi + q4 * v) / (yc + q4)) for k, v in m["margin_y1"].items()}
+            m["ytd_floor"] = yc / r0 - 1                                  # year-1 revenue is at least what is already reported
         n, r0 = neutral_ronic(b, r), b.get("ronic0")
         up = r0 is not None and r0 > n * (1 + TOL_RONIC)
         m["ronic"] = {"no_growth_value": n, **{k: (1.0 / (1.0 / n + (1.0 / r0 - 1.0 / n) * f) if up else None)
@@ -102,6 +111,16 @@ def menus(b, bar, r, route):
         m.update(growth_max=rec.get("book_growth_max"), growth_min=rec.get("book_growth_min"))
     m["terminal_g"] = {k: (v if v is not None and v < r else None) for k, v in tg.items()}
     return m
+
+
+def _year1_rest(y, r0):
+    """(year-1 revenue reported, the rest of the prior year's revenue, the rest at ytd growth) when the year-to-date pair starts at
+    year 1's start and leaves part of the year unreported; else None."""
+    yc, yp, yg = y.get("revenue"), y.get("revenue_prior"), y.get("rev_growth")
+    if (yg is None or yc is None or yp is None or not r0 or y.get("start") != y.get("year1_start")
+            or y.get("quarter") not in (1, 2, 3) or not 0 < yp < r0):
+        return None
+    return yc, r0 - yp, (r0 - yp) * (1 + yg)
 
 
 def offered(m, kind, key=None):
