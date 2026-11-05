@@ -139,3 +139,40 @@ def test_a_tag_mismatch_is_reported_not_excluded():
 def test_the_name_check_ignores_legal_suffixes():
     assert P.name_shared("Acme Widgets, Inc.", "ACME WIDGETS INC")
     assert not P.name_shared("Acme Holdings Inc.", "Zenith Corp")
+
+
+# ---- the amendment-2 holdout: non-December base years (pool v2) ---------------------------------------------------------------------
+
+def test_the_holdout_windows_are_disjoint_and_follow_each_other():
+    (a0, a1), _ = P.HOLDOUTS["j2"]
+    (b0, b1), sub = P.HOLDOUTS["non_december"]
+    assert (a0, a1) == P.FY0_WINDOW and a1 < b0 and b0 == "2025-01-08" and b1 == "2025-08-31" and sub == "archival_2025-12-31_nd"
+
+
+@pytest.mark.parametrize("fy0,window,stage", [("2025-06-30", P.HOLDOUTS["non_december"][0], "prepare"),
+                                               ("2024-12-31", P.HOLDOUTS["non_december"][0], "december"),
+                                               ("2025-09-30", P.HOLDOUTS["non_december"][0], "december"),
+                                               ("2024-12-31", P.FY0_WINDOW, "prepare"),
+                                               ("2025-06-30", P.FY0_WINDOW, "december")])
+def test_the_base_year_window_decides_who_reaches_prepare(monkeypatch, fy0, window, stage):
+    monkeypatch.setattr(P, "get_doc", lambda *a: b"")
+    monkeypatch.setattr(P.facts, "fetch", lambda *a, **k: ({}, {"name": "X"}, {}))
+    monkeypatch.setattr(P.facts, "annual_facts", lambda *a: {"revenue": {"values": [{"end": fy0}]}})
+    monkeypatch.setattr(P.value_family, "family", lambda *a: {"family": "operating", "reason": "", "sic": None, "version": "v"})
+    monkeypatch.setattr(P, "prepare_at_T", lambda *a: ("refused", "history_short: synthetic", None))
+    out = P.one({"cik": "0000000001", "frame_name": "X", "sector": "S", "market_cap": 1.0}, None, True, window)
+    assert out["stage"] == stage and out["fy0"] == fy0
+    if stage == "december":
+        assert out["reason"] == ("base_year_not_december_2024" if window == P.FY0_WINDOW else "base_year_outside_window")
+
+
+def test_a_june_year_is_measured_in_its_own_annual_filing():
+    fy0, k0, k1 = "2025-06-30", "0000000001-25-000101", "0000000001-26-000102"
+    g = {"Revenues": {"units": {"USD": [fact("2024-07-01", fy0, 1000.0, k0, "2025-08-20"), fact("2025-07-01", "2026-06-30", 1100.0, k1, "2026-08-19"),
+                                        fact("2024-07-01", fy0, 1000.0, k1, "2026-08-19")]}},
+         "OperatingIncomeLoss": {"units": {"USD": [fact("2025-07-01", "2026-06-30", 110.0, k1, "2026-08-19"),
+                                                   fact("2024-07-01", fy0, 90.0, k1, "2026-08-19")]}}}
+    s = subs(("10-K", k0, "2025-08-20", "2025-08-20T21:00:00.000Z", "", fy0),
+             ("10-K", k1, "2026-08-19", "2026-08-19T21:00:00.000Z", "", "2026-06-30"))
+    reasons, rec = P.exclusions({"facts": {"us-gaap": g}}, s, fy0, {"accn": None, "revenue_tag": "Revenues"})
+    assert reasons == {} and rec["realised_status"] == "ok" and rec["year1_filing"]["report_date"] == "2026-06-30"

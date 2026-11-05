@@ -150,7 +150,12 @@ def main():
     ap.add_argument("--limit", type=int)
     ap.add_argument("--ticker")
     ap.add_argument("--continue-from", help="the index's commit, when a fix commit follows a stop")
+    ap.add_argument("--dir", help="the pool's directory under <books>/m3o/value (default archival_2025-12-31; the amendment-2 holdout: "
+                                  "archival_2025-12-31_nd)")
     a = ap.parse_args()
+    global DIR
+    if a.dir:
+        DIR = book_paths.books() / "m3o" / "value" / a.dir
     pool = json.loads((DIR / "pool.json").read_text(encoding="utf-8"))
     path = DIR / "runs.json"
     idx = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"pool_sha256": sha((DIR / "pool.json").read_bytes()),

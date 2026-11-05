@@ -18,7 +18,9 @@ STAGES, in order; a name leaves at the first stage it fails, with its reason and
  4 family: tools/paper_books/value_family.family at T. operating and commodity (qwen_c.value.run.ROUTED: valued on the operating route)
    stay; financial leaves (J2 section 7 item 3), and so does every other family.
  5 december: the base fiscal year (facts.annual_facts' latest annual revenue year at T) ends 2024-12-24..2025-01-07, so that year 1 is
-   FY2025 for every name (a December year, 52/53-week years ending near it included). Otherwise: leaves.
+   FY2025 for every name (a December year, 52/53-week years ending near it included). Otherwise: leaves. `--holdout non_december`
+   (PREREG amendment 2) uses 2025-01-08..2025-08-31 instead (HOLDOUTS) and writes archival_2025-12-31_nd/pool.json; `--sealed` drops
+   a private list of tickers sealed for another test before any fetch (stage sealed, after duplicate_company).
  6 prepare: qwen_c.value.run.prepare at T on those documents, offline, with the family above and the frame's market cap, and its
    cost-of-equity step SKIPPED (J2 section 7 item 1: the archival cost of equity awaits the operator): coe.cost_of_equity is replaced by a
    function that raises a sentinel, so every data step before it runs exactly as in a valuation; a DeskRefusal leaves with its code.
@@ -62,17 +64,20 @@ import value_family  # noqa: E402
 from qwen_c import packet, sec_store  # noqa: E402
 from qwen_c.value import desk, facts, menu, run  # noqa: E402
 
-POOL_VERSION = "j2.pool.v1"
+POOL_VERSION = "j2.pool.v2"   # v2 2026-11-05: --holdout non_december (PREREG amendment 2) and --sealed
 T_STR = "2025-12-31T21:00:00Z"
 T = datetime(2025, 12, 31, 21, 0, 0, tzinfo=timezone.utc)
 FRAME_COMMIT = "d327fe8"
 STOCKS_PATH = "public/data/stocks.json"
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 FY0_WINDOW = ("2024-12-24", "2025-01-07")
+# --holdout: (base fiscal-year end window, output directory). non_december (PREREG amendment 2, operator 2026-11-05): the names J2's
+# stage 5 left whose base year ends after J2's window and by 2025-08-31, so that year 1 is the fiscal year containing T and ends
+# 2026-01..2026-08 (its annual filing due before realised.BY for most filers; a later one is counted, never imputed).
+HOLDOUTS = {"j2": (FY0_WINDOW, "archival_2025-12-31"), "non_december": (("2025-01-08", "2025-08-31"), "archival_2025-12-31_nd")}
 RELEASE_MAX_SESSIONS = 1
 BASE_MOVE_POINTS = 0.01
 KEYS = ("rev_growth.y1", "op_margin.y1")
-OUT = book_paths.books() / "m3o" / "value" / "archival_2025-12-31" / "pool.json"
 
 
 class CoeSkipped(Exception):
@@ -206,7 +211,7 @@ def exclusions(cf, subs, fy0, ytd):
     return reasons, rec
 
 
-def one(company, store, offline):
+def one(company, store, offline, window=FY0_WINDOW):
     """The record of one company (stages 3-8)."""
     out = dict(company)
     cik = company["cik"]
@@ -227,8 +232,8 @@ def one(company, store, offline):
     rev = (f.get("revenue") or {}).get("values") or []
     fy0 = rev[-1]["end"] if rev else None
     out["fy0"] = fy0
-    if not (fy0 and FY0_WINDOW[0] <= fy0 <= FY0_WINDOW[1]):
-        return dict(out, stage="december", reason="base_year_not_december_2024",
+    if not (fy0 and window[0] <= fy0 <= window[1]):
+        return dict(out, stage="december", reason="base_year_not_december_2024" if window == FY0_WINDOW else "base_year_outside_window",
                     detail=f"latest annual revenue year at T ends {fy0}; submissions fiscalYearEnd {subs.get('fiscalYearEnd')}")
     status, why, b = prepare_at_T(cik, company["sector"], company["market_cap"], fam["family"], store)
     if status != "ok":
@@ -254,7 +259,7 @@ def code_state():
 
 def counts(frame_n, names):
     c = {"frame_rows": frame_n}
-    order = ("cik", "duplicate_company", "sec_documents", "family", "december", "prepare", "run_rate", "exclusion")
+    order = ("cik", "duplicate_company", "sealed", "sec_documents", "family", "december", "prepare", "run_rate", "exclusion")
     left = Counter(n["stage"] for n in names)
     alive = frame_n
     for s in order:
@@ -294,9 +299,14 @@ def main(argv=None):
     ap.add_argument("--store", help="the qwen_c.sec_store root for this pool (default: <main checkout>/cache/archival_j2/sec_raw)")
     ap.add_argument("--offline", action="store_true", help="never fetch: a document not in the store leaves the name at sec_documents")
     ap.add_argument("--limit", type=int, help="the first N frame rows only (a smoke; nothing is written)")
+    ap.add_argument("--holdout", choices=sorted(HOLDOUTS), default="j2", help="which pool: j2 (as registered) or non_december")
+    ap.add_argument("--sealed", help="a private JSON list of tickers sealed for another test: they leave at stage sealed, never fetched")
     a = ap.parse_args(argv)
     repo = Path(a.screener_repo) if a.screener_repo else book_paths.screener_repo()
     store = Path(a.store) if a.store else default_store()
+    window, sub = HOLDOUTS[a.holdout]
+    out_path = book_paths.books() / "m3o" / "value" / sub / "pool.json"
+    sealed = {str(t).upper() for t in json.loads(Path(a.sealed).read_text(encoding="utf-8"))} if a.sealed else set()
     rows, commit, blob = frame_rows(repo)
     frame_n = len(rows)
     rows = rows[: a.limit] if a.limit else rows
@@ -314,9 +324,12 @@ def main(argv=None):
             by_cik[hit[0]]["other_tickers"].append(sym)
             names.append(dict(base, stage="duplicate_company", reason="duplicate_company", detail=f"CIK of {by_cik[hit[0]]['ticker']}"))
             continue
+        if sym.upper() in sealed:
+            names.append(dict(base, stage="sealed", reason="sealed", detail="sealed for another test (--sealed): never fetched or valued"))
+            continue
         by_cik[hit[0]] = dict(base, other_tickers=[])
     for i, (cik, comp) in enumerate(sorted(by_cik.items(), key=lambda kv: kv[1]["ticker"]), 1):
-        names.append(one(comp, store, a.offline))
+        names.append(one(comp, store, a.offline, window))
         if i % 100 == 0:
             print(f"{i}/{len(by_cik)}", flush=True)
     c = counts(len(rows), names)
@@ -325,7 +338,8 @@ def main(argv=None):
            "cik_map": tprov, "store": str(store), "code": dict(code_state(), pool=POOL_VERSION, realised=realised.REALISED_VERSION,
                                                               facts=facts.FACTS_VERSION, inputs=run.inputs.INPUTS_VERSION,
                                                               family=value_family.FAMILY_VERSION, menu=menu.MENU_VERSION),
-           "rules": {"fy0_window": FY0_WINDOW, "release_max_sessions": RELEASE_MAX_SESSIONS, "base_move_points": BASE_MOVE_POINTS,
+           "holdout": a.holdout, "sealed_count": len(sealed),
+           "rules": {"fy0_window": window, "release_max_sessions": RELEASE_MAX_SESSIONS, "base_move_points": BASE_MOVE_POINTS,
                      "routed_families": list(run.ROUTED), "cost_of_equity": "skipped in the pool definition (J2 section 7 item 1)",
                      "pool_keys": "a name stays with at least one key's run rate measured; each key is judged only where measured"},
            "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "counts": c,
@@ -334,12 +348,14 @@ def main(argv=None):
     if a.limit:
         print("--limit: a smoke, nothing written")
         return 0
-    OUT.parent.mkdir(parents=True, exist_ok=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     data = json.dumps(doc, indent=1, sort_keys=True, default=str).encode("utf-8")
-    tmp = OUT.with_suffix(".tmp")
+    if out_path.exists():
+        sys.exit(f"STOP: {out_path} exists; a pool is never overwritten")
+    tmp = out_path.with_suffix(".tmp")
     tmp.write_bytes(data)
-    os.replace(tmp, OUT)
-    print(f"wrote {OUT} sha256 {hashlib.sha256(data).hexdigest()}")
+    os.replace(tmp, out_path)
+    print(f"wrote {out_path} sha256 {hashlib.sha256(data).hexdigest()}")
     return 0
 
 

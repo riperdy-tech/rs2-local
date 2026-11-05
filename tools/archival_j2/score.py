@@ -409,8 +409,9 @@ def render_md(doc):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dir", default=str(DIR))
+    ap.add_argument("--pool-sha256", default=POOL_SHA256, help="the registered pool hash (PREREG amendment 2 for the non-December holdout)")
     a = ap.parse_args(argv)
-    doc = score(a.dir)
+    doc = score(a.dir, a.pool_sha256)
     for key, k in doc["keys"].items():
         j = k["judged"]
         print(key, j["verdict"], "n", j["n"], "p", _f(j["sign_p"]), "wmean", _f(j["winsorised_mean"]), "median", _f(j["median"]))
