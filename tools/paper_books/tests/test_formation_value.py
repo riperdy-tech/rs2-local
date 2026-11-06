@@ -46,6 +46,8 @@ def world(tmp_path, monkeypatch):
                                                             for t in ("AAA", "BBB", "CCC", EXCL, EXCL_LIST)})
     monkeypatch.setattr(FV, "name_family", lambda cik, T: {"family": "operating", "reason": "synthetic"})
     monkeypatch.setattr(FV, "gpu_ok", lambda: (True, None))
+    w.consensus = []
+    monkeypatch.setattr(FV.FC, "main", lambda T: w.consensus.append(T))
     monkeypatch.setattr(FV, "git", lambda *a: HEAD if a[0] == "rev-parse" else "")
     monkeypatch.setattr(subprocess, "run", fake_value_run(w))
     monkeypatch.setattr(sys, "argv", ["formation_value.py", T])
@@ -307,3 +309,9 @@ def test_a_changed_pinned_closure_stops(world):
     with pytest.raises(SystemExit) as e:
         FV.main()
     assert "does not recompute" in str(e.value)
+
+
+def test_the_seed_consensus_is_written_before_the_finished_flag(world):
+    finish_q1(world)
+    assert FV.main() == 0
+    assert world.consensus == [T] and (world.state / f"value_finished_{T}.flag").exists()

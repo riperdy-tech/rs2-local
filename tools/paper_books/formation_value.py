@@ -26,7 +26,8 @@ outcome (timeout, infra_retry, infra_fatal) is moved aside and the pass stops (e
 
 The index <books>/m3o/value/formation_<T>.json records per slot: status, reason, result path, result sha256, seconds (tmp + replace
 writes; resumable: a filled slot is never re-run). One instance at a time (value.lock beside formation_run's runner.lock).
-value_finished_<T>.flag is written when every slot is filled.
+When every slot is filled, formation_consensus.main writes consensus_<T>.json (design revision 2, rule (a): the value of record from
+the two seeds, no model call), then value_finished_<T>.flag is written.
 """
 import argparse
 import hashlib
@@ -44,6 +45,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import book_paths  # noqa: E402
 import formation_run as FR  # noqa: E402
+import formation_consensus as FC  # noqa: E402
 import paths  # noqa: E402
 
 ROOT = HERE.parents[1]                                                    # the rs2-local repo root: qwen_c runs from here
@@ -379,6 +381,7 @@ def one_pass():
             print(t, seed, body["status"], body.get("reason") or "", n["slots"][k]["seconds"], flush=True)
     save(ipath, idx)
     if not a.ticker and a.limit is None and all(str(s) in idx["names"][t]["slots"] for t in todo for s in SEEDS):
+        FC.main(a.formation_T)                # design revision 2, rule (a): the value of record from the two seeds, before the flag
         (STATE / f"value_finished_{a.formation_T}.flag").write_text("done")
     return 0
 
