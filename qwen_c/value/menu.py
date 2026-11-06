@@ -14,7 +14,7 @@ import statistics
 from qwen_c import contract
 from qwen_c.value import forecast
 
-MENU_VERSION = "m3q.menu.v4"   # v4 2026-11-05 J2 revision 1: year 1's options other than ytd keep the reported quarters and set only the rest; the ytd floor   # v3 2026-11-04 E4: field-name aliases of the normalized key, the long run inheriting normalized's entry   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
+MENU_VERSION = "m3q.menu.v5"   # v5 2026-11-06 design revision 2: a guided revenue level too small to be the year's (a quarter's guide, a figure in unstated millions) is unreadable (QUARTER_SCALE)   # v4 2026-11-05 J2 revision 1: year 1's options other than ytd keep the reported quarters and set only the rest; the ytd floor   # v3 2026-11-04 E4: field-name aliases of the normalized key, the long run inheriting normalized's entry   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
 STEPS = (-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3)            # points added to an anchor
 YEARS = (3, 4, 5)
 FADES = (10, 5, 15, 20)
@@ -52,6 +52,7 @@ METRICS = {"rev_growth.y1": ("revenue_level", "revenue_growth"), "rev_growth.y2"
            "capex": ("capex_level",), "book_growth.y1": ("book_growth",), "book_growth.y2": ("book_growth",),
            "normalized.book_growth": ("book_growth",), "roe.y1": ("roe",), "roe.y2": ("roe",)}
 LEVELS = ("revenue_level", "capex_level")
+QUARTER_SCALE = 0.5   # v5: a year's revenue level leaving under half a quarter's run rate for each quarter not yet reported reads as one quarter
 SCALE = {"": 1.0, "k": 1e3, "m": 1e6, "bn": 1e9, "tn": 1e12}
 
 
@@ -95,6 +96,7 @@ def menus(b, bar, r, route):
             if ym is not None and oi is not None:
                 m["margin_y1"] = {k: (v if k == "ytd" or v is None else (oi + q4 * v) / (yc + q4)) for k, v in m["margin_y1"].items()}
             m["ytd_floor"] = yc / r0 - 1                                  # year-1 revenue is at least what is already reported
+            m["y1_reported"] = (yc, y["quarter"])                         # v5: the quarters a guided revenue level must leave room for
         n, r0 = neutral_ronic(b, r), b.get("ronic0")
         up = r0 is not None and r0 > n * (1 + TOL_RONIC)
         m["ronic"] = {"no_growth_value": n, **{k: (1.0 / (1.0 / n + (1.0 / r0 - 1.0 / n) * f) if up else None)
@@ -220,11 +222,16 @@ def read_guidance(entry, key, ids, g1, m, fy0, fy_of):
     if entry["metric"] == "capex_level":
         return x / (m["R0"] * (1 + g1)), None
     if entry["metric"] == "revenue_level":
-        if key == "rev_growth.y1":
-            return x / m["R0"] - 1, None
-        if key == "rev_growth.y2":
-            return x / (m["R0"] * (1 + g1)) - 1, None
-        return None, "a revenue level converts for years 1 and 2 only"
+        if key not in ("rev_growth.y1", "rev_growth.y2"):
+            return None, "a revenue level converts for years 1 and 2 only"
+        prior = m["R0"] if key == "rev_growth.y1" else m["R0"] * (1 + g1)
+        yc, q = (m.get("y1_reported") or (0.0, 0)) if key == "rev_growth.y1" else (0.0, 0)
+        rest, ref = (x - yc) / (4 - q), (yc / q if q else prior / 4)
+        if rest < QUARTER_SCALE * ref:   # v5 (design revision 2): next-quarter guides and table figures in unstated millions were read as a year (holdout replies)
+            return None, (f"a revenue level of {x:,.0f} leaves {rest:,.0f} a quarter for the unreported rest of the year against "
+                          f"{ref:,.0f} a quarter {'reported' if q else 'in the prior year'}: it is not the year's revenue (one quarter's guidance, or a "
+                          f"figure in a unit the sentence does not state, such as a table in millions)")
+        return x / prior - 1, None
     return x, None
 
 

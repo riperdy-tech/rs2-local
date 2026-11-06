@@ -289,6 +289,33 @@ def test_a_year_1_revenue_below_what_the_year_has_reported_reverts():
     assert res["numbers"]["rev_growth.y1"] == 0.12
 
 
+def _level_reply(text):
+    b, bar, ids, m = ctx_rest()
+    r = neutral_reply(b, bar)
+    r["base"] = menu.set_option(r["base"], "rev_growth.y1", "guidance")
+    r["guidance"] = {"rev_growth.y1": {"evidence": "P1.s1", "metric": "revenue_level", "sign": "as_printed", "ordinal": 1}}
+    r["departures"] = [{"input": "rev_growth.y1", "driver": "guidance", "evidence": ["P1.s1"]}]
+    ids = dict(ids, **{"P1.s1": {"kind": "release", "period": "2026-10-30", "sentence": True, "text": text}})
+    return checks.check(r, ids, b, bar, OP.R, OP.ENDS)
+
+
+def test_a_revenue_level_that_reads_as_one_quarter_is_unreadable_and_valued_at_neutral():
+    res = _level_reply("Revenue | $30 million plus or minus $1 million")         # design revision 2: a next-quarter guide
+    assert res["status"] == "ok_with_reverts" and res["numbers"]["rev_growth.y1"] == 0.12
+    assert res["reverts"][0].startswith("guidance_unreadable: rev_growth.y1 a revenue level of 30,000,000 leaves")
+    assert "it is not the year's revenue (one quarter's guidance" in res["reverts"][0]
+
+
+def test_a_table_figure_in_unstated_millions_is_unreadable():
+    res = _level_reply("Revenue | $ 112 | $ 100")                                     # "in millions" only in the table header
+    assert res["status"] == "ok_with_reverts" and "a revenue level of 112 leaves" in res["reverts"][0]
+
+
+def test_a_full_year_revenue_level_still_reads():
+    res = _level_reply("The company now expects full-year revenue of $115 million.")
+    assert not res["reverts"] and res["guided"]["rev_growth.y1"] == pytest.approx(0.15)
+
+
 # ------------------------------------------------------------------ checks v16 / memo v7: PREREG amendment 2's safe default
 def test_a_departed_year_1_key_is_annotated_and_valued_at_the_record_neutral():
     b, bar, ids, m = ctx_rest()
