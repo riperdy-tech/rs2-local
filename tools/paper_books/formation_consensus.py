@@ -46,8 +46,9 @@ def main(formation_T):
         route = "financial" if n["family"] in run.FINANCIAL else "operating"
         res = consensus.combine(ok, ids, b, bar, r, fy_ends, route)
         seed_base = {k: (v.get("values") or {}).get("base") for k, v in results.items()}
-        out["names"][t] = {k: res.get(k) for k in ("status", "reason", "values", "annotations", "reverts", "of_record", "options",
-                                                     "seeds")} | {"seed_base": seed_base}
+        out["names"][t] = {k: res.get(k) for k in ("status", "reason", "detail", "values", "annotations", "reverts", "of_record", "options",
+                                                     "numbers", "neutral", "directions", "departures", "evidence", "year", "seeds")} | {
+            "seed_base": seed_base, "unknowns": (res.get("reply") or {}).get("unknowns"), "family": n["family"]}
         print(t, res["status"], (res.get("values") or {}).get("base"), seed_base,
               [a for a in res["annotations"] if a.startswith(("seeds_disagree", "one_seed"))], flush=True)
     p = VALUE / f"consensus_{formation_T}.json"
