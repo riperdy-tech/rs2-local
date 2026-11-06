@@ -52,6 +52,9 @@ NO_VALUE = {
     "profitloss_basis_unverified": "net income basis does not reconcile with filed EPS",
     "nci_dominant": "minority interests take too large a share of income",
     "coe_unavailable": "cost of equity unavailable for the sector",
+    "bridge_unavailable": "operating income for the latest year is not filed under a standard tag",
+    "base_year_too_old": "the latest annual report is more than two years old",
+    "record_neutral_unavailable": "no usable growth anchor for this company",
 }
 FQ_ACTION = {"enter": "held", "enter_after_pending": "held (entered after its analysis finished)", "new_entry_restricted":
              "not bought: Qwen flagged a material event", "escalation": "held, with a material event flagged for review",
@@ -136,6 +139,26 @@ def quote_units(rows, stocks):
         rep.update(upd)
 
 
+def books(T):
+    """m3o_books.json: the code book (engine series F) and Qwen's book (FQ) of formation T as equal-weight targets in percent, for the
+    screener's daily ledgers code_book and qwen_book (and the KIS mirror). Every non-excluded book name is one slot of 100/n; Qwen's
+    book holds the names whose last FQ action is enter or enter_after_pending, the rest of its slots are cash (as the engine)."""
+    excluded = set(book_paths.operator_excluded())
+    seq = {}
+    for a in _jsonl(M3O / "ledger" / "actions.jsonl"):
+        if a.get("formation_T") == T and a.get("arm") in ("F", "FQ") and a["ticker"] not in excluded:
+            seq.setdefault(a["arm"], {}).setdefault(a["ticker"], []).append(a["action"])
+    slots = sorted(t for t, v in seq.get("F", {}).items() if "enter" in v)
+    w = round(100.0 / len(slots), 6) if slots else 0.0
+    qwen = sorted(t for t, v in seq.get("FQ", {}).items() if t in slots and v[-1] in ("enter", "enter_after_pending"))
+    m = json.loads((M3O / "inputs" / f"formation_{T}.json").read_text(encoding="utf-8"))
+    return {"schema": "m3o_books_v1", "formation": T, "decision_time_utc": m["decision_time_utc"], "slots": len(slots),
+            "generated_at": m["decision_time_utc"],   # the targets' age for the KIS freshness guard (G4) is the formation's decision time
+            "note": "Monthly books: code_book = the screener's code-only A0 book; qwen_book = the same slots after Qwen's filing check "
+                    "(a name with a material event is held as cash). Equal weight per slot. Paper only.",
+            "books": {"code_book": {t: w for t in slots}, "qwen_book": {t: w for t in qwen}}}
+
+
 def latest_formation():
     maps = sorted(p.stem.split("_", 1)[1] for p in (M3O / "inputs").glob("formation_????-??-??.json"))
     return maps[-1]
@@ -163,6 +186,7 @@ def build():
           "note": "Qwen (local model) reading of SEC filings; values per share from code using Qwen's choices, where both seeds agree. "
                   "Paper only.", "tickers": {t: r for t, (r, _) in sorted(rows.items())}}
     (OUT / "qwen_overlay.json").write_text(json.dumps(ov, indent=1, sort_keys=True), encoding="utf-8")
+    (OUT / "m3o_books.json").write_text(json.dumps(books(T), indent=1, sort_keys=True), encoding="utf-8")
     print(f"built {len(rows)} names ({ov['valued_count']} valued) from formation {T}", flush=True)
     return ov
 
@@ -194,18 +218,19 @@ def publish():
     try:
         if g("fetch", "origin", "main").returncode:
             sys.exit("ABORT: fetch failed")
-        if g("status", "--porcelain", "--", ":!public/data/qwen_overlay.json", ":!public/data/qwen_reports").stdout.strip():
+        if g("status", "--porcelain", "--", ":!public/data/qwen_overlay.json", ":!public/data/m3o_books.json", ":!public/data/qwen_reports").stdout.strip():
             sys.exit("ABORT: the publish clone has unexpected local changes")
         if g("checkout", "-B", "main", "origin/main").returncode:
             sys.exit("ABORT: could not reset the publish clone to origin/main")
         data = repo / "public" / "data"
         shutil.copyfile(OUT / "qwen_overlay.json", data / "qwen_overlay.json")
+        shutil.copyfile(OUT / "m3o_books.json", data / "m3o_books.json")
         if (data / "qwen_reports").exists():
             shutil.rmtree(data / "qwen_reports")
         shutil.copytree(OUT / "qwen_reports", data / "qwen_reports")
-        for f in [data / "qwen_overlay.json", *sorted((data / "qwen_reports").glob("*.json"))]:
+        for f in [data / "qwen_overlay.json", data / "m3o_books.json", *sorted((data / "qwen_reports").glob("*.json"))]:
             json.loads(f.read_text(encoding="utf-8"))
-        g("add", "-A", "public/data/qwen_overlay.json", "public/data/qwen_reports")
+        g("add", "-A", "public/data/qwen_overlay.json", "public/data/m3o_books.json", "public/data/qwen_reports")
         if g("diff", "--cached", "--check").returncode:
             sys.exit("ABORT: conflict markers in staged content")
         if g("diff", "--cached", "--quiet").returncode == 0:

@@ -96,6 +96,19 @@ def _sanitize(msg):
     return re.sub(r"[A-Za-z]:[\\/][^)\n]*", "<local path>", msg)[:400]
 
 
+def _qwen_request(ticker, source):
+    """Operator 2026-11-06: Analyze runs the current Qwen analysis (tools/site/qwen_ondemand.py), not the paused depth path.
+    Queues the name and returns one human line; the worker task RS2-Qwen-Site runs it when the GPU is free."""
+    if not re.fullmatch(r"[A-Z0-9.\-]{1,10}", ticker):
+        return f"REFUSED: {ticker!r} is not a ticker"
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "tools" / "site"))
+    import qwen_ondemand
+    qwen_ondemand.request(ticker, source)
+    pos = [q["ticker"] for q in qwen_ondemand._jsonl(qwen_ondemand.QUEUE)].index(ticker) + 1
+    return (f"{ticker}: queued for Qwen analysis (position {pos}, about 20 minutes per name once the GPU is free). "
+            f"The result appears on stockpeak.net/t/{ticker}.")
+
+
 def _drain_web_queue(tok, chat):
     url, key = _sb_cfg()
     if not (url and key):
@@ -114,13 +127,13 @@ def _drain_web_queue(tok, chat):
             continue
         ok = True
         try:
-            reply = depth_ondemand.request(str(row["ticker"]).upper(), source="web")
+            reply = _qwen_request(str(row["ticker"]).upper(), "web")
             ok = not reply.startswith("REFUSED")
         except Exception as e:
             reply, ok = f"analyze failed: {str(e)[:120]}", False
         _sb("PATCH", f"ondemand_queue?id=eq.{row['id']}",
             {"status": "handled" if ok else "failed",
-             "message": _sanitize(reply) + " · verdict also lands on /ondemand after the next publish.",
+             "message": _sanitize(reply),
              "handled_at": datetime.now(timezone.utc).isoformat()},
             prefer="return=minimal")
         _api(tok, "sendMessage", {"chat_id": chat, "text": f"[web] {reply}"}, timeout=20)
@@ -206,7 +219,7 @@ def main():
                 m = re.match(r"^/?analyze[\s_]+([a-z0-9.\-]{1,10})\s*$", text)
                 if m:
                     try:
-                        reply = depth_ondemand.request(m.group(1).upper(), source="telegram")
+                        reply = _qwen_request(m.group(1).upper(), "telegram")
                     except Exception as e:
                         reply = f"analyze failed: {str(e)[:120]}"
                     _api(tok, "sendMessage", {"chat_id": chat, "text": reply}, timeout=20)
