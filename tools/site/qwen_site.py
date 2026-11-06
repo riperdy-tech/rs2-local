@@ -55,6 +55,8 @@ NO_VALUE = {
     "bridge_unavailable": "operating income for the latest year is not filed under a standard tag",
     "base_year_too_old": "the latest annual report is more than two years old",
     "record_neutral_unavailable": "no usable growth anchor for this company",
+    "debt_without_interest": "debt is filed but interest expense is not",
+    "preferred_series_incomplete": "preferred stock is not filed for every year needed",
 }
 FQ_ACTION = {"enter": "held", "enter_after_pending": "held (entered after its analysis finished)", "new_entry_restricted":
              "not bought: Qwen flagged a material event", "escalation": "held, with a material event flagged for review",

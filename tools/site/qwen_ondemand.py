@@ -45,6 +45,8 @@ REFRESH_DAYS = 14
 FOREIGN_VRAM_MIB = 2000
 SEEDS = (1000, 3000)
 VERIFIER = book_paths.books() / "m3l_verifier" / "out"
+VERIFY_EVERY_HOURS = 20
+RETRY_REFUSED_HOURS = 24
 
 
 def log(msg):
@@ -107,6 +109,24 @@ def verified_commit():
     if best is None:
         raise RuntimeError("no verified screener run (check_new_runs PASS, pair PASS)")
     return best[0], best[1]
+
+
+def refresh_verification():
+    """Verify the screener's newer GitHub runs when the newest verified one is older than VERIFY_EVERY_HOURS, so the list and the
+    packets follow the daily screener (the list's new names have no profile at an old commit; HCI etc., 2026-11-06)."""
+    newest = ""
+    for p in VERIFIER.glob("check_*.json"):
+        for r in json.loads(p.read_text(encoding="utf-8")):
+            if r.get("verdict") == "PASS" and r.get("pair") == "PASS" and r.get("output_commit"):
+                newest = max(newest, r.get("run_updated_at") or "")
+    if newest and datetime.fromisoformat(newest.replace("Z", "+00:00")) > datetime.now(timezone.utc) - timedelta(hours=VERIFY_EVERY_HOURS):
+        return
+    since = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    repo = book_paths.screener_repo()
+    subprocess.run(["git", "-C", str(repo), "fetch", "origin", "-q"], capture_output=True, timeout=300)
+    r = subprocess.run([PY, str(ROOT / "tools" / "paper_books" / "check_new_runs.py"), "--since", since, "--repo", str(repo)], cwd=ROOT,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800)
+    log(f"verification refreshed (rc {r.returncode}); newest verified commit now {verified_commit()[0][:10]}")
 
 
 def _json_tail(out):
@@ -207,8 +227,10 @@ def report(t, source, T, q1, n, results, commit):
 
 
 def list_names():
-    """research_now then watchlist, each by screener rank, from the publish clone's factor_scores.json."""
-    d = json.loads((paths.resolve("screener_data_dir") / "factor_scores.json").read_text(encoding="utf-8"))["tickers"]
+    """research_now then watchlist, each by screener rank, from factor_scores.json at the verified commit the packets use."""
+    commit, _ = verified_commit()
+    d = json.loads(subprocess.run(["git", "-C", str(book_paths.screener_repo()), "show", f"{commit}:public/data/factor_scores.json"],
+                                  capture_output=True, check=True).stdout.decode("utf-8"))["tickers"]
     excluded = set(book_paths.operator_excluded())
     order = {"research_now": 0, "watchlist": 1}
     rows = [(order[r["fct_band"]], r.get("fct_rank") or 10 ** 6, t) for t, r in d.items() if r.get("fct_band") in order and t not in excluded]
@@ -216,15 +238,20 @@ def list_names():
 
 
 def last_analysed():
-    """{ticker: newest Qwen analysis date (ISO)} across the published formation and on-demand reports."""
+    """{ticker: newest Qwen analysis date (ISO)} across the published formation and on-demand reports. A refusal (analysis not
+    run) counts as RETRY_REFUSED_HOURS old-age less, so it is retried the next day, not after REFRESH_DAYS."""
     out = {}
     ov = SITE / "qwen_overlay.json"
     if ov.exists():
         for t, r in json.loads(ov.read_text(encoding="utf-8"))["tickers"].items():
             out[t] = r["date"]
+    shift = timedelta(days=REFRESH_DAYS) - timedelta(hours=RETRY_REFUSED_HOURS)
     for p in (SITE / "ondemand").glob("*.json") if (SITE / "ondemand").exists() else []:
         d = json.loads(p.read_text(encoding="utf-8"))
-        out[d["ticker"]] = max(out.get(d["ticker"], ""), d["date"])
+        date = d["date"]
+        if d.get("analysis") == "not run":
+            date = (datetime.fromisoformat(date.replace("Z", "+00:00")) - shift).isoformat()
+        out[d["ticker"]] = max(out.get(d["ticker"], ""), date)
     return out
 
 
@@ -267,6 +294,10 @@ def work(max_names):
         return 0
     try:
         done = 0
+        try:
+            refresh_verification()
+        except Exception as e:  # noqa: BLE001  the worker goes on with the newest commit already verified
+            log(f"verification refresh failed: {type(e).__name__}: {str(e)[:160]}")
         while max_names is None or done < max_names:
             nxt = next_name()
             if nxt is None:
