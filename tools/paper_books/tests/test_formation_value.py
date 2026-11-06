@@ -269,3 +269,11 @@ def test_a_set_archival_cost_of_equity_variable_stops_a_live_formation(monkeypat
     with pytest.raises(SystemExit) as e:
         FV.main()
     assert "RS2_ARCHIVAL_COE_DIR" in str(e.value)
+
+
+def test_a_frozen_formation_is_valued_without_the_finished_flag(world):
+    (world.inputs / f"formation_{T}.frozen.json").write_bytes(world.map.read_bytes())
+    assert FV.main() == 0
+    assert [(Path(c[0][3]).stem, c[0][c[0].index("--seed") + 1]) for c in world.calls] == [
+        ("AAA", "1000"), ("AAA", "3000"), ("BBB", "1000"), ("BBB", "3000")]
+    assert (world.state / f"value_finished_{T}.flag").exists() and not (world.state / f"finished_{T}.flag").exists()

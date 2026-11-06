@@ -78,6 +78,8 @@ def formation_waiting(exclude=None):
     for f in INPUTS.glob("formation_*.json"):
         if f == exclude or not re.fullmatch(r"formation_\d{4}-\d{2}-\d{2}\.json", f.name):     # Q7b 11: live maps only
             continue
+        if f.with_name(f"{f.stem}.frozen.json").exists():                 # 2026-11-06: frozen at its fill, a name left to run is cash for good
+            continue
         try:
             m = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):

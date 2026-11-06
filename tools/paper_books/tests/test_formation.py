@@ -268,3 +268,13 @@ def test_freeze_copies_the_map_writes_the_witness_and_refuses_a_second_freeze(tm
 
 def test_freeze_default_witness_folder_is_in_the_books():
     assert Z.WITNESS.parts[-3:] == ("paper_books", "m3o", "witness")
+
+
+def test_a_frozen_formation_with_names_left_to_run_does_not_hold_the_gpu(tmp_path, monkeypatch):
+    inputs = tmp_path / "inputs"
+    path = write_map(inputs, {"AAA": "complete", "BBB": "to_run"})
+    monkeypatch.setattr(R, "INPUTS", inputs)
+    monkeypatch.setattr(R, "STATE", tmp_path / "state")
+    assert R.formation_waiting()
+    (inputs / f"formation_{T}.frozen.json").write_bytes(path.read_bytes())   # frozen at its fill: BBB is cash for good
+    assert not R.formation_waiting()

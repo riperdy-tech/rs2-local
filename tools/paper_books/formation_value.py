@@ -10,7 +10,8 @@ Order of a pass:
    asof is not after its date; none: STOP. Every later pass of the formation uses that copy (MRI_ANCHORS_DIR), rechecking each sha256 and
    refusing a copy whose asof is after T.
 2. Without cache/paper_books/formation/finished_<T>.flag (formation_run.py writes it when no Q1 name is left) the pass exits 0: a
-   valuation never takes a Q1 slot (m3o_engine.py:315,351).
+   valuation never takes a Q1 slot (m3o_engine.py:315,351). A formation whose map is frozen (formation_<T>.frozen.json, written at its
+   fill) counts as finished: a Q1 name still to run then is cash in the book for good (2026-11-06, PREREG value addendum amendment 3).
 3. Each map name with a packet that is not operator_excluded (in the map or in operator_excluded.json) gets its fields once: CIK (the
    packet's), sector and market cap (stocks.json at the map's output commit, through git), and the family (value_family.family on the
    SEC facts at the decision time). A slot whose field is missing is the named no_call field_missing, not a run.
@@ -257,7 +258,7 @@ def one_pass():
     m = json.loads(raw.decode("utf-8"))
     T = parse_t(m["decision_time_utc"])
     adir, asha = pin_anchors(a.formation_T, T)
-    if not (STATE / f"finished_{a.formation_T}.flag").exists():
+    if not ((STATE / f"finished_{a.formation_T}.flag").exists() or (INPUTS / f"formation_{a.formation_T}.frozen.json").exists()):
         print(f"Q1 of {a.formation_T} has not finished (no finished flag): waiting", flush=True)
         return 0
     ipath = VALUE / f"formation_{a.formation_T}.json"
