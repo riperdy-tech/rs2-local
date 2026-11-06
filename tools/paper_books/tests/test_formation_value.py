@@ -38,6 +38,10 @@ def world(tmp_path, monkeypatch):
     anchor_build(w.live, "2026-12-02T21:35:00+00:00", "2026-12-02")                 # live: after T
     anchor_build(w.live / "archive" / "2026-11-30" / "20261130T213000Z-aa", "2026-11-30T21:35:00+00:00", "2026-11-30")   # the pin
     anchor_build(w.live / "archive" / "2026-11-29" / "20261129T213000Z-bb", "2026-11-29T21:35:00+00:00", "2026-11-29")
+    w.closure = tmp_path / "live_cache" / "reference_closure.json"                   # the live closure, dated before T
+    w.closure.parent.mkdir()
+    w.closure.write_text(json.dumps({"asof": "2026-11-04", "erp": 0.047}), encoding="utf-8")
+    monkeypatch.setenv("RS2_REFERENCE_CLOSURE", str(w.closure))
     monkeypatch.setattr(FV, "stocks_rows", lambda commit: {t: {"symbol": t, "sector": "Industrials", "marketCap": 1e9}
                                                             for t in ("AAA", "BBB", "CCC", EXCL, EXCL_LIST)})
     monkeypatch.setattr(FV, "name_family", lambda cik, T: {"family": "operating", "reason": "synthetic"})
@@ -277,3 +281,29 @@ def test_a_frozen_formation_is_valued_without_the_finished_flag(world):
     assert [(Path(c[0][3]).stem, c[0][c[0].index("--seed") + 1]) for c in world.calls] == [
         ("AAA", "1000"), ("AAA", "3000"), ("BBB", "1000"), ("BBB", "3000")]
     assert (world.state / f"value_finished_{T}.flag").exists() and not (world.state / f"finished_{T}.flag").exists()
+
+
+def test_the_closure_is_pinned_and_passed_to_every_valuation(world):
+    finish_q1(world)
+    assert FV.main() == 0
+    pinned = world.value / f"closure_{T}" / "reference_closure.json"
+    assert pinned.read_bytes() == world.closure.read_bytes()
+    assert {kw["env"]["RS2_REFERENCE_CLOSURE"] for _, kw in world.calls} == {str(pinned)}
+    assert index(world)["closure"]["sha256"] == hashlib.sha256(pinned.read_bytes()).hexdigest()
+    world.closure.write_text(json.dumps({"asof": "2026-12-04", "erp": 0.05}), encoding="utf-8")   # the monthly rebuild in place
+    assert FV.main() == 0 and pinned.read_bytes() != world.closure.read_bytes()                 # later passes keep the pinned copy
+
+
+def test_a_live_closure_dated_after_T_is_never_pinned(world):
+    world.closure.write_text(json.dumps({"asof": "2026-12-04", "erp": 0.05}), encoding="utf-8")
+    with pytest.raises(SystemExit) as e:
+        FV.main()
+    assert "after T" in str(e.value) and not (world.value / f"closure_{T}").exists()
+
+
+def test_a_changed_pinned_closure_stops(world):
+    assert FV.main() == 0
+    (world.value / f"closure_{T}" / "reference_closure.json").write_text(json.dumps({"asof": "2026-11-04", "erp": 0.06}), encoding="utf-8")
+    with pytest.raises(SystemExit) as e:
+        FV.main()
+    assert "does not recompute" in str(e.value)

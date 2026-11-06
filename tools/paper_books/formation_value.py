@@ -8,7 +8,8 @@ Order of a pass:
    anchor files the cost of equity reads (ANCHOR_FILES) and manifest.json (sha256, built_at, asof, source). The copy is the newest MRI
    build - the live outputs or a dated copy under its archive/ - whose built_at is at or before the formation's decision time and whose
    asof is not after its date; none: STOP. Every later pass of the formation uses that copy (MRI_ANCHORS_DIR), rechecking each sha256 and
-   refusing a copy whose asof is after T.
+   refusing a copy whose asof is after T. The reference closure (the premium) is pinned the same way in closure_<T>/ (pin_closure) and
+   passed as RS2_REFERENCE_CLOSURE (2026-11-06: the live file is rebuilt in place each month).
 2. Without cache/paper_books/formation/finished_<T>.flag (formation_run.py writes it when no Q1 name is left) the pass exits 0: a
    valuation never takes a Q1 slot (m3o_engine.py:315,351). A formation whose map is frozen (formation_<T>.frozen.json, written at its
    fill) counts as finished: a Q1 name still to run then is cash in the book for good (2026-11-06, PREREG value addendum amendment 3).
@@ -149,6 +150,31 @@ def pin_anchors(formation_T, T):
     return dest, sha(mpath.read_bytes())
 
 
+def pin_closure(formation_T, T):
+    """(path, sha256) of the formation's pinned reference closure (the premium the cost of equity reads), beside the anchors in
+    closure_<T>/: the live cache/reference_closure.json copied at the first call if its asof is not after T, else STOP (the live file is
+    rebuilt in place each month; a copy in force at T may be placed there by hand, recorded in closure.json). Later passes recheck it."""
+    from qwen_c.value import coe
+    dest = VALUE / f"closure_{formation_T}"
+    f, rpath = dest / "reference_closure.json", dest / "closure.json"
+    if not rpath.is_file():
+        src = coe.closure_path()
+        b = src.read_bytes() if src.is_file() else b""
+        asof = str((json.loads(b) if b else {}).get("asof"))[:10]
+        if not b or asof > T.date().isoformat():
+            sys.exit(f"STOP: the live closure {src} has asof {asof or None}, after T {T.date()} or absent; place the closure in force at "
+                     f"T in {dest} with a closure.json record")
+        dest.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b)
+        rpath.write_text(json.dumps({"sha256": sha(b), "asof": asof, "source": str(src), "pinned_at": datetime.now(timezone.utc)
+                                     .isoformat().replace("+00:00", "Z")}, indent=1, sort_keys=True), encoding="utf-8")
+        print(f"pinned closure {dest.name} from {src} (asof {asof})", flush=True)
+    rec, b = json.loads(rpath.read_text(encoding="utf-8")), f.read_bytes()
+    if sha(b) != rec["sha256"] or str(json.loads(b).get("asof"))[:10] > T.date().isoformat():
+        sys.exit(f"STOP: the pinned closure {f} does not recompute to its record or is dated after T {T.date()}")
+    return f, rec["sha256"]
+
+
 # ---------------------------------------------------------------- per-name fields
 
 def stocks_rows(commit):
@@ -258,6 +284,7 @@ def one_pass():
     m = json.loads(raw.decode("utf-8"))
     T = parse_t(m["decision_time_utc"])
     adir, asha = pin_anchors(a.formation_T, T)
+    cpath, csha = pin_closure(a.formation_T, T)
     if not ((STATE / f"finished_{a.formation_T}.flag").exists() or (INPUTS / f"formation_{a.formation_T}.frozen.json").exists()):
         print(f"Q1 of {a.formation_T} has not finished (no finished flag): waiting", flush=True)
         return 0
@@ -268,6 +295,9 @@ def one_pass():
     if idx.get("anchors", {"manifest_sha256": asha})["manifest_sha256"] != asha:
         sys.exit("STOP: the pinned anchor manifest differs from the one the index was filled with")
     idx["anchors"] = {"dir": str(adir), "manifest_sha256": asha}
+    if idx.get("closure", {"sha256": csha})["sha256"] != csha:
+        sys.exit("STOP: the pinned closure differs from the one the index was filled with")
+    idx["closure"] = {"path": str(cpath), "sha256": csha}
     todo = sorted(t for t, n in m["names"].items() if n.get("packet") and n.get("state") != "operator_excluded" and t not in EXCLUDED)
     stocks = None
     for t in todo:
@@ -280,7 +310,7 @@ def one_pass():
                 return 6
             save(ipath, idx)
             print(t, "family", idx["names"][t]["family"], flush=True)
-    env = dict(os.environ, MRI_ANCHORS_DIR=str(adir), PYTHONIOENCODING="utf-8")
+    env = dict(os.environ, MRI_ANCHORS_DIR=str(adir), RS2_REFERENCE_CLOSURE=str(cpath), PYTHONIOENCODING="utf-8")
     n_run = 0
     for t in todo:
         n = idx["names"][t]

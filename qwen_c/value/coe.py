@@ -36,7 +36,11 @@ _DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 
 
 def closure_path():
-    """The closure artifact of this repository's main checkout (a worktree shares its git directory; the artifact is untracked cache)."""
+    """The closure artifact of this repository's main checkout (a worktree shares its git directory; the artifact is untracked cache).
+    RS2_REFERENCE_CLOSURE, when set, is used verbatim: a formation's pinned copy (formation_value.py; the live file is rebuilt in place
+    each month, so a later pass would otherwise read a premium dated after the decision, 2026-11-06)."""
+    if os.environ.get("RS2_REFERENCE_CLOSURE", "").strip():
+        return Path(os.environ["RS2_REFERENCE_CLOSURE"].strip())
     common = subprocess.check_output(["git", "rev-parse", "--git-common-dir"], cwd=Path(__file__).resolve().parent, text=True).strip()
     root = (Path(__file__).resolve().parent / common).resolve().parent if not Path(common).is_absolute() else Path(common).resolve().parent
     return root / "cache" / "reference_closure.json"

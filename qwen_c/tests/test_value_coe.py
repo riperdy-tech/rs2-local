@@ -50,6 +50,11 @@ def test_closure_path_is_the_main_checkouts_cache():
     assert p.name == "reference_closure.json" and p.parent.name == "cache"
 
 
+def test_closure_path_takes_a_pinned_copy_verbatim(monkeypatch, tmp_path):
+    monkeypatch.setenv("RS2_REFERENCE_CLOSURE", str(tmp_path / "pinned.json"))
+    assert coe.closure_path() == tmp_path / "pinned.json"
+
+
 # ---- the archival mode (J2 v0.2 section 7 item 1): OFF unless RS2_ARCHIVAL_COE_DIR names a pinned, hashed directory ----------------
 
 import hashlib  # noqa: E402
