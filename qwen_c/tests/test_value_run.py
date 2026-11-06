@@ -56,7 +56,8 @@ def test_clean_reply_is_ok_in_one_call_and_writes_the_memo(setup, monkeypatch):
     assert json.loads((d / "result.json").read_text(encoding="utf-8"))["status"] == "ok" and (d / "raw" / "attempt_1.json").exists()
     memo = (d / "memo.md").read_text(encoding="utf-8")
     assert "diagnostic only" in memo and f"{res['values']['base']:,.2f}" in memo
-    assert "- **rev_growth.y1**: guidance, 0.0500 (record-neutral 0.0300), up; driver guidance" in memo
+    assert ("- **rev_growth.y1**: guidance, 0.0500 (record-neutral 0.0300), up; not valued: held at the record-neutral 0.0300 until a "
+            "holdout PASSes; driver guidance") in memo                    # memo v7: PREREG amendment 2's safe default
     assert "  - [G1.s1] The company expects revenue growth of 5% in 2026." in memo
     assert memo.rstrip().endswith("- the order book is not disclosed")                     # the unknowns, unedited, last
 

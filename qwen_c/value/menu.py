@@ -285,6 +285,27 @@ def departed(key, nums, neutral, m):
     return abs(a - c) > TOL
 
 
+# PREREG m3o.value_addendum amendment 2, safe default (operator 2026-11-05): per judged key, until a holdout PASSes it, the value of
+# record is code's record-neutral year-1 number (the year-to-date run rate where measured); the model's departure is annotated, not valued.
+# Non-December holdout 2026-11-06: both NOT_DECIDED, so both stay held.
+HELD = ("rev_growth.y1", "op_margin.y1")
+
+
+def of_record(base, nums, guided, neutral, m):
+    """(options, numbers, held) to value: each HELD key the model departed on, set to its record-neutral option. `held` keeps
+    {key: {model_option, model, record_option, record}}; the reply's own options and numbers are left to the caller unchanged."""
+    held = {k: {"model_option": option(base, k), "model": nums[k], "record_option": neutral_option(m, k)}
+            for k in HELD if k in nums and departed(k, nums, neutral, m)}
+    if not held:
+        return base, nums, held
+    for k, h in held.items():
+        base = set_option(base, k, h["record_option"])
+    rec = resolve(base, guided, m)
+    for k, h in held.items():
+        h["record"] = rec[k]
+    return base, rec, held
+
+
 def direction(key, nums, neutral, m):
     """up, down or none: the departure's direction, by code (the capex path by its mean ratio)."""
     a, c = nums[key], neutral[key]

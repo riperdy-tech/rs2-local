@@ -287,3 +287,30 @@ def test_a_year_1_revenue_below_what_the_year_has_reported_reverts():
     res = checks.check(r, ids, b, bar, OP.R, OP.ENDS)
     assert res["status"] == "ok_with_reverts" and res["reverts"] == ["departure_reverted: rev_growth.y1 below_ytd_reported"], res.get("errors")
     assert res["numbers"]["rev_growth.y1"] == 0.12
+
+
+# ------------------------------------------------------------------ checks v16 / memo v7: PREREG amendment 2's safe default
+def test_a_departed_year_1_key_is_annotated_and_valued_at_the_record_neutral():
+    b, bar, ids, m = ctx_rest()
+    r = neutral_reply(b, bar)
+    r["base"] = menu.set_option(r["base"], "rev_growth.y1", "guidance")
+    r["guidance"] = {"rev_growth.y1": {"evidence": "P1.s1", "metric": "revenue_growth", "sign": "as_printed", "ordinal": 1}}
+    r["departures"] = [{"input": "rev_growth.y1", "driver": "guidance", "evidence": ["P1.s1"]}]
+    ids = dict(ids, **{"P1.s1": {"kind": "release", "period": "2026-10-30", "sentence": True,
+                                 "text": "The company now expects full-year revenue to grow 15%."}})
+    res = checks.check(r, ids, b, bar, OP.R, OP.ENDS)
+    neu = checks.check(neutral_reply(b, bar), ids, b, bar, OP.R, OP.ENDS)
+    assert res["status"] == "ok" and res["options"]["rev_growth.y1"] == "guidance", res.get("errors") or res.get("reverts")
+    assert res["numbers"]["rev_growth.y1"] == pytest.approx(0.15)                  # the reply's number is kept for the record
+    assert res["of_record"] == {"rev_growth.y1": {"model_option": "guidance", "model": res["numbers"]["rev_growth.y1"],
+                                                  "record_option": "ytd", "record": 0.12}}
+    assert "held_at_record: rev_growth.y1 model 0.1500 valued at 0.1200" in res["annotations"]
+    assert res["values"]["base"] == neu["values"]["base"] and neu["of_record"] == {}
+    result = {"ticker": "T", "T": "2026-11-01T00:00:00Z", "status": "ok", "base": b, "cost_of_equity": OP.R, "stamps": [],
+              "checks": {k: v for k, v in res.items() if k != "results"}, "values": res["values"], "inputs": r}
+    assert "; not valued: held at the record-neutral 0.1200 until a holdout PASSes" in memo.render(result)
+
+
+def test_only_the_judged_year_1_keys_are_held():
+    assert menu.HELD == ("rev_growth.y1", "op_margin.y1") and checks.CHECKS_VERSION == "m3q.checks.v16"
+    assert memo.MEMO_VERSION == "m3q.memo.v7"

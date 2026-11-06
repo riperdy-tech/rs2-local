@@ -11,20 +11,19 @@ check(reply, ids, b, bar, r, fy_ends, route) returns
   stamped `departure_reverted: <key> <rule>`, and every rule runs again until nothing changes (at most one round per key). A guidance
   option whose sentence cannot be read reverts the same way, stamped `guidance_unreadable`.
 - Code builds Bear and Bull from the uncertain keys' neighbours (§5); the probabilities are fixed. V1 recomputes every valued scenario.
-  Past the reply rules a crash is the code's: raised as an engine defect, never "reply_invalid".
+  Past the reply rules a crash is the code's: raised as an engine defect, never "reply_invalid". v16 (PREREG amendment 2): a departed
+  menu.HELD key is valued at its record-neutral number (`of_record`, annotated `held_at_record`); `numbers` stay the reply's.
 """
 import math
 
 from qwen_c.value import desk, forecast, forecast_fin, menu
 
-CHECKS_VERSION = "m3q.checks.v15"   # v15 2026-11-05 J2 revision 1: a year-1 revenue below what the year has already reported reverts (below_ytd_reported)   # v14 2026-11-04 J2: the outside-record annotation only on the keys the bar or growth_max spans (a guided capex crashed it)   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
+CHECKS_VERSION = "m3q.checks.v16"   # v16 2026-11-06 PREREG amendment 2 safe default: departed menu.HELD keys valued at the record-neutral, annotated held_at_record; numbers stay the reply's   # v15 2026-11-05 J2 revision 1: a year-1 revenue below what the year has already reported reverts (below_ytd_reported)   # v14 2026-11-04 J2: the outside-record annotation only on the keys the bar or growth_max spans (a guided capex crashed it)   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 PROB = {"bear": 0.25, "base": 0.5, "bull": 0.25}                           # §5: fixed
-SEAM_BAND = (0.67, 1.5)
-SPREAD_MIN = 0.02                                                           # N7 (annotation)
-ALWAYS_STAMPS = ["v5_withdrawn_status_unenforced"]                          # ruling 15
-FIN_STAMPS = ["capital_constraint_not_modeled"]
+SEAM_BAND, SPREAD_MIN = (0.67, 1.5), 0.02                                   # SPREAD_MIN: N7 (annotation)
+ALWAYS_STAMPS, FIN_STAMPS = ["v5_withdrawn_status_unenforced"], ["capital_constraint_not_modeled"]   # ALWAYS_STAMPS: ruling 15
 RELEASE_SHARE = 0.25          # Q3b N2: a cumulative release of more than a quarter of book over years 1-5 is annotated
 PEAK_QUANTILE = "p75"         # Q3b N3: a normalized or long-run value at or above the record's p75 is annotated
 NEUTRAL_BAND = (0.5, 2.0)     # Q3c 1-4 (B13): a scenario valued outside 0.5x-2x the record-neutral reply is annotated
@@ -275,6 +274,7 @@ def _value(sc, b, bar, r, route):
 
 
 def _valuate(opts, nums, guided, reply, b, bar, r, m, neutral, res):
+    opts, nums, held = menu.of_record(opts, nums, guided, neutral, m); res.update(of_record=held); res["annotations"] += [f"held_at_record: {k} model {_n(h['model'])} valued at {_n(h['record'])}" for k, h in held.items()]   # v16
     route, sc = m["route"], menu.scenario(opts, nums, m)
     try:
         inp, base_v = _value(sc, b, bar, r, route)
@@ -314,7 +314,7 @@ def _annotate(sc, nums, inp, base_v, b, bar, r, m, res):
     """Annotations, never gates: V7, the seam, the record peak, the terminal spread, the book release, the market-delta sensitivity."""
     fin = m["route"] == "financial"
     g = ("book_growth.y1", "book_growth.y2", "normalized.book_growth") if fin else ("rev_growth.y1", "rev_growth.y2", "normalized.rev_growth")
-    if sum(1 for k in g if nums[k] < 0) >= 2 and nums["terminal_g"] > 0 and not any(d["driver"] in GROWTH_DRIVERS for d in res["departures"]):
+    if sum(1 for k in g if res["numbers"][k] < 0) >= 2 and nums["terminal_g"] > 0 and not any(d["driver"] in GROWTH_DRIVERS for d in res["departures"]):
         res["annotations"].append("V7 shrinking_base_positive_terminal_growth: no return_to_growth or cycle_recovery departure")
     if (fin or not inp["H"]) and base_v["seam_ratio"] is not None and not SEAM_BAND[0] <= base_v["seam_ratio"] <= SEAM_BAND[1]:
         res["annotations"].append(f"V2 flow_seam_out_of_band: {base_v['seam_ratio']:.3f}")
