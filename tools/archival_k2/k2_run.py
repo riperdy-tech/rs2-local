@@ -26,7 +26,7 @@ for p in (str(ROOT / "tools" / "archival_j2"), str(ROOT / "tools" / "paper_books
         sys.path.insert(0, p)
 import book_paths  # noqa: E402
 import j2_run as J  # noqa: E402
-from qwen_c import packet  # noqa: E402
+from qwen_c import packet, sec_store  # noqa: E402
 
 DIR = book_paths.books() / "m3o" / "value" / "archival_2025-10-01"
 J2_COE = book_paths.books() / "m3o" / "value" / "archival_2025-12-31" / "coe_pinned"
@@ -51,7 +51,9 @@ def packets(pool, idx):
             pk = packet.build(t, pool["T"], None, online=True, regime=packet.REGIME_SEC_ONLY, cik=n["cik"], s0_row=n["s0_row"])
             path = packet.save(pk)
             idx["packets"][t] = {"packet": str(path), "packet_sha256": sha(path.read_bytes()), "annotations": pk.get("annotations")}
-        except (packet.PacketRefused, packet.PacketError) as e:
+        except (packet.PacketRefused, packet.PacketError, sec_store.StoreError) as e:
+            if isinstance(e, sec_store.StoreError) and "larger than" not in str(e):
+                raise                                   # a network failure stops the pass (resumable); only the size cap is final (J2's CRI)
             idx["packets"][t] = {"packet": None, "refused": f"{type(e).__name__}: {e}"[:600]}
         J.save(DIR / "runs.json", idx)
         print(t, "packet" if idx["packets"][t]["packet"] else "refused", flush=True)
