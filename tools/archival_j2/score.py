@@ -255,7 +255,7 @@ def score(d, pool_sha256=POOL_SHA256):
     pool_b = (d / "pool.json").read_bytes()
     if sha(pool_b) != pool_sha256:
         raise Stop(f"pool.json sha256 {sha(pool_b)} is not the registered {pool_sha256}")
-    pool, runs_b, slots_b = json.loads(pool_b), (d / "runs.json").read_bytes(), (d / "slots.json").read_bytes()
+    pool, runs_b, slots_b = census(json.loads(pool_b)), (d / "runs.json").read_bytes(), (d / "slots.json").read_bytes()
     runs, sl = json.loads(runs_b), json.loads(slots_b)
     if runs.get("pool_sha256") != pool_sha256:
         raise Stop("runs.json was begun on another pool.json")
@@ -404,6 +404,15 @@ def render_md(doc):
                       f"{v['n_nontie']}, median d {_f(v['median'])}, sign p {_f(v['sign_p'])}."]
         L += ["", f"Keys whose neutral is not the run rate, departures (reported, never judged): {k['neutral_not_run_rate_departures_reported'] or 'none'}.", ""]
     return "\n".join(L) + "\n"
+
+
+def census(pool):
+    """J2's pool shape. A K2 pool (tools/archival_k2/pool_k2.py: every drawn name in `names`, the census those with no `stage`) is read
+    as {"pool": that census, "store": J2's default store (where pool_k2 fetched), "T": its T}; a J2 pool is returned as it is."""
+    if "pool" in pool or "names" not in pool:
+        return pool
+    import pool as J2POOL                                                  # tools/archival_j2/pool.py (this directory)
+    return {"pool": [n for n in pool["names"] if n.get("stage") is None], "store": str(J2POOL.default_store()), "T": pool.get("T")}
 
 
 def main(argv=None):
