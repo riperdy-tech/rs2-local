@@ -246,7 +246,7 @@ def test_full_build_order_kinds_and_sections(world):
     assert pk["screener"]["commit"] == world["commit"]
     assert pk["screener"]["verified_row"] == {"run_id": "r-ok", "verdict": "PASS", "pair": "PASS", "output_commit": world["commit"],
                                               "run_updated_at": RUN_UPDATED}          # ruling 5.1: the row as found
-    assert pk["builder_version"] == "m3m.packet.builder.v8" and pk["regime"] == "verified" and "cik_source" not in pk
+    assert pk["builder_version"] == "m3m.packet.builder.v9" and pk["regime"] == "verified" and "cik_source" not in pk
     assert pk["screener"]["stocks_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.STOCKS_PATH}")
     assert pk["screener"]["factor_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.FACTOR_PATH}")
     assert "Total assets | 84,464 | 76,926" in by["F1"]["text"]                       # the real R4 report, flattened
@@ -944,7 +944,7 @@ def test_an_archival_packet_needs_no_verified_record_and_records_the_regime(worl
     pk = build_a(world)
     v = build(world)
     sh = pk["screener"]
-    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v8"
+    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v9"
     assert pk["cik_source"] == "cik_map" and pk["cik"] == CIK
     assert sh["regime"] == ARCH and sh["screener_commit_verified"] is False and sh["verified_row"] is None
     assert sh["commit_time_utc"] == "2026-10-01T00:00:00Z" and sh["commit"] == world["commit"]
@@ -1113,7 +1113,7 @@ def gc_store(w, name, tenk=None, tenq=None):
 
 
 def test_builder_v6_constants():
-    assert packet.BUILDER_VERSION == "m3m.packet.builder.v8" and packet.GC_CAP == 6_000 and packet.OTHER_8K_CAP == 4_000
+    assert packet.BUILDER_VERSION == "m3m.packet.builder.v9" and packet.GC_CAP == 6_000 and packet.OTHER_8K_CAP == 4_000
 
 
 def test_the_going_concern_note_follows_the_sections_of_its_filing_with_a_paragraph_each_side(world):
@@ -1319,3 +1319,40 @@ def test_builder_v8_six_k_interim_by_the_period_of_report_gap():
     assert not packet._six_k_periodic({"accepted": acc, "report_date": "2026-07-31"})
     assert not packet._six_k_periodic({"accepted": acc, "report_date": None})
     assert packet.SIX_K_FORMS == ("6-K", "6-K/A") and packet.MAX_SIX_K == 4 and packet.SIX_K_PERIODIC_DAYS == 7
+
+
+def build_s(w, ticker="TEST", T=T, s0_row=None, cik=CIK, **kw):
+    row = s0_row if s0_row is not None else {"symbol": ticker, "name": "Test Corp", "sector": "Technology", "industry": "Software",
+                                               "country": "US", "price": 12.5, "marketCap": 1.25e9, "Last_Updated": "2026-10-28"}
+    return packet.build(ticker, T, None, online=False, store_root=w["store"], regime=packet.REGIME_SEC_ONLY, cik=cik, s0_row=row, **kw)
+
+
+def test_builder_v9_sec_only_packet_has_the_same_sec_evidence_and_its_own_s0(world):
+    """K2 v0.2 ruling 2: archival_sec_only_v1 reads no screener commit; its S0 is the caller's row, told as no screener record; every
+    SEC slot is identical to the verified regime's build over the same store."""
+    pk, v = build_s(world), build(world)
+    assert pk["regime"] == packet.REGIME_SEC_ONLY and pk["builder_version"] == "m3m.packet.builder.v9" and pk["cik_source"] == "argument"
+    sh = pk["screener"]
+    assert sh["commit"] is None and sh["s0_source"] == "sec_and_price_at_T" and sh["verified_row"] is None and len(sh["s0_row_sha256"]) == 64
+    s0 = pk["evidence"][0]
+    assert s0["kind"] == "screener_row" and "no screener record" in s0["text"] and "marketCap: 1250000000" in s0["text"].replace(".0", "")
+    assert "last_listed: absent" in s0["text"]
+    assert [e["kind"] for e in pk["evidence"][1:]] == [e["kind"] for e in v["evidence"][1:]]
+    assert [e["text"] for e in pk["evidence"][1:]] == [e["text"] for e in v["evidence"][1:]]
+    assert packet.canonical_bytes(build_s(world)) == packet.canonical_bytes(pk)                 # deterministic
+
+
+def test_builder_v9_sec_only_refusals(world):
+    for kw, code in (({"s0_row": {"symbol": "OTHER"}}, "s0_row_invalid"), ({"s0_row": {"symbol": "TEST", "beta": 1}}, "s0_row_invalid"),
+                     ({"cik": "x"}, "cik_invalid")):
+        with pytest.raises(packet.PacketRefused) as e:
+            build_s(world, **kw)
+        assert e.value.code == code
+    with pytest.raises(packet.PacketRefused) as e:
+        packet.build("TEST", T, world["commit"], online=False, store_root=world["store"], regime=packet.REGIME_SEC_ONLY, cik=CIK,
+                     s0_row={"symbol": "TEST"})
+    assert e.value.code == "argument_not_for_regime"
+    with pytest.raises(packet.PacketRefused) as e:
+        packet.build("TEST", T, world["commit"], online=False, verified_record=world["record"], screener_repo_path=world["repo"],
+                     store_root=world["store"], s0_row={"symbol": "TEST"})
+    assert e.value.code == "argument_not_for_regime"

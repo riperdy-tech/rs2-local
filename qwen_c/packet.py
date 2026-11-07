@@ -103,7 +103,8 @@ from sec_primary import _is_text_exhibit, _items_list, _split_documents, _units,
 from qwen_c import sec_store
 
 CONTRACT = "m3m.packet.v1"
-BUILDER_VERSION = "m3m.packet.builder.v8"      # v8 2026-11-07 audit B: the six_k slot (a 20-F/40-F filer's 6-Ks after its annual report);
+BUILDER_VERSION = "m3m.packet.builder.v9"      # v9 2026-11-07 K2 v0.2 ruling 2: regime archival_sec_only_v1 (S0 from SEC and the price at T);
+                                               # v8 2026-11-07 audit B: the six_k slot (a 20-F/40-F filer's 6-Ks after its annual report);
                                                # v7 2026-10-29: gc_notes outside TOTAL_CAP, so they never push out an 8-K (CROSS_CHECK_O 6a);
                                                # v6 2026-10-29: the going-concern note, the 8-K body shared across its listed items (WO_N6);
                                                # v5 2026-10-29: the release slot keeps its other items, reads every EX-99.x, Item 7.01 (WO_N5);
@@ -111,7 +112,8 @@ BUILDER_VERSION = "m3m.packet.builder.v8"      # v8 2026-11-07 audit B: the six_
 SEC_POLICY = "sec_acceptance_next_full_xnys_session_late_after_1730_plus_one_v1"
 REGIME_VERIFIED = "verified"
 REGIME_ARCHIVAL = "archival_sec_acceptance_v1"
-REGIMES = (REGIME_VERIFIED, REGIME_ARCHIVAL)
+REGIME_SEC_ONLY = "archival_sec_only_v1"        # v9: a historical T before any screener frame (K2): S0 is a row the caller builds
+REGIMES = (REGIME_VERIFIED, REGIME_ARCHIVAL, REGIME_SEC_ONLY)
 EXCLUDED_TICKERS = ("MG", "MOV", "SENEA", "SENEB")
 
 REPO = Path(__file__).resolve().parent.parent
@@ -419,6 +421,26 @@ def _screener_archival(repo, commit_full, ticker, cik_arg, commit_time):
               "cik_map_blob_sha": _blob_sha(repo, commit_full, CIK_MAP_PATH) if cmap_blob is not None else None,
               "regime": REGIME_ARCHIVAL, "screener_commit_verified": False, "commit_time_utc": _z(commit_time), "verified_row": None}
     return _s0_item(commit_full, row, stocks_blob), header, cik, "cik_map" if map_cik else "argument"
+
+
+def _sec_only_s0(ticker, s0_row):
+    """(S0 item, header fields) of regime archival_sec_only_v1 (K2 v0.2 ruling 2): `s0_row` holds S0_FIELDS keys only, built by the
+    caller from SEC records and the closing price at T (this builder fetches nothing for it); its symbol must be the ticker. The item
+    keeps kind screener_row (the S0 slot) with its own title and first line, so the model is told no screener record exists."""
+    if not isinstance(s0_row, dict) or s0_row.get("symbol") != ticker:
+        raise PacketRefused("s0_row_invalid", f"the S0 row must be a dict whose symbol is {ticker}")
+    extra_keys = sorted(set(s0_row) - {k for k, _ in S0_FIELDS})
+    if extra_keys:
+        raise PacketRefused("s0_row_invalid", f"the S0 row carries keys outside S0_FIELDS: {', '.join(extra_keys)}")
+    blob = canonical_bytes(s0_row)
+    lines = ["Identity and market fields at T (SEC records and the closing price at T; no screener record exists for this date):"
+             ] + s0_lines(s0_row)
+    item = {"kind": "screener_row", "name": "screener_row", "title": "Identity and market fields at T (no screener record)",
+            "source": {"git_commit": None, "path": None}, "form": None, "period": None, "accepted_raw": None, "effective_at": None,
+            "raw_sha256": hashlib.sha256(blob).hexdigest(), "text": canonical("\n".join(lines))}
+    header = {"commit": None, "regime": REGIME_SEC_ONLY, "s0_source": "sec_and_price_at_T", "s0_row_sha256": hashlib.sha256(blob).hexdigest(),
+              "screener_commit_verified": False, "verified_row": None}
+    return item, header
 
 
 # ---- SEC documents --------------------------------------------------------------------------------------------------------------
@@ -983,7 +1005,7 @@ def _commit_time(repo, commit_full):
     return datetime.fromisoformat(_git(repo, "show", "-s", "--format=%cI", commit_full).decode("ascii").strip())
 
 
-def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED, cik_arg=None):
+def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED, cik_arg=None, s0_row=None):
     """The packet of an already-verified commit (regime `verified`; `verified` is the pinned verified row, pinned_row) or of a frame commit
     (regime `archival_sec_acceptance_v1`; `verified` is None and `cik_arg` the CIK argument, if any). `fetch` is an _Inputs. Pure given the
     store, the repository, the builder's code and the arguments."""
@@ -991,7 +1013,11 @@ def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED,
         raise PacketRefused("regime_invalid", f"{regime!r} is not one of {', '.join(REGIMES)}")
     check_T_in_calendar(T)
     extra = {}
-    if regime == REGIME_ARCHIVAL:
+    if regime == REGIME_SEC_ONLY:
+        s0, sheader = _sec_only_s0(ticker, s0_row)
+        cik = _cik_argument(cik_arg)
+        extra["cik_source"] = "argument"
+    elif regime == REGIME_ARCHIVAL:
         committed = _commit_time(repo, commit_full)
         if committed.astimezone(timezone.utc) > T:
             raise PacketRefused("frame_commit_after_T", f"{commit_full} is dated {committed.isoformat()}, after T {_z(T)}")
@@ -1079,7 +1105,7 @@ def _check_ticker(ticker):
 
 
 def build(ticker, T, screener_commit, *, online, verified_record=None, screener_repo_path=None, store_root=None, regime=REGIME_VERIFIED,
-          cik=None):
+          cik=None, s0_row=None):
     """The packet dict of `ticker` at decision time T over the screener commit `screener_commit`. Regime `verified` (the default) needs
     `verified_record`, the check_new_runs record (a path to its JSON, or the loaded list of rows), and takes no `cik`. Regime
     `archival_sec_acceptance_v1` takes no `verified_record`, and `cik` only for a commit whose cik_map.json lacks the ticker. See the module
@@ -1088,6 +1114,15 @@ def build(ticker, T, screener_commit, *, online, verified_record=None, screener_
         raise PacketRefused("regime_invalid", f"{regime!r} is not one of {', '.join(REGIMES)}")
     t = _check_ticker(ticker)
     T = parse_T(T)
+    if regime == REGIME_SEC_ONLY:                                           # v9 (K2): no screener commit, record or repository is read
+        if verified_record is not None or screener_commit is not None:
+            raise PacketRefused("argument_not_for_regime", f"regime {regime} reads no screener commit or verified record")
+        if cik is None or s0_row is None:
+            raise PacketRefused("argument_missing", f"regime {regime} needs the cik and the S0 row")
+        fetch = _Inputs(lambda url: sec_store.get(url, online=online, root=store_root))
+        return _core(t, T, None, None, fetch, None, regime, cik, s0_row)
+    if s0_row is not None:
+        raise PacketRefused("argument_not_for_regime", f"an S0 row is used only by regime {REGIME_SEC_ONLY}")
     if regime == REGIME_ARCHIVAL and verified_record is not None:
         raise PacketRefused("argument_not_for_regime", f"a verified record is not used by regime {regime}")
     if regime == REGIME_VERIFIED and cik is not None:
