@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
 
-FACTS_VERSION = "m3q.facts.v7"   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v8"   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -421,6 +421,11 @@ def _derive(out, absent, cf, eligible, known, T, years):
         if e in by["nci_equity"]:
             nci = by["nci_equity"][e]
             put("equity", e, t["value"] - nci["value"], f"{t['tag']}-{nci['tag']}", "equity_total_less_nci", t)
+            continue
+        if not by["nci_equity"] and not by["nci_income"]:
+            # coverage A 2026-11-07: no NCI balance and no NCI income filed in any year of the window: nothing is attributed to NCI, so
+            # the filed total is the parent's (Visa tags only the total after 2011)
+            put("equity", e, t["value"], t["tag"], "equity_total_no_nci_filed", t)
             continue
         prior = [x for x in by["nci_equity"] if x < e]
         if prior and by["nci_equity"][max(prior)]["value"] != 0:

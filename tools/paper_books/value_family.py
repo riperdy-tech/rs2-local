@@ -9,8 +9,8 @@ facts built from them (facts.annual_facts), so every balance-sheet value is from
 is the submissions' current assignment (SEC publishes no dated history; the census used the current code too).
 
 THE CLASSIFICATION (rs2 engine v2.2 valuation/classification.py, rules 1-4):
-1. SIC: real estate 6500-6599 and 6798, shells 6770, holding companies 6719/9990/9995, utilities and pipelines 4900-4949 are
-   family_not_built (final); 6282 and 6411 are operating (fee businesses); 6000-6411 financial; the commodity ranges below commodity;
+1. SIC: real estate 6500-6599 and 6798, shells 6770, holding companies 6719/9990/9995 are family_not_built (final); utilities and
+   pipelines 4900-4949 (since 2026-11-07), 6282 and 6411 (fee businesses) are operating; 6000-6411 financial; the commodity ranges below commodity;
    everything else operating. No SIC: classified by the balance sheet, operating by default.
 2. Balance sheet, on the latest fiscal year-end with total assets filed: insurance reserves (the sum of the three disjoint tags) >= 10%
    of assets, or loans (the first of LOAN_TAGS filed) >= 50% of assets AND debt plus deposits >= 50% of liabilities -> financial (wins
@@ -55,7 +55,13 @@ NOTES_PAIR = ("NotesAndLoansReceivableNetCurrent", "NotesAndLoansReceivableNetNo
 
 _NOT_BUILT = [((6500, 6599), "reit_or_real_estate"), ((6798, 6798), "reit_or_real_estate"), ((6770, 6770), "blank_check_shell"),
               ((6719, 6719), "conglomerate_or_holding_company"), ((9990, 9990), "conglomerate_or_holding_company"),
-              ((9995, 9995), "conglomerate_or_holding_company"), ((4900, 4949), "regulated_utility_or_pipeline")]
+              ((9995, 9995), "conglomerate_or_holding_company")]
+# coverage A 2026-11-07: utilities and pipelines (SIC 4900-4949) take the operating route. Measured on the 7 screener-list names: their
+# filings carry the operating route's tags; OGE, UGI and FE pass every operating data rule (RONIC_0 0.065-0.120 near kd 0.048-0.062, as
+# a regulated return near the cost of capital should); HNRG, CWEN, RNW and TRGP are refused by those same rules. Real estate stays
+# not built: 18 of 20 list names fail the operating data rules for structural reasons (unclassified balance sheets, no operating
+# income tag, REIT-level tax), so it needs its own route
+_UTILITY = (4900, 4949)
 _FINANCIAL_EXCEPTIONS = {6282: "investment advice: a fee business, valued as operating",
                          6411: "insurance agents and brokers: a fee business, valued as operating"}
 _FINANCIAL = [(6000, 6411)]
@@ -75,6 +81,8 @@ def sic_family(sic):
     for (a, b), kind in _NOT_BUILT:
         if a <= code <= b:
             return "family_not_built", kind
+    if _UTILITY[0] <= code <= _UTILITY[1]:
+        return "operating", "utility or pipeline: valued on the operating route (2026-11-07)"
     if code in _FINANCIAL_EXCEPTIONS:
         return "operating", _FINANCIAL_EXCEPTIONS[code]
     if _in(code, _FINANCIAL):

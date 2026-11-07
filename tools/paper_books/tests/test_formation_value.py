@@ -221,7 +221,7 @@ def test_waits_for_another_formation_with_q1_work_left(world):
 
 def test_sic_families():
     assert VF.sic_family("6798") == ("family_not_built", "reit_or_real_estate")
-    assert VF.sic_family("4911")[0] == "family_not_built"
+    assert VF.sic_family("4911")[0] == "operating"              # coverage A 2026-11-07: utilities on the operating route
     assert VF.sic_family("6282")[0] == "operating" and VF.sic_family("6411")[0] == "operating"
     assert VF.sic_family("6022")[0] == "financial" and VF.sic_family("1311")[0] == "commodity"
     assert VF.sic_family("7372")[0] == "operating" and VF.sic_family(None) == (None, "no SIC code")

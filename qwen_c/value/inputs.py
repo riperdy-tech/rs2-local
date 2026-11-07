@@ -20,7 +20,7 @@ from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION, PRETAX_FROM_NI, has_stamp
 
-INPUTS_VERSION = "m3q.inputs.v10"   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v11"   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -43,6 +43,28 @@ DEBT_INCLUDES_LEASES = {"DebtAndCapitalLeaseObligations", "LongTermDebtAndCapita
 
 def _by_end(f, concept):
     return {v["end"]: v["value"] for v in (f.get(concept) or {}).get("values", [])}
+
+
+def check_shares(f, e0, numer, shares, stamps, what):
+    """Ruling 5 / N15: the per-share scale of the filed diluted shares, proven against filed diluted EPS. Returns the shares to use.
+    Coverage A 2026-11-07: a count filed in thousands (the XBRL scale slip measured on SWBI) is rescaled when the count times 1e3
+    reconciles, stamped. Nothing else is accepted (a 1e6 slip is not measured on any filer, so it stays refused). Not accepted, measured 11-07: reconciling on the filed diluted numerator (an
+    if-converted convertible would then count as shares and as debt, CHEF), and preferred dividends without a filed preferred balance
+    (State Street files its preferred in equity untagged after 2013): both stay refused."""
+    eps = _by_end(f, "eps_diluted").get(e0)
+    if not eps:
+        stamps.append("shares_unreconciled_no_eps")
+        return shares
+    ok = lambda x: abs(x / eps - 1) <= SHARES_TOL or abs(x - eps) <= EPS_ROUNDING    # N15: EPS is filed to the cent
+    for k in (1.0, 1e3):
+        if ok(numer / (shares * k)):
+            if k != 1.0:
+                stamps.append(f"shares_filed_scale_x{k:.0e}_eps_reconciled")
+            return shares * k
+    if "per_share_basis_unverified" not in stamps:                        # F_SPEC §6: a 20-F/40-F filer (an ADS ratio) is valued
+        raise DeskRefusal("shares_scale_unverified", f"{what} / diluted shares {numer / shares:.6g} against filed diluted EPS {eps:.6g}")
+    stamps.append("shares_scale_unverified_ads")
+    return shares
 
 
 def _tag(f, concept, end):
@@ -264,15 +286,7 @@ def base(f, *, market_cap, bill_rate):
     shares = _by_end(f, "diluted_shares").get(e0)
     if not (shares and shares > 0):
         raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
-    eps = _by_end(f, "eps_diluted").get(e0)
-    if eps:
-        implied = ni[e0] / shares
-        if abs(implied / eps - 1) > SHARES_TOL and abs(implied - eps) > EPS_ROUNDING:   # N15: EPS is filed to the cent
-            if "per_share_basis_unverified" not in stamps:                    # F_SPEC §6: a 20-F/40-F filer (an ADS ratio) is valued
-                raise DeskRefusal("shares_scale_unverified", f"NI / diluted shares {implied:.6g} against filed diluted EPS {eps:.6g}")
-            stamps.append("shares_scale_unverified_ads")
-    else:
-        stamps.append("shares_unreconciled_no_eps")
+    shares = check_shares(f, e0, ni[e0], shares, stamps, "NI")
     stamps.append("shares_weighted_average_diluted")
     # ruling 4: the vintages D&A rule from filed PP&E (prior gross, gross, net, D&A_org of the base year); else pooled, stamped
     gross, net = _by_end(f, "ppe_gross"), _by_end(f, "ppe_net")
@@ -403,15 +417,7 @@ def base_financial(f):
     shares = _by_end(f, "diluted_shares").get(e0)
     if not (shares and shares > 0):
         raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
-    eps = _by_end(f, "eps_diluted").get(e0)
-    if eps:
-        implied = ni[e0] / shares
-        if abs(implied / eps - 1) > SHARES_TOL and abs(implied - eps) > EPS_ROUNDING:
-            if "per_share_basis_unverified" not in stamps:                    # F_SPEC §6: a 20-F/40-F filer (an ADS ratio) is valued
-                raise DeskRefusal("shares_scale_unverified", f"income to common / diluted shares {implied:.6g} against filed diluted EPS {eps:.6g}")
-            stamps.append("shares_scale_unverified_ads")
-    else:
-        stamps.append("shares_unreconciled_no_eps")
+    shares = check_shares(f, e0, ni[e0], shares, stamps, "income to common")
     aoci = _by_end(f, "aoci").get(e0)
     if aoci is not None and eq_all[e0]:
         stamps.append(f"aoci_in_book_not_separated:{aoci / eq_all[e0]:+.3f}")   # CROSS_CHECK_Q3 11: its share of book

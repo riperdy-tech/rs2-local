@@ -140,8 +140,12 @@ def test_ronic0_on_tangible_capital_and_capped():
 
 def test_share_scale_is_reconciled_to_eps():
     with pytest.raises(desk.DeskRefusal) as e:
-        base(facts(diluted_shares=series([0.01, 0.01, 0.01, 0.01, 0.01])))
+        base(facts(diluted_shares=series([7, 7, 7, 7, 7])))                 # not a scale slip: refused
     assert e.value.code == "shares_scale_unverified"
+    b = base(facts(diluted_shares=series([0.01, 0.01, 0.01, 0.01, 0.01])))   # coverage A 2026-11-07: filed in thousands, rescaled
+    assert b["shares"] == pytest.approx(10) and "shares_filed_scale_x1e+03_eps_reconciled" in b["stamps"]
+    with pytest.raises(desk.DeskRefusal):
+        base(facts(diluted_shares=series([1e-5] * 5)))                        # a 1e6 slip is not measured on any filer: refused
     f = facts()
     del f["eps_diluted"]
     assert "shares_unreconciled_no_eps" in base(f)["stamps"]
