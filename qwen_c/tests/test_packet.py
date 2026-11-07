@@ -246,7 +246,7 @@ def test_full_build_order_kinds_and_sections(world):
     assert pk["screener"]["commit"] == world["commit"]
     assert pk["screener"]["verified_row"] == {"run_id": "r-ok", "verdict": "PASS", "pair": "PASS", "output_commit": world["commit"],
                                               "run_updated_at": RUN_UPDATED}          # ruling 5.1: the row as found
-    assert pk["builder_version"] == "m3m.packet.builder.v7" and pk["regime"] == "verified" and "cik_source" not in pk
+    assert pk["builder_version"] == "m3m.packet.builder.v8" and pk["regime"] == "verified" and "cik_source" not in pk
     assert pk["screener"]["stocks_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.STOCKS_PATH}")
     assert pk["screener"]["factor_blob_sha"] == git(world["repo"], "rev-parse", f"HEAD:{packet.FACTOR_PATH}")
     assert "Total assets | 84,464 | 76,926" in by["F1"]["text"]                       # the real R4 report, flattened
@@ -944,7 +944,7 @@ def test_an_archival_packet_needs_no_verified_record_and_records_the_regime(worl
     pk = build_a(world)
     v = build(world)
     sh = pk["screener"]
-    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v7"
+    assert pk["regime"] == ARCH and v["regime"] == "verified" and pk["builder_version"] == "m3m.packet.builder.v8"
     assert pk["cik_source"] == "cik_map" and pk["cik"] == CIK
     assert sh["regime"] == ARCH and sh["screener_commit_verified"] is False and sh["verified_row"] is None
     assert sh["commit_time_utc"] == "2026-10-01T00:00:00Z" and sh["commit"] == world["commit"]
@@ -1113,7 +1113,7 @@ def gc_store(w, name, tenk=None, tenq=None):
 
 
 def test_builder_v6_constants():
-    assert packet.BUILDER_VERSION == "m3m.packet.builder.v7" and packet.GC_CAP == 6_000 and packet.OTHER_8K_CAP == 4_000
+    assert packet.BUILDER_VERSION == "m3m.packet.builder.v8" and packet.GC_CAP == 6_000 and packet.OTHER_8K_CAP == 4_000
 
 
 def test_the_going_concern_note_follows_the_sections_of_its_filing_with_a_paragraph_each_side(world):
@@ -1308,3 +1308,14 @@ def test_an_amendment_has_its_own_going_concern_note_right_after_it(world):
     assert g["title"] == "10-Q/A going concern and liquidity passages" and g["form"] == "10-Q/A" and g["source"]["url"] == f"{base(AAM2)}/tqa2.htm"
     assert f"gc_text_not_found: {AAM4}" in pk["annotations"]                              # AAM4: no amendment text and no going-concern passage, both said
     assert f"amendment_text_not_found: 10-Q/A {AAM4}" in pk["annotations"]
+
+
+def test_builder_v8_six_k_interim_by_the_period_of_report_gap():
+    """v8: a 6-K is an interim report when its period of report ends >= 7 days before its acceptance (measured 2026-11-07: event
+    notices at 0-6 days, interim reports at >= 20, none between); an unreadable period is never periodic."""
+    acc = datetime(2026, 8, 6, 12, 0, tzinfo=timezone.utc)
+    assert packet._six_k_periodic({"accepted": acc, "report_date": "2026-06-30"})
+    assert not packet._six_k_periodic({"accepted": acc, "report_date": "2026-08-06"})
+    assert not packet._six_k_periodic({"accepted": acc, "report_date": "2026-07-31"})
+    assert not packet._six_k_periodic({"accepted": acc, "report_date": None})
+    assert packet.SIX_K_FORMS == ("6-K", "6-K/A") and packet.MAX_SIX_K == 4 and packet.SIX_K_PERIODIC_DAYS == 7

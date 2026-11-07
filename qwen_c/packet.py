@@ -25,6 +25,13 @@ EVIDENCE, in this fixed order (ids S0, then F1..., then P1..., sequential within
   P  release            the latest eligible 8-K Item 2.02 release: every EX-99.x exhibit of the filing (EX-99, EX-99.1, EX-99.2, ... in
                         exhibit order) read together to RELEASE_CAP (sec_primary.select_text rules); one accepted more than
                         RELEASE_MAX_DAYS before T is not used and is annotated release_stale
+  P  six_k_interim      (v8) a foreign private issuer (annual report a 20-F or 40-F): the newest eligible 6-K accepted after that
+                        annual report whose period of report ends >= SIX_K_PERIODIC_DAYS before its acceptance (an interim report),
+                        its EX-99.x exhibits (the 6-K document itself when it has none) to RELEASE_CAP, as the release slot
+  P  six_k              (v8) that issuer's other eligible 6-Ks of the OTHER_8K_DAYS before T accepted after the annual report, newest
+                        first, at most MAX_SIX_K, each to OTHER_8K_CAP, as the other-8-K slot. Why (audit B 2026-11-07): such a filer
+                        files no 10-Q or 8-K, so its interim results, deals and events reach the SEC only as 6-Ks; without them the
+                        packet held nothing after the annual report (up to ~10 months: GSL, HAFN, GASS missed their H1 results)
   P  other_8k           eligible 8-Ks of the OTHER_8K_DAYS before T with a listed item, newest first, at most MAX_OTHER_8K: the 8-K body,
                         one segment (its Item heading to the next Item heading) for each listed item of OTHER_8K_ITEMS, the segments
                         sharing OTHER_8K_CAP evenly (v6), then its EX-99.x exhibits in what remains. Contracts and other exhibits
@@ -81,7 +88,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -96,7 +103,8 @@ from sec_primary import _is_text_exhibit, _items_list, _split_documents, _units,
 from qwen_c import sec_store
 
 CONTRACT = "m3m.packet.v1"
-BUILDER_VERSION = "m3m.packet.builder.v7"      # v7 2026-10-29: gc_notes outside TOTAL_CAP, so they never push out an 8-K (CROSS_CHECK_O 6a);
+BUILDER_VERSION = "m3m.packet.builder.v8"      # v8 2026-11-07 audit B: the six_k slot (a 20-F/40-F filer's 6-Ks after its annual report);
+                                               # v7 2026-10-29: gc_notes outside TOTAL_CAP, so they never push out an 8-K (CROSS_CHECK_O 6a);
                                                # v6 2026-10-29: the going-concern note, the 8-K body shared across its listed items (WO_N6);
                                                # v5 2026-10-29: the release slot keeps its other items, reads every EX-99.x, Item 7.01 (WO_N5);
                                                # v4 2026-10-29: 8-K Item 1.02, the archival regime and the packet's `regime` (3N)
@@ -124,6 +132,11 @@ OTHER_8K_ITEMS = ("1.01", "1.02", "1.03", "2.01", "2.03", "2.04", "2.06", "3.01"
 RELEASE_MAX_DAYS = 120
 AMENDMENT_CAP = 4_000
 MAX_AMENDMENTS = 2
+SIX_K_FORMS = ("6-K", "6-K/A")
+SIX_K_PERIODIC_DAYS = 7          # v8: a 6-K whose period of report ends >= 7 days before its acceptance is an interim report. Measured
+                                 # 2026-11-07 on 1,091 6-Ks of 25 foreign private issuers since 2025: 960 at 0-6 days (event notices dated
+                                 # the day they are filed), 131 at >= 20 days (interim reports), none at 7-19
+MAX_SIX_K = 4                    # the event 6-Ks, as MAX_OTHER_8K
 TOC_MIN_CHARS = 1_500
 SHORT_MIN_CHARS = 100            # a short section kept only as the last of two or more headings (find_section); an amendment's heading
 MIN_TRIMMED = 600
@@ -707,6 +720,32 @@ def _release(cik, row, fetch, notes):
     return [_evidence("release", "earnings_release", f"{row['form']} Item 2.02 earnings release ({', '.join(used)})", row, url, raw, text)]
 
 
+def _six_k(cik, row, fetch, notes, kind, cap):
+    """A six_k_interim or six_k item (v8): a 6-K's EX-99.x exhibits (_release_docs order), else the 6-K document itself, read as one
+    document to `cap` by sec_primary.select_text. Nothing is chosen by content: the interim slot by the period-of-report gap, the
+    event slots by date. A filing with no readable text is annotated six_k_text_not_found."""
+    url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
+    raw = fetch(url)
+    all_docs = _eight_k_docs(raw)
+    docs = _release_docs(all_docs) or [d for d in all_docs if d["type"].upper() in SIX_K_FORMS]
+    blocks = [(d, blocks_of(d["raw"])) for d in docs]
+    text = canonical(select_text([b for _, bs in blocks for b in bs], cap))
+    if not text:
+        notes.append(f"six_k_text_not_found: {row['accession']}")
+        return []
+    used = [f"{d['type']} {d['filename']}" for d, bs in blocks if any(canonical(t)[:40] in text for _, t in _units(bs) if canonical(t))]
+    label = "interim report" if kind == "six_k_interim" else "report"
+    return [_evidence(kind, kind, f"{row['form']} {label} ({', '.join(used)})", row, url, raw, text)]
+
+
+def _six_k_periodic(row):
+    """v8: the 6-K's period of report ends >= SIX_K_PERIODIC_DAYS before its acceptance (an interim report, not an event notice)."""
+    try:
+        return (row["accepted"].date() - date.fromisoformat(row["report_date"])).days >= SIX_K_PERIODIC_DAYS
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
 def _item_head(items):
     """The heading of an item the filing lists (`Item 1.01`, `ITEM 8.01.`, `Items 1.01 and 2.03`, a table row `Item 8.01. | Other Events.`)."""
     return re.compile(r"^\s*(?i:items?)\s*(?:%s)(?!\d)(?:\s*(?:,|and|&)\s*\d{1,2}\.\d{2})*" % "|".join(re.escape(i) for i in items))
@@ -1011,6 +1050,18 @@ def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED,
                    "other_8k", T, excluded, notes, limit=MAX_OTHER_8K)
     for r in others:
         items += _other_8k(cik, r, fetch, notes)
+    if annual and annual[0]["form"] in ("20-F", "40-F"):                   # v8: a foreign private issuer's interim filings
+        later = lambda r: r["form"] in SIX_K_FORMS and (r["accepted"] is None or r["accepted"] > after)
+        interim = _pick(rows, lambda r: later(r) and _six_k_periodic(r), "six_k_interim", T, excluded, notes)
+        if interim:
+            items += _six_k(cik, interim[0], fetch, notes, "six_k_interim", RELEASE_CAP)
+        else:
+            notes.append("no_eligible_filing: six_k_interim (a 6-K interim report after the 20-F/40-F annual report)")
+        skip = {interim[0]["accession"]} if interim else set()
+        six = _pick(rows, lambda r: later(r) and r["accession"] not in skip and (r["accepted"] is None or r["accepted"] >= since),
+                    "six_k", T, excluded, notes, limit=MAX_SIX_K)
+        for r in six:
+            items += _six_k(cik, r, fetch, notes, "six_k", OTHER_8K_CAP)
 
     items = _assign_ids(_trim(items, notes))
     return {"contract": CONTRACT, "builder_version": BUILDER_VERSION, "builder_code": builder_code(), "regime": regime, "ticker": ticker,

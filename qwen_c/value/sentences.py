@@ -11,7 +11,7 @@ item ID and carry no markers. Each ID carries its item's kind, period and form; 
 import re
 
 SENTENCES_VERSION = "m3q.sentences.v2"   # v2 2026-11-03 F8: marker <17> under the item's [P4] header (the [[P4.s17]] marker cost 15.6-20.9% of prompt tokens)
-PROSE_KINDS = ("annual_section", "quarterly_section", "gc_note", "amendment", "release", "other_8k", "news")
+PROSE_KINDS = ("annual_section", "quarterly_section", "gc_note", "amendment", "release", "other_8k", "six_k_interim", "six_k", "news")
 ABBREV = {"inc", "corp", "co", "ltd", "llc", "no", "nos", "mr", "mrs", "ms", "dr", "st", "vs", "approx", "fig", "jan", "feb", "mar",
           "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"}
 _END = re.compile(r"[.?!][\"'”’)\]]*\s+(?=[A-Z0-9\"'“‘(\[$])")
