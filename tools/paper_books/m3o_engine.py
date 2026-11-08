@@ -11,6 +11,8 @@ Rerun:  every line is recomputed; a stored line that differs from its recomputat
 Series: F (A0 equal weight, forward_ledger.py's arithmetic), FB (F minus B1), FQ (FB plus Q1, pending/incomplete slots cash),
 FQ_decisions_only (analysis series: FB plus Q1, pending/incomplete filled as in FB), and F_ex_operator (marks only). They start at the
 first contemporaneous formation that has a map, from cash. A map labelled "retrospective" is its own one-period group.
+FD (PREREG_m3o_bookD.json, 2026-11-08): FQ plus code replacement of each name restricted at the fill by the next B1-clean watchlist
+candidate of the map's "candidates" list; it starts from cash at the first formation whose map holds candidates (from FD_START).
 B1 is the deterministic text rule (3N baseline B); it is never called verified.
 """
 import argparse, csv, hashlib, io, json, math, re, statistics, subprocess, sys
@@ -25,10 +27,12 @@ import baseline_b            # noqa: E402  (3N baseline B, unchanged)
 import forward_ledger as fl  # noqa: E402  (A0 formations, calendar, period_return; unchanged)
 import universe as uni       # noqa: E402  (WO_S1: the universe records and prices for the U benchmark in the marks)
 
-ENGINE_VERSION = "m3o_engine.v2"
+ENGINE_VERSION = "m3o_engine.v3"
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 SCHEMA = "m3o.decision.v1"
 PREREG_M3O = book_paths.prereg("PREREG_m3o.json")   # frozen copy in rs2-state; its sha256 is on every line and checked by the stop rule
+PREREG_BOOKD = book_paths.prereg("PREREG_m3o_bookD.json")  # FD's registration; its sha256 is on FD lines only
+FD_START = "2026-11-30"              # PREREG_m3o_bookD series_start
 BOOKS = book_paths.books()
 WINDOW_DAYS = 180                    # PREREG B1 item_window_days_before_T and Q1 occurred_on window
 TOL = 1e-6                           # float tolerance of the stop rule (price-fetch noise); see RR_O1
@@ -210,7 +214,7 @@ def load_map(inputs_dir, rec):
             raise Stop(f"{p.name}: {k} {m[k]} is not the formation's {rec[k]}")
     if m.get("book") is not None and list(m["book"]) != list(rec["book"]):
         raise Stop(f"{p.name}: book differs from the stored A0 book")
-    for e in (m.get("names") or {}).values():                      # a relative path is relative to the map's folder
+    for e in list((m.get("names") or {}).values()) + list(m.get("candidates") or []):   # a relative path is relative to the map's folder
         for k in ("packet", "run_dir"):
             if e.get(k) and not Path(e[k]).is_absolute():
                 e[k] = str(Path(inputs_dir) / e[k])
@@ -379,6 +383,53 @@ def plan_book(series, book, excluded, pre, ev):
     cash = 1.0 - sum(plan["positions"].values()) - sum(s["weight"] for s in plan["slots"].values())
     plan["cash"] = 0.0 if abs(cash) < 1e-12 else cash
     return plan, dec
+
+
+def evaluate_candidate(name, entry, T_date, compiled):
+    """A watchlist candidate of FD: its packet's B1 hits. Eligible when a packet was built and B1 does not act (Q1 is not applied)."""
+    if not entry.get("packet"):
+        return {"packet": None, "packet_sha": None, "hits": None, "b1_restricted": False, "eligible": False,
+                "reason": entry.get("state") or "no_packet"}
+    raw = Path(entry["packet"]).read_bytes()
+    packet = json.loads(raw)
+    if packet.get("ticker") != name:
+        raise Stop(f"candidate {name}: packet {entry['packet']} is for {packet.get('ticker')}")
+    hits = b1(packet, T_date, compiled)
+    restricted = any(h["acts"] for h in hits)
+    return {"packet": entry["packet"], "packet_sha": sha256_bytes(raw), "builder_code": packet.get("builder_code"), "hits": hits,
+            "b1_restricted": restricted, "eligible": not restricted, "reason": "b1_restricted" if restricted else "eligible"}
+
+
+def plan_fd(book, excluded, pre, ev, cands, prev_book):
+    """FD: FQ's plan, then each FQ new_entry_restricted vacancy filled by the next eligible candidate (cands: [(ticker, evaluation)] in
+    order; prev_book: the prior formation's A0 book). Returns (plan, decisions, replacements [(restricted, replacement or None)])."""
+    plan, dec = plan_book("FQ", book, excluded, pre, ev)
+    held = {t for t in pre if t != "CASH"}
+    vacancies = [d[0] for d in dec if d[1] == "new_entry_restricted"]
+    pool = [t for t, c in cands if c["eligible"] and t not in book]
+    chosen, pairs = [], []
+    for v in vacancies:
+        r = pool.pop(0) if pool else None
+        pairs.append((v, r))
+        i = next(k for k, d in enumerate(dec) if d[0] == v and d[1] == "new_entry_restricted")
+        t, a, ru, rs, f, c = dec[i]
+        dec[i] = (t, a, ru, rs + (f"; replaced_by:{r}" if r else "; no_candidate_left"), f + ([] if r else ["no_candidate_left"]), c)
+        if r is None:
+            continue
+        chosen.append(r)
+        plan["positions"][r] = 0.0
+        dec.append((r, "hold" if r in held else "enter", "D1", f"replaces_restricted:{v}", [], []))
+    dec = [d for d in dec if not (d[1] == "exit" and d[0] in chosen)]             # a replacement held and chosen again is a hold
+    dec = [(t, a, "D1", "not_rechosen", f, c) if a == "exit" and t not in prev_book else (t, a, ru, rs, f, c)
+           for (t, a, ru, rs, f, c) in dec]                                     # held, not in the prior A0 book: a prior replacement
+    n = len(plan["positions"]) + len(plan["slots"])
+    for t in plan["positions"]:
+        plan["positions"][t] = 1.0 / n
+    for sl in plan["slots"].values():
+        sl["weight"] = 1.0 / n
+    cash = 1.0 - sum(plan["positions"].values()) - sum(sl["weight"] for sl in plan["slots"].values())
+    plan["cash"] = 0.0 if abs(cash) < 1e-12 else cash
+    return plan, dec, pairs
 
 
 # ---------------------------------------------------------------- one period of one series
@@ -604,6 +655,7 @@ def run(forward_dir, inputs_dir, ledger_dir, factor_loader=None, prices_dir=None
     periods = {}                             # group -> series -> [period records]
     main_started = False
     u_state, u_periods, u_cov, u_broken, u_in, u_rec = {}, {}, {}, {}, {}, {}      # WO_S1, per group
+    prev_books = {}                          # group -> the prior formation's A0 book (FD's exit labels)
 
     for i, (rec, line_sha) in enumerate(forms):
         T, F = rec["formation_T"], date.fromisoformat(rec["fill_session"])
@@ -718,6 +770,12 @@ def run(forward_dir, inputs_dir, ledger_dir, factor_loader=None, prices_dir=None
                     for (t, a, _, _, _, c) in dec if a == "new_entry_restricted"]
             per[s].append(period_record(rec, F, exit_F, last_day, step, spy, arm_label(s, T, retro), extra))
             pre[s] = step["post"]
+        if "FD" in pre and mp.get("candidates") is None:
+            raise Stop(f"{T}: FD started at an earlier formation, but this map has no candidates")
+        if mp.get("candidates") is not None and not retro and T >= FD_START:
+            fd_period(L, rec, inputs, book, excluded, pre, per, ev, mp, T_date, compiled, px, F, exit_F, last_day, spy, retro,
+                      prev_books.get(group, []))
+        prev_books[group] = book
         ex_book = [t for t in book if t not in excluded]
         ex_plan = {"positions": {t: 1.0 / len(ex_book) for t in ex_book}, "slots": {}, "cash": 0.0}
         step = arm_step(pre["F_ex_operator"], ex_plan, px, F, exit_F, last_day)
@@ -742,6 +800,11 @@ def run(forward_dir, inputs_dir, ledger_dir, factor_loader=None, prices_dir=None
             cmp.update({f"FB_minus_F_{c}": sm["FB"][key] - sm["F"][key],
                         f"FQ_decisions_only_minus_FB_{c}": sm["FQ_decisions_only"][key] - sm["FB"][key],
                         f"FQ_minus_FQ_decisions_only_{c}": sm["FQ"][key] - sm["FQ_decisions_only"][key]})
+        if per.get("FD"):                     # FD minus FQ over the periods FD holds (FQ restricted to them)
+            first = per["FD"][0]["formation_T"]
+            sm_q = summarize([x for x in per["FQ"] if x["formation_T"] >= first])
+            for c in ("gross", "net_20bp"):
+                cmp[f"FD_minus_FQ_{c}"] = sm["FD"]["cumulative_" + c] - sm_q["cumulative_" + c]
         groups[g] = {"series": {s: {"periods": p, "summary": sm[s]} for s, p in per.items() if p}, "comparisons": cmp}
         if g in u_broken:
             groups[g]["U_unavailable"] = u_broken[g]
@@ -761,6 +824,40 @@ def run(forward_dir, inputs_dir, ledger_dir, factor_loader=None, prices_dir=None
         marks["universe_records"] = {T: u_in[T] for T in sorted(u_in)}
         marks["universe_receipts"] = {T: u_rec[T] for T in sorted(u_rec)}
     return L, marks
+
+
+def fd_period(L, rec, inputs, book, excluded, pre, per, ev, mp, T_date, compiled, px, F, exit_F, last_day, spy, retro, prev_book):
+    """One period of FD (PREREG_m3o_bookD): candidate B1 lines, action lines, the period record. pre/per gain "FD" at its first formation."""
+    T = rec["formation_T"]
+    fd_inputs = {**inputs, "prereg_bookD": sha256_bytes(Path(PREREG_BOOKD).read_bytes())}
+    cands = []
+    for i, e in enumerate(mp["candidates"]):
+        t = e["ticker"]
+        if t in book or t in excluded:
+            raise Stop(f"{T}: candidate {t} is in the A0 book or operator-excluded")
+        c = evaluate_candidate(t, e, T_date, compiled)
+        cands.append((t, c))
+        L["verification"].append({**stamp(), "inputs": {**fd_inputs, "packet": c["packet_sha"]}, "kind": "candidate_b1", "formation_T": T,
+                                  "ticker": t, "candidate_order": i + 1, "fct_rank": e.get("fct_rank"), "eligible": c["eligible"],
+                                  "reason": c["reason"], "b1": {"rule": B1_NAME, "evaluated": c["hits"] is not None,
+                                                                "restricted": c["b1_restricted"], "hits": c["hits"] or []},
+                                  "builder_code": c.get("builder_code")})
+    pre.setdefault("FD", {"CASH": 1.0})
+    per.setdefault("FD", [])
+    plan, dec, pairs = plan_fd(book, excluded, pre["FD"], ev, cands, prev_book)
+    cmap = dict(cands)
+    for (t, action, rule, reason, flags, causes) in dec:
+        n = ev.get(t)
+        if n is not None:
+            prov = {"qwen_c_commit": n["qwen_c_commit"] if n["state"] == "complete" else None, "builder_code": n["builder_code"]}
+        else:
+            prov = {"qwen_c_commit": None, "builder_code": cmap[t].get("builder_code")} if t in cmap else {}
+        L["actions"].append(action_line(rec, fd_inputs, "FD", t, action, rule, reason, flags, pre["FD"], plan, prov, retro, causes))
+    step = arm_step(pre["FD"], plan, px, F, exit_F, last_day)
+    extra = {"replacements": [{"restricted": v, "replacement": r, "restricted_return": ret_of(v, px, F, exit_F, last_day)[0],
+                               "replacement_return": ret_of(r, px, F, exit_F, last_day)[0] if r else None} for v, r in pairs]}
+    per["FD"].append(period_record(rec, F, exit_F, last_day, step, spy, arm_label("FD", T, retro), extra))
+    pre["FD"] = step["post"]
 
 
 def write_ledger(L, marks, ledger_dir):

@@ -2,7 +2,7 @@
 rs2-state, witness archive and screener clone are pointed at here, before any test module imports them.
 
 The throwaway rs2-state holds a SYNTHETIC operator exclusion list (OPXA..OPXD; the real one is data in rs2-state and never in this
-public repository) and byte copies of the two frozen PREREG files from the real rs2-state (baseline_b checks the PREREG_m3n sha256).
+public repository) and byte copies of the three frozen PREREG files from the real rs2-state (baseline_b checks the PREREG_m3n sha256).
 """
 import json
 import os
@@ -21,7 +21,7 @@ SYNTHETIC_EXCLUDED = ["OPXA", "OPXB", "OPXC", "OPXD"]
 _real_prereg = paths.resolve("rs2_state_dir") / "paper_books" / "prereg"
 _tmp = Path(tempfile.mkdtemp(prefix="paper_books_tests_"))
 (_tmp / "rs2-state" / "paper_books" / "prereg").mkdir(parents=True)
-for name in ("PREREG_m3o.json", "PREREG_m3n.json"):
+for name in ("PREREG_m3o.json", "PREREG_m3n.json", "PREREG_m3o_bookD.json"):
     shutil.copyfile(_real_prereg / name, _tmp / "rs2-state" / "paper_books" / "prereg" / name)
 (_tmp / "rs2-state" / "paper_books" / "operator_excluded.json").write_text(json.dumps({"tickers": SYNTHETIC_EXCLUDED}), encoding="utf-8")
 (_tmp / "gh_witness_archive").mkdir()

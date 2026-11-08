@@ -27,6 +27,17 @@ COSTS_BP = (0, 20, 60)
 import m3l_gh_run_witness as W  # noqa: E402
 
 
+def fd_candidates():
+    """Tickers of the m3o formation maps' "candidates" lists (paper book FD, PREREG_m3o_bookD): priced with the books so the m3o
+    engine can mark a replacement. Only the fetch grows; no A0 arithmetic reads them."""
+    import re
+    out = set()
+    for p in (book_paths.books() / "m3o" / "inputs").glob("formation_*.json"):
+        if re.fullmatch(r"formation_\d{4}-\d{2}-\d{2}\.json", p.name):
+            out |= {c["ticker"] for c in json.loads(p.read_text(encoding="utf-8")).get("candidates") or []}
+    return out
+
+
 def session(d):
     return d.weekday() < 5 and d not in NYSE_HOLIDAYS
 
@@ -204,7 +215,7 @@ def main():
     if not formations:
         print("no formation with a completed fill yet")
         return
-    universe = set().union(*(set(r["book"]) for r in formations)) | {"SPY"}
+    universe = set().union(*(set(r["book"]) for r in formations)) | {"SPY"} | fd_candidates()
     first_F = date.fromisoformat(formations[0]["fill_session"])
     px, receipt = fetch_prices(universe, first_F - timedelta(days=3), asof)
     last_day = max(d for s in px.values() for d in s)

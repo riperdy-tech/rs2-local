@@ -557,3 +557,76 @@ def test_post_3n_label_flips_at_the_first_formation_after_close():
     assert E.arm_label("FB", "2026-11-30") == "paper_post_3N"
     assert E.arm_label("F", "2026-11-30") == "factor_only"
     assert E.arm_label("FQ", "2026-11-30", retro=True) == "retrospective"
+
+
+# ---------------------------------------------------------------- FD: code replacement (PREREG_m3o_bookD)
+
+def fd_world(tmp_path, monkeypatch, cands=("G", "H"), cands_T2=None):
+    monkeypatch.setattr(E, "FD_START", T1)
+    fs = [dict(f) for f in W.DEFAULT_FORMATIONS]
+    fs[0]["candidates"] = list(cands)
+    fs[1]["candidates"] = list(cands if cands_T2 is None else cands_T2)
+    fs[2]["candidates"] = []
+    w = W.World(tmp_path, formations=fs)
+    w.set(T1, "B", items=b_hit(T1, 30))
+    return w
+
+
+def test_fd_replaces_a_restricted_new_entry_with_the_next_candidate(tmp_path, monkeypatch):
+    L, marks = fd_world(tmp_path, monkeypatch).run()
+    a = act(L, T1, "FD", "B")
+    assert a["action"] == "new_entry_restricted" and a["reason"].endswith("replaced_by:G")
+    g = act(L, T1, "FD", "G")
+    assert (g["action"], g["rule"]) == ("enter", "D1") and g["weight_target"] == pytest.approx(0.2)     # A C D E G
+    assert per(marks, "FD", 0)["gross"] == pytest.approx(sum(r(t, F1, F2) for t in "ACDEG") / 5)
+    assert per(marks, "FD", 0)["replacements"][0]["replacement"] == "G"
+    assert "prereg_bookD" in g["inputs"] and "prereg_bookD" not in act(L, T1, "FQ", "A")["inputs"]
+    assert "FD_minus_FQ_gross" in marks["groups"]["main"]["comparisons"]
+
+
+def test_fd_skips_a_b1_restricted_candidate(tmp_path, monkeypatch):
+    w = fd_world(tmp_path, monkeypatch)
+    w.set(T1, "G", items=b_hit(T1, 20))
+    L, _ = w.run()
+    assert act(L, T1, "FD", "H")["action"] == "enter"
+    v = [l for l in L["verification"] if l["kind"] == "candidate_b1" and l["formation_T"] == T1]
+    assert [(l["ticker"], l["eligible"]) for l in v] == [("G", False), ("H", True)]
+
+
+def test_fd_no_candidate_left_reweights_as_fq(tmp_path, monkeypatch):
+    w = fd_world(tmp_path, monkeypatch, cands=("G",))
+    w.set(T1, "G", packet=False)
+    L, marks = w.run()
+    a = act(L, T1, "FD", "B")
+    assert "no_candidate_left" in a["flags"]
+    assert per(marks, "FD", 0)["gross"] == pytest.approx(per(marks, "FQ", 0)["gross"])
+
+
+def test_fd_replacement_is_held_when_rechosen_and_exits_when_not(tmp_path, monkeypatch):
+    w = fd_world(tmp_path, monkeypatch)
+    w.set(T2, "B", items=b_hit(T2, 10))
+    L, _ = w.run()
+    assert (act(L, T2, "FD", "G")["action"], act(L, T2, "FD", "G")["rule"]) == ("hold", "D1")
+    w2 = fd_world(tmp_path / "b", monkeypatch, cands_T2=("H",))
+    w2.set(T2, "B", items=b_hit(T2, 10))
+    L2, _ = w2.run()
+    assert act(L2, T2, "FD", "H")["action"] == "enter"
+    g = act(L2, T2, "FD", "G")
+    assert (g["action"], g["rule"], g["reason"]) == ("exit", "D1", "not_rechosen")
+    assert act(L2, T2, "FD", "E")["reason"] == "left_A0_book"
+
+
+def test_fd_does_not_run_before_its_start(tmp_path):
+    fs = [dict(f) for f in W.DEFAULT_FORMATIONS]
+    fs[0]["candidates"] = ["G"]
+    w = W.World(tmp_path, formations=fs)
+    w.set(T1, "B", items=b_hit(T1, 30))
+    L, marks = w.run()
+    assert not [l for l in L["actions"] if l["arm"] == "FD"]
+    assert "FD" not in marks["groups"]["main"]["series"]
+
+
+def test_fd_candidate_in_the_book_stops(tmp_path, monkeypatch):
+    w = fd_world(tmp_path, monkeypatch, cands=("A",))
+    with pytest.raises(E.Stop, match="candidate A"):
+        w.run()

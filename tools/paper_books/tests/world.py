@@ -96,9 +96,10 @@ class World:
         lines = []
         for f in self.formations:
             T, book = f["T"], f["book"]
-            fs = {"tickers": {t: {"fct_band": "research_now" if t in book else "pass", "fct_rank": i + 1, "fct_veto": None,
-                                  "fct_nominated_doors": ["DOOR_1_COMPOUNDER"], "fct_flags": []}
-                              for i, t in enumerate(sorted(set(book) | {"Z1", "Z2"}))}}
+            cands = f.get("candidates") or []
+            fs = {"tickers": {t: {"fct_band": "research_now" if t in book else ("watchlist" if t in cands else "pass"), "fct_rank": i + 1,
+                                  "fct_veto": None, "fct_nominated_doors": ["DOOR_1_COMPOUNDER"], "fct_flags": []}
+                              for i, t in enumerate(sorted(set(book) | {"Z1", "Z2"} | set(cands)))}}
             (self.root / "factor_scores" / f"{self.commit(T)}.json").write_bytes(jdump(fs))
             rec = {"book": sorted(book), "book_size": len(book), "decision_time_utc": self.dec(T), "fill_session": FILLS[T], "flags": {},
                    "formation_T": T, "output_commit": self.commit(T), "run_id": "run" + T, "scoring_base": "b" * 40,
@@ -127,19 +128,29 @@ class World:
                  "run_id": "run" + T, "output_commit": self.commit(T), "book": sorted(f["book"]), "names": names}
             if f.get("label"):
                 m["label"] = f["label"]
+            if f.get("candidates") is not None:                  # paper book FD (PREREG_m3o_bookD)
+                m["candidates"] = [self.candidate_entry(T, t, self.spec.get((T, t), {}), i) for i, t in enumerate(f["candidates"])]
             (self.inputs / f"formation_{T}.json").write_bytes(jdump(m))
 
-    def name_entry(self, T, t, s):
+    def packet(self, T, t, s):
         items = s.get("items", [("Quarterly results discussion.", "2026-05-01T12:00:00Z")])
+        ev = [{"kind": "screener_row", "fact_id": "S0", "name": "screener_row", "text": f"symbol: {t}", "accepted_raw": None}]
+        ev += [{"kind": "annual_section", "fact_id": f"P{i + 1}", "name": "x", "text": text, "accepted_raw": acc,
+                "source": {"accession": f"0000000000-26-{i + 1:06d}", "url": ""}} for i, (text, acc) in enumerate(items)]
+        packet = {"contract": "m3m.packet.v1", "builder_version": "m3m.packet.builder.v6", "builder_code": {"packet.py": "bc-" + t},
+                  "ticker": t, "decision_time_utc": self.dec(T), "evidence": ev}
+        (self.root / "packets" / f"{T}_{t}.json").write_bytes(jdump(packet))
+        return f"../packets/{T}_{t}.json"
+
+    def candidate_entry(self, T, t, s, i):
+        if s.get("packet", True):
+            return {"ticker": t, "fct_rank": 100 + i, "packet": self.packet(T, t, s), "state": "built"}
+        return {"ticker": t, "fct_rank": 100 + i, "packet": None, "state": "packet_refused"}
+
+    def name_entry(self, T, t, s):
         pk = None
         if s.get("packet", True):
-            ev = [{"kind": "screener_row", "fact_id": "S0", "name": "screener_row", "text": f"symbol: {t}", "accepted_raw": None}]
-            ev += [{"kind": "annual_section", "fact_id": f"P{i + 1}", "name": "x", "text": text, "accepted_raw": acc,
-                    "source": {"accession": f"0000000000-26-{i + 1:06d}", "url": ""}} for i, (text, acc) in enumerate(items)]
-            packet = {"contract": "m3m.packet.v1", "builder_version": "m3m.packet.builder.v6", "builder_code": {"packet.py": "bc-" + t},
-                      "ticker": t, "decision_time_utc": self.dec(T), "evidence": ev}
-            (self.root / "packets" / f"{T}_{t}.json").write_bytes(jdump(packet))
-            pk = f"../packets/{T}_{t}.json"
+            pk = self.packet(T, t, s)
         finished = s.get("finished", f"{T}T19:00:00.000000Z")      # None: no run; "running": a manifest without finished_at
         entry = {"packet": pk, "run_dir": None, "attempts": 1,
                  "state": s.get("state", "complete" if finished not in (None, "running") else "to_run")}
