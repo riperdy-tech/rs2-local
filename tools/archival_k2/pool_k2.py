@@ -49,7 +49,6 @@ FRAMES = {"shares": "https://data.sec.gov/api/xbrl/frames/dei/EntityCommonStockS
           "rev_b": "https://data.sec.gov/api/xbrl/frames/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD/CY2024.json"}
 J2_POOLS = ("archival_2025-12-31", "archival_2025-12-31_nd")
 OUT = book_paths.books() / "m3o" / "value" / "archival_2025-10-01"
-P.T, P.T_STR = T, T_STR                         # J2's stages at K2's T
 
 
 def frame(url, store, offline):
@@ -155,6 +154,7 @@ def main(argv=None):
     ap.add_argument("--target", type=int, default=140)
     ap.add_argument("--offline", action="store_true")
     a = ap.parse_args(argv)
+    P.T, P.T_STR = T, T_STR                     # J2's stages at K2's T (set here, not at import: an importer of this module keeps J2's T)
     store = P.default_store()
     tmap, tick_rec = P.ticker_map(store, a.offline)
     by_cik = {}
