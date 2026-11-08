@@ -64,10 +64,11 @@ def j2_ciks():
     return out
 
 
-def closes_at_T(tickers, rounds=4):
-    """({ticker: (raw close of SESSION, split factor after T)}, {ticker: why}) from Yahoo: Close is split-adjusted, so a split after T is
-    undone. A ticker with no row is retried (smaller chunks, a pause between rounds: Yahoo rate-limits); after `rounds` it is reported
-    with why, never dropped silently: `no_session_row` when Yahoo returned the ticker's history without the 2025-10-01 session."""
+def closes_at_T(tickers, rounds=4, session=SESSION, start="2025-09-24", end="2026-11-08"):
+    """({ticker: (raw close of `session`, split factor after it)}, {ticker: why}) from Yahoo: Close is split-adjusted, so a split after T
+    is undone. A ticker with no row is retried (smaller chunks, a pause between rounds: Yahoo rate-limits); after `rounds` it is reported
+    with why, never dropped silently: `no_session_row` when Yahoo returned the ticker's history without the session. The defaults are
+    K2's (session 2025-10-01; S1's pool_street passes its own session and download window, 2026-11-09)."""
     import time
     out, why, todo = {}, {}, list(tickers)
     for k in range(rounds):
@@ -75,7 +76,7 @@ def closes_at_T(tickers, rounds=4):
             break
         if k:
             time.sleep(30 * k)
-        got = _closes(todo, 200 if k == 0 else 25, why)
+        got = _closes(todo, 200 if k == 0 else 25, why, session, start, end)
         out.update(got)
         todo = [t for t in todo if t not in got and why.get(t) != "no_session_row"]
     for t in todo:
@@ -83,12 +84,12 @@ def closes_at_T(tickers, rounds=4):
     return out, why
 
 
-def _closes(tickers, size, why):
+def _closes(tickers, size, why, session=SESSION, start="2025-09-24", end="2026-11-08"):
     import yfinance as yf
     out = {}
     for i in range(0, len(tickers), size):
         chunk = tickers[i:i + size]
-        df = yf.download(chunk, start="2025-09-24", end="2026-11-08", auto_adjust=False, actions=True, progress=False,
+        df = yf.download(chunk, start=start, end=end, auto_adjust=False, actions=True, progress=False,
                          group_by="ticker", threads=True)
         for t in chunk:
             try:
@@ -96,15 +97,15 @@ def _closes(tickers, size, why):
                 c = sub["Close"].dropna()
                 if c.empty:
                     continue                                              # no data at all: retried
-                c = c[c.index.strftime("%Y-%m-%d") <= SESSION]
-                if c.empty or c.index[-1].strftime("%Y-%m-%d") != SESSION:
+                c = c[c.index.strftime("%Y-%m-%d") <= session]
+                if c.empty or c.index[-1].strftime("%Y-%m-%d") != session:
                     why[t] = "no_session_row"
                     continue
                 splits = sub.get("Stock Splits")
                 factor = 1.0
                 if splits is not None:
                     for d, s in splits.items():
-                        if d.strftime("%Y-%m-%d") > SESSION and s and s > 0:
+                        if d.strftime("%Y-%m-%d") > session and s and s > 0:
                             factor *= float(s)
                 out[t] = (float(c.iloc[-1]) * factor, factor)
             except (KeyError, IndexError, TypeError):
@@ -112,11 +113,11 @@ def _closes(tickers, size, why):
     return out
 
 
-def shares_at_T(cf):
-    """(value, end, filed) of the latest dei:EntityCommonStockSharesOutstanding filed at or before T, summed over share classes of one
-    filing and date; None when none is filed."""
+def shares_at_T(cf, session=SESSION):
+    """(value, end, filed) of the latest dei:EntityCommonStockSharesOutstanding filed at or before `session` (K2's by default), summed over
+    share classes of one filing and date; None when none is filed."""
     rows = [r for u in ((cf.get("facts") or {}).get("dei") or {}).get("EntityCommonStockSharesOutstanding", {}).get("units", {}).values()
-            for r in u if r.get("filed") and r["filed"] <= SESSION]
+            for r in u if r.get("filed") and r["filed"] <= session]
     if not rows:
         return None
     last = max(rows, key=lambda r: (r["filed"], r["end"]))

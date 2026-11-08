@@ -15,6 +15,16 @@ listed file is hashed on every call; a missing manifest, a missing required file
 anchors' and the closure's) are skipped; every other rule of the live accessors holds (the same fields, the degraded growth anchor refused,
 the closure's publish rules). The provenance then carries the stamp `coe_archival_pinned` and `archival` = {dir, manifest_sha256, files}.
 Without the variable nothing here changes.
+
+THE EXTERNAL PREMIUM (archival v2, WO_street_S1_build deliverable 1, 2026-11-09; operator-approved for the Qwen-versus-analysts test at
+T 2026-06-15, whose reference closure cannot be rebuilt: it needs Street estimates first saved 2026-10-04). Only in the archival mode and
+only when the manifest declares "premium": "external": the premium is read from external_premium.json, {"erp": float, "asof":
+"YYYY-MM-DD", "source": str, "source_sha256": str} (erp within the closure's bounds 0.0005..0.20, asof a date, source and its 64-hex
+sha256 non-empty), instead of reference_closure.json, and the required files are the two anchors and external_premium.json. An unusable
+premium is a missing leg (coe_unavailable, the reason named), as an unusable closure is. The provenance adds the stamp
+`coe_external_premium` and `external_premium` = {erp, asof, source, source_sha256}; `closure_erp`/`closure_asof` carry that premium and
+its date. A manifest without the key is the closure path, unchanged: its record keeps CLOSURE_ARCHIVAL_VERSION, so J2/K2 results stay
+byte-identical. Any other value of the key refuses (coe_archival_unreadable).
 """
 import hashlib
 import json
@@ -28,10 +38,14 @@ import rs2_data
 from qwen_c.value.desk import DeskRefusal
 
 COE_VERSION = "m3q.coe.v1"
-ARCHIVAL_VERSION = "m3q.coe.archival.v1"
+ARCHIVAL_VERSION = "m3q.coe.archival.v2"     # v2 2026-11-09: the external premium (manifest "premium": "external")
+CLOSURE_ARCHIVAL_VERSION = "m3q.coe.archival.v1"   # what a closure-premium pinned set records: its computation is v1's, unchanged
 ARCHIVAL_ENV = "RS2_ARCHIVAL_COE_DIR"
 ARCHIVAL_STAMP = "coe_archival_pinned"
 ARCHIVAL_FILES = ("cost_of_capital_anchor.json", "long_run_growth_anchor.json", "reference_closure.json")
+EXTERNAL_FILES = ("cost_of_capital_anchor.json", "long_run_growth_anchor.json", "external_premium.json")
+EXTERNAL_STAMP = "coe_external_premium"
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 
 
@@ -58,14 +72,20 @@ def archival_dir():
 
 
 def _pinned(d):
-    """({file: bytes}, manifest sha256, {file: sha256}) of the pinned directory, every listed file rechecked; else DeskRefusal."""
+    """({file: bytes}, manifest sha256, {file: sha256}, external) of the pinned directory, every listed file rechecked; else DeskRefusal.
+    external: the manifest declares "premium": "external"."""
     try:
         mbytes = (d / "manifest.json").read_bytes()
-        files = json.loads(mbytes)["files"]
+        manifest = json.loads(mbytes)
+        files = manifest["files"]
         want = {f: (v["sha256"] if isinstance(v, dict) else None) for f, v in files.items()}
+        premium = manifest.get("premium")
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         raise DeskRefusal("coe_archival_unreadable", f"{ARCHIVAL_ENV}={d}: no readable manifest.json with files.<name>.sha256 ({e})") from None
-    missing = [f for f in ARCHIVAL_FILES if not want.get(f)]
+    if premium not in (None, "external"):
+        raise DeskRefusal("coe_archival_unreadable", f"{ARCHIVAL_ENV}={d}: the manifest's premium is {premium!r}; only \"external\" or none")
+    external = premium == "external"
+    missing = [f for f in (EXTERNAL_FILES if external else ARCHIVAL_FILES) if not want.get(f)]
     if missing:
         raise DeskRefusal("coe_archival_unreadable", f"{ARCHIVAL_ENV}={d}: the manifest lists no sha256 for {missing}")
     blobs = {}
@@ -78,13 +98,36 @@ def _pinned(d):
         if got != sha:
             raise DeskRefusal("coe_archival_sha256_mismatch", f"{ARCHIVAL_ENV}={d}: {f} hashes to {got}, the manifest pins {sha}")
         blobs[f] = b
-    return blobs, hashlib.sha256(mbytes).hexdigest(), want
+    return blobs, hashlib.sha256(mbytes).hexdigest(), want, external
+
+
+def external_premium(b):
+    """(erp, asof, record) of external_premium.json's bytes, or (None, asof or None, the reason): the closure's bounds, a date, a source."""
+    try:
+        doc = json.loads(b)
+    except ValueError:
+        return None, None, "external_premium_not_json"
+    if not isinstance(doc, dict):
+        return None, None, "external_premium_not_an_object"
+    erp, asof = doc.get("erp"), doc.get("asof")
+    try:
+        asof = date.fromisoformat(asof).isoformat() if isinstance(asof, str) and len(asof) == 10 else None
+    except ValueError:
+        asof = None
+    if asof is None:
+        return None, None, "external_premium_undated"
+    if not (isinstance(erp, (int, float)) and not isinstance(erp, bool) and 0.0005 <= erp <= 0.20):
+        return None, asof, "external_premium_has_no_usable_erp"
+    src, ssha = doc.get("source"), doc.get("source_sha256")
+    if not (isinstance(src, str) and src.strip() and isinstance(ssha, str) and _SHA256.fullmatch(ssha)):
+        return None, asof, "external_premium_has_no_source_or_source_sha256"
+    return float(erp), asof, {"erp": float(erp), "asof": asof, "source": src, "source_sha256": ssha}
 
 
 def _archival_legs(d, sector):
     """The four legs from the pinned copies, by the live accessors' field rules without their age checks:
-    ((rf, src), (g, src), (adj, raw, src), (erp, asof, why), archival record)."""
-    blobs, msha, want = _pinned(d)
+    ((rf, src), (g, src), (adj, raw, src), (erp, asof, why), archival record). With the external premium, `why` is its record when usable."""
+    blobs, msha, want, external = _pinned(d)
     try:
         coc = json.loads(blobs["cost_of_capital_anchor.json"])
         lrg = json.loads(blobs["long_run_growth_anchor.json"])
@@ -102,8 +145,13 @@ def _archival_legs(d, sector):
     raw = (coc.get("sector_loadings") or {}).get(sec_id) if sec_id else None
     load = (0.67 * float(raw) + 0.33, float(raw), rs2_data._coc_leg_source(coc, f"sector_loading:{sec_id}")) \
         if isinstance(raw, (int, float)) else (None, None, f"no_loading_for_sector({sec_id or sector})")
-    erp = rs2_data.reference_closure(d / "reference_closure.json", check_age=False)
-    rec = {"version": ARCHIVAL_VERSION, "dir": str(d), "manifest_sha256": msha, "files": want}
+    if external:
+        erp = external_premium(blobs["external_premium.json"])
+    else:
+        erp = rs2_data.reference_closure(d / "reference_closure.json", check_age=False)
+    rec = {"version": ARCHIVAL_VERSION if external else CLOSURE_ARCHIVAL_VERSION, "dir": str(d), "manifest_sha256": msha, "files": want}
+    if external:
+        rec["premium"] = "external"
     return rf, g, load, erp, rec
 
 
@@ -129,6 +177,8 @@ def cost_of_equity(sector, T, *, closure=None, allow_after_T=False):
     late = [k for k, (_, dt) in legs.items() if dt is not None and dt > T.date()]
     if archival:
         stamps.append(ARCHIVAL_STAMP)                                     # the after-T check is not applied to a pinned copy
+        if archival.get("premium") == "external":
+            stamps.append(EXTERNAL_STAMP)
     elif late:
         if not allow_after_T:
             raise DeskRefusal("coe_anchor_after_T", f"{late} dated after {T.date()}")
@@ -138,4 +188,6 @@ def cost_of_equity(sector, T, *, closure=None, allow_after_T=False):
             "loading_raw": load[1], "closure_erp": erp, "closure_asof": str(erp_asof), "sector": sector, "stamps": stamps}
     if archival:
         prov["archival"] = dict(archival, legs_after_T=late)
+        if archival.get("premium") == "external":
+            prov["external_premium"] = erp_why
     return r, prov

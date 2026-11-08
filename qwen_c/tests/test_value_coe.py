@@ -124,7 +124,8 @@ def test_the_archival_mode_reads_the_pinned_copies_skips_after_T_and_age_and_sta
     assert r == pytest.approx(max(0.042, 0.038) + (0.67 * 1.2 + 0.33) * 0.045)
     assert coe.ARCHIVAL_STAMP in prov["stamps"] and "anchor_after_T" not in prov["stamps"]
     a = prov["archival"]
-    assert a["manifest_sha256"] == msha and a["version"] == coe.ARCHIVAL_VERSION and set(a["files"]) == set(coe.ARCHIVAL_FILES)
+    assert a["manifest_sha256"] == msha and a["version"] == coe.CLOSURE_ARCHIVAL_VERSION and set(a["files"]) == set(coe.ARCHIVAL_FILES)
+    assert "premium" not in a and "external_premium" not in prov and coe.EXTERNAL_STAMP not in prov["stamps"]
     assert sorted(a["legs_after_T"]) == ["closure_erp", "g_anchor", "rf"] and prov["closure_asof"] == "2026-09-23"
 
 
@@ -178,3 +179,89 @@ def test_archival_legs_equal_the_live_accessors_on_the_same_fresh_payloads(tmp_p
     assert r_arch == r_live
     assert {k: v for k, v in arch.items() if k not in ("archival", "stamps")} == {k: v for k, v in live.items() if k != "stamps"}
     assert arch["stamps"] == live["stamps"] + [coe.ARCHIVAL_STAMP]
+
+
+# ---- the external premium (archival v2, WO_street_S1_build deliverable 1): only with the manifest's "premium": "external" -------------
+
+T_S1 = datetime(2026, 6, 15, 21, 0, tzinfo=timezone.utc)
+_SRC_SHA = "ab" * 32
+
+
+def _ext_payloads(asof="2026-06-15", erp=0.0431, prem_asof="2026-06-01", **prem):
+    p = _payloads(asof=asof)
+    p.pop("reference_closure.json")
+    p["external_premium.json"] = dict({"erp": erp, "asof": prem_asof, "source": "Damodaran ERPbymonth.xlsx", "source_sha256": _SRC_SHA},
+                                      **prem)
+    return p
+
+
+def _pin_ext(d, payloads, drop=None, premium="external"):
+    msha = _pin(d, payloads, drop=drop)
+    m = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+    m["premium"] = premium
+    (d / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+    return hashlib.sha256((d / "manifest.json").read_bytes()).hexdigest() if msha else None
+
+
+def test_the_external_premium_replaces_the_closure_and_is_stamped(tmp_path, monkeypatch, live_forbidden):
+    def no_closure(*a, **k):
+        raise AssertionError("the closure was read with an external premium")
+    monkeypatch.setattr(coe.rs2_data, "reference_closure", no_closure)
+    msha = _pin_ext(tmp_path / "ext", _ext_payloads())
+    monkeypatch.setenv(coe.ARCHIVAL_ENV, str(tmp_path / "ext"))
+    r, prov = coe.cost_of_equity("Technology", T_S1)
+    assert r == pytest.approx(max(0.042, 0.038) + (0.67 * 1.2 + 0.33) * 0.0431)
+    assert prov["closure_erp"] == 0.0431 and prov["closure_asof"] == "2026-06-01"
+    assert prov["stamps"] == ["coe_leg_undated:loading", coe.ARCHIVAL_STAMP, coe.EXTERNAL_STAMP]
+    assert prov["external_premium"] == {"erp": 0.0431, "asof": "2026-06-01", "source": "Damodaran ERPbymonth.xlsx", "source_sha256": _SRC_SHA}
+    a = prov["archival"]
+    assert a["version"] == coe.ARCHIVAL_VERSION == "m3q.coe.archival.v2" and a["premium"] == "external" and a["manifest_sha256"] == msha
+    assert set(a["files"]) == set(coe.EXTERNAL_FILES) and a["legs_after_T"] == []
+
+
+def test_the_external_premium_needs_its_file_in_the_manifest(tmp_path, monkeypatch, live_forbidden):
+    _pin_ext(tmp_path / "d", _ext_payloads(), drop="external_premium.json")
+    monkeypatch.setenv(coe.ARCHIVAL_ENV, str(tmp_path / "d"))
+    with pytest.raises(desk.DeskRefusal) as e:
+        coe.cost_of_equity("Technology", T_S1)
+    assert e.value.code == "coe_archival_unreadable" and "external_premium.json" in str(e.value)
+    p = _ext_payloads()
+    p["reference_closure.json"] = _payloads()["reference_closure.json"]             # a closure beside it is no substitute
+    _pin_ext(tmp_path / "c", p, drop="external_premium.json")
+    monkeypatch.setenv(coe.ARCHIVAL_ENV, str(tmp_path / "c"))
+    with pytest.raises(desk.DeskRefusal) as e:
+        coe.cost_of_equity("Technology", T_S1)
+    assert e.value.code == "coe_archival_unreadable" and "external_premium.json" in str(e.value)
+
+
+@pytest.mark.parametrize("kw,why", [
+    ({"erp": 0.25}, "external_premium_has_no_usable_erp"), ({"erp": 0.0001}, "external_premium_has_no_usable_erp"),
+    ({"erp": True}, "external_premium_has_no_usable_erp"), ({"erp": "0.0431"}, "external_premium_has_no_usable_erp"),
+    ({"erp": None}, "external_premium_has_no_usable_erp"), ({"prem_asof": None}, "external_premium_undated"),
+    ({"prem_asof": "June 2026"}, "external_premium_undated"), ({"prem_asof": "2026-13-01"}, "external_premium_undated"),
+    ({"source": ""}, "external_premium_has_no_source_or_source_sha256"),
+    ({"source_sha256": "abc"}, "external_premium_has_no_source_or_source_sha256")])
+def test_an_unusable_external_premium_refuses_by_name(tmp_path, monkeypatch, live_forbidden, kw, why):
+    _pin_ext(tmp_path / "x", _ext_payloads(**kw))
+    monkeypatch.setenv(coe.ARCHIVAL_ENV, str(tmp_path / "x"))
+    with pytest.raises(desk.DeskRefusal) as e:
+        coe.cost_of_equity("Technology", T_S1)
+    assert e.value.code == "coe_unavailable" and "closure_erp" in str(e.value) and why in str(e.value)
+
+
+def test_an_unknown_premium_key_refuses(tmp_path, monkeypatch, live_forbidden):
+    _pin_ext(tmp_path / "u", _payloads(), premium="damodaran")
+    monkeypatch.setenv(coe.ARCHIVAL_ENV, str(tmp_path / "u"))
+    with pytest.raises(desk.DeskRefusal) as e:
+        coe.cost_of_equity("Technology", T_ARCH)
+    assert e.value.code == "coe_archival_unreadable" and "damodaran" in str(e.value)
+
+
+def test_the_external_premium_keeps_the_anchor_rules(tmp_path, monkeypatch, live_forbidden):
+    p = _ext_payloads()
+    p["long_run_growth_anchor.json"]["degraded"] = True
+    _pin_ext(tmp_path / "g", p)
+    monkeypatch.setenv(coe.ARCHIVAL_ENV, str(tmp_path / "g"))
+    with pytest.raises(desk.DeskRefusal) as e:
+        coe.cost_of_equity("Technology", T_S1)
+    assert e.value.code == "coe_unavailable" and "g_anchor" in str(e.value)
