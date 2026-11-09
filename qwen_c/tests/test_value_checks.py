@@ -130,7 +130,7 @@ def test_malformed_content_is_reply_invalid_and_never_raises(ctx, reply):
 def test_last_within_tolerance_of_the_median_is_not_a_departure_and_its_entry_is_dropped(ctx):
     b, bar, ids = ctx
     out = depart(clean(), "op_margin.y1", "last", "record_persistence", [Y25])
-    res = checks.check(out, ids, b, dict(bar, last=bar["median"] + 0.0009), R, ENDS)
+    res = checks.check(out, ids, b, dict(bar, last=bar["persist"] + 0.0009), R, ENDS)    # menu v6: within tolerance of the neutral (persist)
     assert res["status"] == "ok" and res["departures"] == [] and "departure_superfluous: op_margin.y1" in res["annotations"]
 
 
@@ -143,7 +143,7 @@ def reverted(res, key):
 def test_v4_a_margin_departure_needs_a_filed_basis(ctx):
     res = run(ctx, depart(clean(), "op_margin.y1", "last", "pricing", ["R1.s1"]))
     assert res["status"] == "ok_with_reverts" and reverted(res, "op_margin.y1") == ["V4"]
-    assert res["numbers"]["op_margin.y1"] == res["neutral"]["op_margin.y1"] and res["options"]["op_margin.y1"] == "median"
+    assert res["numbers"]["op_margin.y1"] == res["neutral"]["op_margin.y1"] and res["options"]["op_margin.y1"] == "persist"
     res = run(ctx, depart(clean(), "op_margin.y1", "last", "pricing", [Y25, "R1.s1"]))
     assert res["status"] == "ok" and res["departures"][0]["input"] == "op_margin.y1" and res["directions"]["op_margin.y1"] == "up"
 
@@ -164,7 +164,8 @@ def test_v13_returns_fade_and_a_rising_long_run_need_a_filed_item(ctx):
     assert reverted(run(ctx, depart(clean(), "terminal_ronic", "half", "competition", ["A1.s2"])), "terminal_ronic") == []
     assert reverted(run(ctx, depart(clean(), "fade_years", 20, "competition", ["R1.s1"])), "fade_years") == ["V13"]
     assert reverted(run(ctx, depart(clean(), "fade_years", 5, "competition", ["R1.s1"])), "fade_years") == []          # down: no V13
-    assert reverted(run(ctx, depart(clean(), "long_run_op_margin", ("p75", 0), "pricing", [Y25])), "long_run_op_margin") == ["V13"]
+    # menu v6: the neutral long run is persist 0.1578; p75 0.1579 is within tolerance, last 0.1600 rises inside the record
+    assert reverted(run(ctx, depart(clean(), "long_run_op_margin", ("last", 0), "pricing", [Y25])), "long_run_op_margin") == ["V13"]
     assert reverted(run(ctx, depart(clean(), "long_run_op_margin", ("p25", 0), "pricing", [Y25])), "long_run_op_margin") == []    # down
 
 
@@ -214,11 +215,11 @@ def test_revert_cascade_through_a_long_run_anchored_on_normalized(ctx):
 
 def test_a_key_departed_only_by_a_revert_without_its_entry_reverts_too(ctx):
     b, bar, ids = ctx
-    out = depart(clean(), "normalized.margin", ("median", 2), "pricing", ["A2.s1"])            # 0.1756 > max: V3
-    out = depart(out, "long_run_op_margin", ("normalized", -2), None)                           # 0.1556: the median, no departure
+    out = depart(clean(), "normalized.margin", ("persist", 2), "pricing", ["A2.s1"])           # 0.1778 > max: V3 (menu v6 anchor)
+    out = depart(out, "long_run_op_margin", ("normalized", -2), None)                           # 0.1578: persist, no departure
     res = run(ctx, out)
     assert res["reverts"] == ["departure_reverted: normalized.margin V3", "departure_reverted: long_run_op_margin no_entry_after_revert"]
-    assert res["numbers"]["long_run_op_margin"] == bar["median"] and res["status"] == "ok_with_reverts"
+    assert res["numbers"]["long_run_op_margin"] == bar["persist"] and res["status"] == "ok_with_reverts"
 
 
 # ---- scenarios and annotations (§4, §5) ------------------------------------------------------------------------------------------------

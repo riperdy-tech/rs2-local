@@ -17,4 +17,4 @@ def test_the_comparison_is_code_s_own():
     assert res["directions"]["long_run_op_margin"] == "down" and res["numbers"]["long_run_op_margin"] == bar["p25"]
     text = memo.render({"ticker": "T", "T": "2026-03-01", "status": res["status"], "inputs": out, "checks": res, "values": res["values"],
                         "cost_of_equity": OP.R, "base": b, "stamps": b["stamps"]})
-    assert f"- **long_run_op_margin**: p25 +0 pts, {bar['p25']:.4f} (record-neutral {bar['median']:.4f}), down; driver competition" in text
+    assert f"- **long_run_op_margin**: p25 +0 pts, {bar['p25']:.4f} (record-neutral {bar['persist']:.4f}), down; driver competition" in text

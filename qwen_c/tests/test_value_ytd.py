@@ -159,16 +159,16 @@ def test_ytd_leads_year_1_and_is_its_neutral_while_year_2_stays():
     assert "ytd" not in m["growth"] and "ytd" not in m["margin"]
     nb = menu.neutral_base("operating", m)
     assert menu.option(nb, "rev_growth.y1") == "ytd" and menu.option(nb, "op_margin.y1") == "ytd"
-    assert menu.option(nb, "rev_growth.y2") == "anchor" and menu.option(nb, "op_margin.y2") == "median"
+    assert menu.option(nb, "rev_growth.y2") == "anchor" and menu.option(nb, "op_margin.y2") == "persist"   # menu v6
     assert menu.option(nb, "normalized.rev_growth") == "anchor"
     nums = menu.resolve(nb, {}, m)
     assert nums["rev_growth.y1"] == 0.12 and nums["op_margin.y1"] == 0.18 and nums["rev_growth.y2"] == 0.03
 
 
-@pytest.mark.parametrize("y,growth,margin", [(None, "anchor", "median"),
-                                             (dict(YTD, rev_growth=None, op_margin=None, absent="no 10-Q of year 1 effective at T"), "anchor", "median"),
-                                             (dict(YTD, op_margin=-1.4), "ytd", "median"),          # a margin outside (-1, 1): not offered
-                                             (dict(YTD, op_margin=None, op_margin_absent="none"), "ytd", "median")])
+@pytest.mark.parametrize("y,growth,margin", [(None, "anchor", "persist"),   # menu v6: the operating neutral margin anchor is persist
+                                             (dict(YTD, rev_growth=None, op_margin=None, absent="no 10-Q of year 1 effective at T"), "anchor", "persist"),
+                                             (dict(YTD, op_margin=-1.4), "ytd", "persist"),          # a margin outside (-1, 1): not offered
+                                             (dict(YTD, op_margin=None, op_margin_absent="none"), "ytd", "persist")])
 def test_not_available_keeps_todays_neutral_and_ytd_trails_the_line(y, growth, margin):
     b, bar, ids = ctx_ytd(y)
     m = menu.menus(b, bar, OP.R, "operating")
@@ -231,7 +231,7 @@ def test_the_menu_and_the_base_print_ytd_and_its_period():
     prov = dict(OP.PROV)
     text = task.render_base(b, bar, OP.R, prov)
     assert "\nrev_growth.y1: ytd 0.1200; anchor 0.0300; " in text and "\nrev_growth.y2, normalized.rev_growth: anchor 0.0300; " in text
-    assert "\nop_margin.y1: ytd 0.1800; median " in text and "\nop_margin.y2: median " in text
+    assert "\nop_margin.y1: ytd 0.1800; persist " in text and "\nop_margin.y2: persist " in text   # menu v6
     assert ("Year 1 to date (10-Q 0009-26-000004, filed 2026-10-30): revenue 84,000,000 from 2026-01-01 to 2026-09-30 against "
             "75,000,000 from 2025-01-01 to 2025-09-30, growth 0.1200; operating income 15,120,000, margin 0.1800.") in text
     b2 = dict(b, ytd=dict(YTD, rev_growth=None, absent="no 10-Q of year 1 effective at T"))
@@ -339,5 +339,5 @@ def test_a_departed_year_1_key_is_annotated_and_valued_at_the_record_neutral():
 
 
 def test_only_the_judged_year_1_keys_are_held():
-    assert menu.HELD == ("rev_growth.y1", "op_margin.y1") and checks.CHECKS_VERSION == "m3q.checks.v16"
+    assert menu.HELD == ("rev_growth.y1", "op_margin.y1") and checks.CHECKS_VERSION == "m3q.checks.v17"
     assert memo.MEMO_VERSION == "m3q.memo.v7"

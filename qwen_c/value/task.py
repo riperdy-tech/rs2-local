@@ -10,7 +10,7 @@ Changing any text here changes what the model is told: bump VALUATION_PROMPT_VER
 from qwen_c import tasks
 from qwen_c.value import menu, sentences
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v11"   # v11 2026-11-05 J2 revision 1: "Year 1 options keep reported quarters." (menu v4)   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): [V0] year 1's own MENU lines with ytd first where measured, and the year-to-date line   # v9 2026-11-03 F8: the short sentence marker <17>   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
+VALUATION_PROMPT_VERSION = "m3q.prompt.v12"   # v12 2026-11-10 margin persistence: the margin record line ends with persist; the operating anchors list persist first (menu v6)   # v11 2026-11-05 J2 revision 1: "Year 1 options keep reported quarters." (menu v4)   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): [V0] year 1's own MENU lines with ytd first where measured, and the year-to-date line   # v9 2026-11-03 F8: the short sentence marker <17>   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
 PRICE_LINES = ("price:", "marketCap:", "price as-of")
 NL = "\n"
 
@@ -26,8 +26,8 @@ def mask_price(packet):
 
 _SHAPE = """```json
 {"task": "valuation_inputs",
- "base": {"rev_growth": {"y1": "guidance", "y2": "anchor"}, "op_margin": {"y1": "median", "y2": "median"},
-          "normalized": {"year": 4, "anchor": "median", "step": 0, "rev_growth": "anchor"}, "fade_years": 10,
+ "base": {"rev_growth": {"y1": "guidance", "y2": "anchor"}, "op_margin": {"y1": "persist", "y2": "persist"},
+          "normalized": {"year": 4, "anchor": "persist", "step": 0, "rev_growth": "anchor"}, "fade_years": 10,
           "long_run_op_margin": {"anchor": "normalized", "step": 0}, "terminal_ronic": "no_growth_value", "terminal_g": "anchor",
           "capex": "pooled"},
  "guidance": {"rev_growth.y1": {"evidence": "P4.s17", "metric": "revenue_growth", "sign": "as_printed", "ordinal": 1}},
@@ -38,7 +38,7 @@ _SHAPE = """```json
 
 _RULES = (
     "Each input is an option of its MENU line in [V0]; code uses the number printed beside it. Never choose an option printed \"not "
-    "available\". The first option of a line is the record-neutral choice (normalized: year 3, median, step 0). An input whose number "
+    "available\". The first option of a line is the record-neutral choice (normalized: year 3, {NEUTRAL}step 0). An input whose number "
     "differs from the neutral number is a departure (a long run anchored on normalized departs with it). Each departure needs one "
     "entry: its departure key, a driver and 1 to 4 evidence IDs, at least one not V0. Cite a sentence of a text item by its item and "
     "marker (<17> in item [P4] is P4.s17), a statement, a [Y] item or [V0] by its ID. Code reverts a departure its evidence does not support: without evidence, "
@@ -47,10 +47,12 @@ _RULES = (
     "\"guidance\", keyed by the input, give evidence, metric, sign (as_printed, or negative for a stated decline) and ordinal (the n-th figure in the metric's unit, years not "
     "counted; a range counts as its first figure).\n"
     "uncertain names 1 to 3 departure keys; code builds Bear and Bull from their neighbouring options. unknowns is free text.\n")
+# v12 (menu v6): the operating text no longer names the neutral anchor (persist is listed first on its MENU line, and the budget
+# allows no more); the financial text keeps "median, ", byte-identical to fin.v7
 _YEAR1 = "Year 1 options keep reported quarters.\n"    # v11: operating only (the financial route has no ytd); the instruction's budget allows no more
 
 INSTRUCTION = ("TASK valuation_inputs. Choose the inputs from which code values the company; you never state a number, a value or a "
-               "price. " + _RULES + _YEAR1 + "Reply in this shape:\n" + _SHAPE)
+               "price. " + _RULES.replace("{NEUTRAL}", "") + _YEAR1 + "Reply in this shape:\n" + _SHAPE)
 
 
 # WO_Q6: the financial route (banks, insurers; O3 retained equity). Its own text and version. Changing any text here: bump
@@ -70,7 +72,7 @@ _SHAPE_FIN = """```json
 
 INSTRUCTION_FIN = ("TASK valuation_inputs_financial. The company is a financial: code values it from its common book equity (preferred "
                    "stock out of book, its dividends out of income) and the return it earns on it. Choose the inputs from which code values "
-                   "it; you never state a number, a value or a price. " + _RULES + "Reply in this shape:\n" + _SHAPE_FIN)
+                   "it; you never state a number, a value or a price. " + _RULES.replace("{NEUTRAL}", "median, ") + "Reply in this shape:\n" + _SHAPE_FIN)
 
 
 def _menu_lines(b, bar, r, coe_prov, route):
@@ -124,7 +126,8 @@ def render_base(b, bar, r, coe_prov):
     """[V0]: the code-measured base the inputs are chosen against, and the MENU."""
     lines = [f"[V0] Measured by code from the filings (not a forecast). Base fiscal year ended {b['fy0']}.",
              f"Filed operating margin record: min {bar['min']:.4f}, p25 {bar['p25']:.4f}, median {bar['median']:.4f}, "
-             f"p75 {bar['p75']:.4f}, max {bar['max']:.4f}, last {bar['last']:.4f}.",
+             f"p75 {bar['p75']:.4f}, max {bar['max']:.4f}, last {bar['last']:.4f}; persist {bar['persist']:.4f} (the median plus half "
+             f"the gap from the median to the last year: about half such a gap has remained 2-5 years later in filed records).",
              _growth_line(b["record"].get("rev_growth") or {}, "revenue"),
              f"Base-year revenue {b['R0']:,.0f}; tax rate {b['tau']:.4f}; return on opening capital {b['ronic0']:.4f}; "
              f"capital expenditure {b['c_ratio']:.4f} and depreciation {b['d_ratio']:.4f} of revenue (pooled); the desk depreciates by "

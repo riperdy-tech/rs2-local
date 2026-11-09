@@ -14,11 +14,12 @@ import statistics
 from qwen_c import contract
 from qwen_c.value import forecast
 
-MENU_VERSION = "m3q.menu.v5"   # v5 2026-11-06 design revision 2: a guided revenue level too small to be the year's (a quarter's guide, a figure in unstated millions) is unreadable (QUARTER_SCALE)   # v4 2026-11-05 J2 revision 1: year 1's options other than ytd keep the reported quarters and set only the rest; the ytd floor   # v3 2026-11-04 E4: field-name aliases of the normalized key, the long run inheriting normalized's entry   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
+MENU_VERSION = "m3q.menu.v6"   # v6 2026-11-10 margin persistence: the operating record-neutral margin (years 1-2 where ytd is not measured, normalized, and so the long run) anchors on `persist`, listed first   # v5 2026-11-06 design revision 2: a guided revenue level too small to be the year's (a quarter's guide, a figure in unstated millions) is unreadable (QUARTER_SCALE)   # v4 2026-11-05 J2 revision 1: year 1's options other than ytd keep the reported quarters and set only the rest; the ytd floor   # v3 2026-11-04 E4: field-name aliases of the normalized key, the long run inheriting normalized's entry   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
 STEPS = (-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3)            # points added to an anchor
 YEARS = (3, 4, 5)
 FADES = (10, 5, 15, 20)
-ANCHORS = ("median", "p25", "p75", "last")
+ANCHORS = ("median", "p25", "p75", "last")             # the financial route's anchors (ROE), record-neutral first
+ANCHORS_OP = ("persist", "median", "p25", "p75", "last")   # v6: the operating route's, record-neutral first (forecast.PERSIST)
 DRIVERS = ("pricing", "volume", "mix", "cost_program", "capex_program", "guidance", "backlog", "cycle_recovery", "cycle_downturn",
            "competition", "regulation", "secular_decline", "return_to_growth", "record_persistence")
 SIGNS = ("as_printed", "negative")
@@ -33,8 +34,8 @@ KEYS = {"operating": {"rev_growth.y1": "growth", "rev_growth.y2": "growth", "op_
         "financial": {"book_growth.y1": "growth", "book_growth.y2": "growth", "roe.y1": "margin", "roe.y2": "margin",
                       "normalized.roe": "norm", "normalized.book_growth": "growth", "long_run_roe": "long", "fade_years": "fade",
                       "terminal_g": "tg"}}
-NEUTRAL = {"operating": {"rev_growth.y1": "anchor", "rev_growth.y2": "anchor", "op_margin.y1": "median", "op_margin.y2": "median",
-                         "normalized.margin": ("median", 0), "normalized.rev_growth": "anchor", "long_run_op_margin": ("normalized", 0),
+NEUTRAL = {"operating": {"rev_growth.y1": "anchor", "rev_growth.y2": "anchor", "op_margin.y1": "persist", "op_margin.y2": "persist",
+                         "normalized.margin": ("persist", 0), "normalized.rev_growth": "anchor", "long_run_op_margin": ("normalized", 0),
                          "fade_years": 10, "terminal_ronic": "no_growth_value", "terminal_g": "anchor", "capex": "pooled"},
            "financial": {"book_growth.y1": "neutral", "book_growth.y2": "neutral", "roe.y1": "median", "roe.y2": "median",
                          "normalized.roe": ("median", 0), "normalized.book_growth": "neutral", "long_run_roe": ("normalized", 0),
@@ -45,7 +46,7 @@ NEUTRAL_YEAR = 3
 YTD_KEYS = {"rev_growth.y1": "growth_y1", "op_margin.y1": "margin_y1"}
 # where a reverted key is pinned: its neutral option, except a long run anchored on normalized, which takes the neutral NUMBER (median)
 # so that it stays reverted while normalized departs (BUILD_NOTES)
-REVERT = {"long_run_op_margin": ("median", 0), "long_run_roe": ("median", 0)}
+REVERT = {"long_run_op_margin": ("persist", 0), "long_run_roe": ("median", 0)}   # v6: the operating neutral number is persist
 # guidance metrics a key takes, and the unit of each metric
 METRICS = {"rev_growth.y1": ("revenue_level", "revenue_growth"), "rev_growth.y2": ("revenue_level", "revenue_growth"),
            "normalized.rev_growth": ("revenue_level", "revenue_growth"), "op_margin.y1": ("op_margin",), "op_margin.y2": ("op_margin",),
@@ -54,6 +55,11 @@ METRICS = {"rev_growth.y1": ("revenue_level", "revenue_growth"), "rev_growth.y2"
 LEVELS = ("revenue_level", "capex_level")
 QUARTER_SCALE = 0.5   # v5: a year's revenue level leaving under half a quarter's run rate for each quarter not yet reported reads as one quarter
 SCALE = {"": 1.0, "k": 1e3, "m": 1e6, "bn": 1e9, "tn": 1e12}
+
+
+def anchors(route):
+    """The margin anchors of a route, the record-neutral one first (v6)."""
+    return ANCHORS_OP if route == "operating" else ANCHORS
 
 
 def _record_growth(rec):
@@ -78,7 +84,7 @@ def menus(b, bar, r, route):
     ga, rec = b.get("g_anchor"), b.get("record") or {}
     med_g, last_g = _record_growth(rec.get("rev_growth" if route == "operating" else "book_growth") or {})
     m = {"route": route, "bar": bar, "r": r, "R0": b.get("R0"), "ga": ga,
-         "margin": {k: _ok(bar[k]) for k in ANCHORS}, "anchor": {k: bar[k] for k in ANCHORS}}
+         "margin": {k: _ok(bar[k]) for k in anchors(route)}, "anchor": {k: bar[k] for k in anchors(route)}}
     tg = {"anchor": ga, "half_anchor": None if ga is None else ga / 2, "zero": 0.0, "decline": med_g if med_g is not None and med_g < 0 else None}
     if route == "operating":
         m["growth"] = {"anchor": ga, "record_median": med_g, "last": last_g, "zero": 0.0}

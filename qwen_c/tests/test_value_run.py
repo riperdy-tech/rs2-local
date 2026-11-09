@@ -71,7 +71,7 @@ def test_reply_errors_get_one_repair_turn_listing_them_by_key(setup, monkeypatch
     res = value(p, out)
     assert res["status"] == "ok" and [a["status"] for a in res["attempts"]] == ["reply_invalid", "ok"]
     repair = seen[1]["messages"][-1]["content"]
-    assert "- op_margin.y1: departs (0.1600 against the neutral 0.1556) and needs a departures entry" in repair
+    assert "- op_margin.y1: departs (0.1600 against the neutral 0.1578) and needs a departures entry" in repair
     assert seen[1]["options"]["seed"] == runner.SEED_BASE + run.REPAIR_SEED_OFFSET
 
 

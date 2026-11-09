@@ -18,7 +18,7 @@ import math
 
 from qwen_c.value import desk, forecast, forecast_fin, menu
 
-CHECKS_VERSION = "m3q.checks.v16"   # v16 2026-11-06 PREREG amendment 2 safe default: departed menu.HELD keys valued at the record-neutral, annotated held_at_record; numbers stay the reply's   # v15 2026-11-05 J2 revision 1: a year-1 revenue below what the year has already reported reverts (below_ytd_reported)   # v14 2026-11-04 J2: the outside-record annotation only on the keys the bar or growth_max spans (a guided capex crashed it)   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
+CHECKS_VERSION = "m3q.checks.v17"   # v17 2026-11-10 margin persistence: the anchors offered are the route's (menu.anchors), the record-neutral description names persist   # v16 2026-11-06 PREREG amendment 2 safe default: departed menu.HELD keys valued at the record-neutral, annotated held_at_record; numbers stay the reply's   # v15 2026-11-05 J2 revision 1: a year-1 revenue below what the year has already reported reverts (below_ytd_reported)   # v14 2026-11-04 J2: the outside-record annotation only on the keys the bar or growth_max spans (a guided capex crashed it)   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 PROB = {"bear": 0.25, "base": 0.5, "bull": 0.25}                           # §5: fixed
@@ -56,7 +56,7 @@ def _choice_error(key, kind, opt, m):
         if not (isinstance(opt, tuple) and len(opt) == 2):
             return "{anchor, step}"
         a, step = opt
-        anchors = menu.ANCHORS + (("normalized",) if kind == "long" else ())
+        anchors = menu.anchors(m["route"]) + (("normalized",) if kind == "long" else ())
         if a not in anchors or isinstance(step, bool) or step not in menu.STEPS:
             return f"anchor one of {anchors}, step one of {menu.STEPS}"
         return None
@@ -366,9 +366,9 @@ def _neutral_op(b, bar, r):
     """The record-neutral operating reply (menu.neutral_base: year 1 at ytd where measured (F11), else record-median margins and anchor growth)."""
     if b.get("g_anchor") is None:
         return None, "record_neutral_unavailable: no growth anchor"
-    y1 = lambda sc: "" if (sc["rev_growth"][0], sc["op_margin"][0]) == (b["g_anchor"], bar["median"]) else \
+    y1 = lambda sc: "" if (sc["rev_growth"][0], sc["op_margin"][0]) == (b["g_anchor"], bar["persist"]) else \
         f"year 1 growth {sc['rev_growth'][0]:.4f} and margin {sc['op_margin'][0]:.4f}, "
-    return _neutral(b, bar, r, "operating", lambda sc: f"{y1(sc)}margin {bar['median']:.4f}, growth {b['g_anchor']:.4f}, terminal RONIC "
+    return _neutral(b, bar, r, "operating", lambda sc: f"{y1(sc)}margin {bar['persist']:.4f} (persist), growth {b['g_anchor']:.4f}, terminal RONIC "
                                                        f"{sc['terminal_ronic']:.4f} (equity return r {r:.4f}), F {NEUTRAL_FADE}")
 
 

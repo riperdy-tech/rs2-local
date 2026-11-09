@@ -53,7 +53,7 @@ for p in (str(HERE), str(ROOT / "tools" / "paper_books"), str(ROOT)):
 import book_paths  # noqa: E402
 import realised  # noqa: E402
 from qwen_c import sec_store  # noqa: E402
-from qwen_c.value import facts, menu  # noqa: E402
+from qwen_c.value import facts, forecast, menu  # noqa: E402
 
 SCORE_VERSION = "j2.score.v1"
 PREREG = "m3o.value_addendum.v1.0"
@@ -240,11 +240,17 @@ def segment(r, key):
     return "other_drivers", driver
 
 
+# the registered comparator: menu v5's record-neutral options of the scored keys (menu v6 moved the operating margin to persist on
+# 2026-11-10; a J2 score keeps the statistic it registered, and a stored bar has no persist)
+OLD_ANCHOR_NEUTRAL = {"rev_growth.y1": "anchor", "op_margin.y1": "median"}
+
+
 def comparators(r, key):
     """{last, old_anchor_neutral, record_median}: the seed's own menu numbers (menu.menus on its stored base, bar and cost of equity)."""
-    m = menu.menus(r["base"], r["bar"], r["cost_of_equity"], "operating")
+    bar = r["bar"] if "persist" in r["bar"] else dict(r["bar"], persist=r["bar"]["median"] + forecast.PERSIST * (r["bar"]["last"] - r["bar"]["median"]))
+    m = menu.menus(r["base"], bar, r["cost_of_equity"], "operating")     # a stored (menu v5) bar has no persist; the comparators never read it
     line, med = ("growth", "record_median") if key == "rev_growth.y1" else ("margin", "median")
-    return {"last": m[line]["last"], "old_anchor_neutral": m[line][menu.NEUTRAL["operating"][key]], "record_median": m[line][med]}
+    return {"last": m[line]["last"], "old_anchor_neutral": m[line][OLD_ANCHOR_NEUTRAL[key]], "record_median": m[line][med]}
 
 
 # ------------------------------------------------------------------ the score

@@ -22,7 +22,7 @@ def test_1_an_roe_inside_the_record_passes(ctx):
 
 
 def test_1_operating_twin_a_margin_outside_the_record_is_reverted():
-    out = OP.depart(OP.clean(), "long_run_op_margin", ("median", 0))
+    out = OP.depart(OP.clean(), "long_run_op_margin", ("persist", 0))      # menu v6: the operating neutral number
     res = OP.run(OP.ctx_of(), OP.depart(out, "normalized.margin", ("p25", -3), "cycle_downturn", [OP.Y21, OP.Y25]))
     assert reverted(res, "normalized.margin") == ["V3"]
 

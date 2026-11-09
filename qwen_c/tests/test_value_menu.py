@@ -30,11 +30,13 @@ def fin(ga=0.04, r=FIN.R):
 
 
 # ------------------------------------------------------------------ the record-neutral functions keep their numbers
+# menu v6 (2026-11-10): the operating neutral margin is persist = median + 0.5 x (last - median), 0.1578 here (median 0.1556,
+# last 0.1600); the numbers below are v6's. The financial route is unchanged.
 @pytest.mark.parametrize("ga,lev,value,how", [
-    (0.03, False, 13.849768657039291, "margin 0.1556, growth 0.0300, terminal RONIC 0.0790 (equity return r 0.0900), F 10"),
-    (0.03, True, 13.865692636617434, "margin 0.1556, growth 0.0300, terminal RONIC 0.0730 (equity return r 0.0900), F 10"),
-    (0.0375, False, 14.662912876299872, "margin 0.1556, growth 0.0375, terminal RONIC 0.0790 (equity return r 0.0900), F 10"),
-    (0.0375, True, 14.688563167863851, "margin 0.1556, growth 0.0375, terminal RONIC 0.0730 (equity return r 0.0900), F 10"),
+    (0.03, False, 14.094998206395346, "margin 0.1578 (persist), growth 0.0300, terminal RONIC 0.0790 (equity return r 0.0900), F 10"),
+    (0.03, True, 14.108350914931089, "margin 0.1578 (persist), growth 0.0300, terminal RONIC 0.0730 (equity return r 0.0900), F 10"),
+    (0.0375, False, 14.92204931325863, "margin 0.1578 (persist), growth 0.0375, terminal RONIC 0.0790 (equity return r 0.0900), F 10"),
+    (0.0375, True, 14.945123860662177, "margin 0.1578 (persist), growth 0.0375, terminal RONIC 0.0730 (equity return r 0.0900), F 10"),
 ])
 def test_neutral_op_returns_the_numbers_it_returned_before_the_menu(ga, lev, value, how):
     b, bar, _ = op(ga)
@@ -55,7 +57,7 @@ def test_operating_options_resolve():
     g = b["record"]["rev_growth"]
     assert len(g) == 4 and m["growth"] == {"anchor": 0.03, "record_median": pytest.approx((g["2023-12-31"] + g["2024-12-31"]) / 2),
                                            "last": g["2025-12-31"], "zero": 0.0}
-    assert m["margin"] == {k: bar[k] for k in menu.ANCHORS} and m["terminal_g"] == {"anchor": 0.03, "half_anchor": 0.015, "zero": 0.0,
+    assert m["margin"] == {k: bar[k] for k in menu.anchors("operating")} and m["terminal_g"] == {"anchor": 0.03, "half_anchor": 0.015, "zero": 0.0,
                                                                                     "decline": None}
     n, r0 = menu.neutral_ronic(b, OP.R), b["ronic0"]
     for name, f in (("quarter", 0.25), ("half", 0.5), ("three_quarters", 0.75)):
@@ -173,7 +175,7 @@ def test_neighbours():
     base = menu.neutral_base("operating")
     nums = menu.resolve(base, {}, m)
     down, up = menu.neighbours("normalized.margin", base, nums, m, {})                  # step 0: +-1 point, never +-0.5
-    assert (down, up) == (pytest.approx(bar["median"] - 0.01), pytest.approx(bar["median"] + 0.01))
+    assert (down, up) == (pytest.approx(bar["persist"] - 0.01), pytest.approx(bar["persist"] + 0.01))   # v6: the neutral anchor is persist
     b5 = menu.set_option(base, "normalized.margin", ("median", 0.5))
     assert menu.neighbours("normalized.margin", b5, menu.resolve(b5, {}, m), m, {}) == (pytest.approx(bar["median"]),
                                                                                         pytest.approx(bar["median"] + 0.01))

@@ -2,7 +2,8 @@
 
 record_items: the filed annual record as packet items (kind "filed_record", one per fiscal year, fact_id "Y<end>"), built by code from
 facts.py so the model can cite the multi-year record and the contract can check the figures it quotes.
-record_bar: the operating-margin statistics of that record (min, p25, median, p75, max, last), the baselines a normalized margin starts from.
+record_bar: the operating-margin statistics of that record (min, p25, median, p75, max, last, and persist = median + PERSIST x (last -
+median), v3), the baselines a normalized margin starts from.
 build_path: years 1..5 of one scenario (rev 26's rules, r26_forecast.build_path: years 1-2 typed, years 3..N blended to the normalized
 value by the transition, years after N held).
 assemble: one scenario to desk.value_operating's input, the margins bridged from the GAAP operating basis to X (inputs.bridge_x_margin).
@@ -12,8 +13,12 @@ import statistics
 from qwen_c.value import desk, inputs
 from qwen_c.value.desk import DeskRefusal
 
-FORECAST_VERSION = "m3q.forecast.v2"   # v2 2026-11-03 F_SPEC_valuation_menu §2.1: capex_path {"year1": x} (the guidance option)
-BASELINES = ("min", "p25", "median", "p75", "max", "last")
+FORECAST_VERSION = "m3q.forecast.v3"   # v3 2026-11-10 margin persistence: the record bar carries `persist` (median + PERSIST x (last - median))   # v2 2026-11-03 F_SPEC_valuation_menu §2.1: capex_path {"year1": x} (the guidance option)
+BASELINES = ("min", "p25", "median", "p75", "max", "last", "persist")
+# v3 2026-11-10: the share of a margin's gap to its own 5-year median still present 2-5 years on, measured on the SEC panel of the J2/K2
+# store (1,803 companies, fiscal years ending by 2024-12-31: OLS slope 0.43-0.52 at 2-5 years; stocks-workspace/docs/review_2026-11-03/
+# DIAG_value_level_2026-11-10.md). The record-neutral operating margin keeps this share of the gap instead of none.
+PERSIST = 0.5
 TRANSITIONS = ("linear", "step_at_year", "hold_then_linear")
 
 
@@ -47,7 +52,9 @@ def record_bar(record_margins):
     if len(vals) < inputs.MIN_POOL_YEARS:
         raise DeskRefusal("history_short", f"{len(vals)} filed operating margins")
     q = statistics.quantiles(vals, n=4, method="inclusive")
-    return {"min": min(vals), "p25": q[0], "median": statistics.median(vals), "p75": q[2], "max": max(vals), "last": vals[-1]}
+    med = statistics.median(vals)
+    return {"min": min(vals), "p25": q[0], "median": med, "p75": q[2], "max": max(vals), "last": vals[-1],
+            "persist": med + PERSIST * (vals[-1] - med)}
 
 
 def _blend(start, target, t, n, transition, k):
