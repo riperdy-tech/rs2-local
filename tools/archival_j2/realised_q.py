@@ -14,13 +14,16 @@ THE RULES.
 3. The measure is gate 2's same_filing.quarter_measures on that accession, unchanged: the 3-month pair in its own filing, else (a 10-K)
    a derived Q4 from the fiscal year minus nine months under one tag, refused across a recast. revenue_growth = this quarter / the same
    quarter one year earlier, both legs as printed in that one filing.
+4. Total revenue (as J2's annual reader, AK.37 v2 item 2): same_filing.revenue_scope on that filing's pair (a derived Q4 on the 10-K's
+   fiscal-year pair): `dominance`, `closure`, `unverified` (scored, flagged) or `closure_fail` (the measure abstains: status
+   `scope_closure_fail`).
 """
-from datetime import date, timedelta
+from datetime import date
 
 import realised
 import same_filing as sf
 
-REALISED_Q_VERSION = "cohorts.realised_q.v1"
+REALISED_Q_VERSION = "cohorts.realised_q.v2"   # v2 2026-11-10: rule 4, total revenue
 FORMS = ("10-Q", "10-K")
 AMENDED = ("10-Q/A", "10-K/A")
 MAX_GAP_DAYS = 100           # a fiscal quarter is 91 days; the first quarter ending after T ends within 92 days of it
@@ -51,6 +54,11 @@ def realised_q(cf, subs, T, by, family="operating"):
     out["quarter"] = q
     m = sf.quarter_measures(realised.store_facts(cf), q["accession"], q["report_date"], family, None)
     out["measures"] = m
-    out["revenue_growth"] = m.get("revenue_growth")
-    out["status"] = "ok" if out["revenue_growth"] is not None else (m.get("status") or "no_same_filing_pair")
-    return out
+    if m.get("revenue_growth") is None:
+        return dict(out, status=m.get("status") or "no_same_filing_pair")
+    taxo, tag, unit = m["tags"]["revenue"].split("/")
+    out["scope"] = sf.revenue_scope(cf, tag, unit, len((m.get("revenue_tags") or {}).get("tags") or {}), q["accession"], q["report_date"],
+                                    m["kinds"]["revenue"])
+    if out["scope"]["status"] == "closure_fail":
+        return dict(out, status="scope_closure_fail")
+    return dict(out, status="ok", revenue_growth=m["revenue_growth"])

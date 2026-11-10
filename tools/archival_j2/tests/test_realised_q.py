@@ -36,3 +36,18 @@ def test_no_same_filing_pair_is_counted_not_imputed():
     s = subs(("10-Q", QA, "2026-02-05", "2025-12-27"))
     r = Q.realised_q(cf(Revenues=[fact("2025-09-28", "2025-12-27", 110.0, QA, "2026-02-05", "10-Q", "Q1")]), s, T, "2026-11-10")
     assert r["status"] != "ok" and r["revenue_growth"] is None
+
+
+def test_a_single_tag_with_no_closure_test_is_scored_and_flagged_unverified():
+    c = cf(Revenues=[fact("2025-09-28", "2025-12-27", 110.0, QA, "2026-02-05", "10-Q", "Q1"),
+                     fact("2024-09-29", "2024-12-28", 100.0, QA, "2026-02-05", "10-Q", "Q1")])
+    r = Q.realised_q(c, subs(("10-Q", QA, "2026-02-05", "2025-12-27")), T, "2026-11-10")
+    assert r["status"] == "ok" and r["scope"]["status"] == "unverified"
+
+
+def test_a_line_that_fails_closure_abstains():
+    q = lambda tag, a, b: [fact("2025-09-28", "2025-12-27", a, QA, "2026-02-05", "10-Q", "Q1"),
+                           fact("2024-09-29", "2024-12-28", b, QA, "2026-02-05", "10-Q", "Q1")]
+    c = cf(Revenues=q("Revenues", 110.0, 100.0), GrossProfit=q("GrossProfit", 50.0, 40.0), CostOfRevenue=q("CostOfRevenue", 80.0, 70.0))
+    r = Q.realised_q(c, subs(("10-Q", QA, "2026-02-05", "2025-12-27")), T, "2026-11-10")
+    assert r["status"] == "scope_closure_fail" and r["revenue_growth"] is None
