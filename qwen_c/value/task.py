@@ -10,7 +10,7 @@ Changing any text here changes what the model is told: bump VALUATION_PROMPT_VER
 from qwen_c import tasks
 from qwen_c.value import menu, sentences
 
-VALUATION_PROMPT_VERSION = "m3q.prompt.v12"   # v12 2026-11-10 margin persistence: the margin record line ends with persist; the operating anchors list persist first (menu v6)   # v11 2026-11-05 J2 revision 1: "Year 1 options keep reported quarters." (menu v4)   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): [V0] year 1's own MENU lines with ytd first where measured, and the year-to-date line   # v9 2026-11-03 F8: the short sentence marker <17>   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
+VALUATION_PROMPT_VERSION = "m3q.prompt.v13"   # v13 2026-11-10 SPEC_prompt_v13 (PREREG_cohorts_nextq 7.6): a guidance entry gives its period; found lists every year-1 revenue guidance sentence, chosen or not   # v12 2026-11-10 margin persistence: the margin record line ends with persist; the operating anchors list persist first (menu v6)   # v11 2026-11-05 J2 revision 1: "Year 1 options keep reported quarters." (menu v4)   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): [V0] year 1's own MENU lines with ytd first where measured, and the year-to-date line   # v9 2026-11-03 F8: the short sentence marker <17>   # v8 2026-11-03 F_SPEC_valuation_menu: menus, sentence IDs, typed departures   # v7 2026-10-31 CROSS_CHECK_Q3e 2: forecast years in words   # v6..v2 2026-10-30/31 (see git)
 PRICE_LINES = ("price:", "marketCap:", "price as-of")
 NL = "\n"
 
@@ -30,7 +30,8 @@ _SHAPE = """```json
           "normalized": {"year": 4, "anchor": "persist", "step": 0, "rev_growth": "anchor"}, "fade_years": 10,
           "long_run_op_margin": {"anchor": "normalized", "step": 0}, "terminal_ronic": "no_growth_value", "terminal_g": "anchor",
           "capex": "pooled"},
- "guidance": {"rev_growth.y1": {"evidence": "P4.s17", "metric": "revenue_growth", "sign": "as_printed", "ordinal": 1}},
+ "guidance": {"rev_growth.y1": {"evidence": "P4.s17", "metric": "revenue_growth", "period": "year", "sign": "as_printed", "ordinal": 1}},
+ "found": [{"evidence": "P4.s17", "metric": "revenue_growth", "period": "year", "sign": "as_printed", "ordinal": 1}],
  "departures": [{"input": "rev_growth.y1", "driver": "guidance", "evidence": ["P4.s17"]}],
  "uncertain": ["rev_growth.y1"],
  "unknowns": ["what the evidence cannot answer"]}
@@ -50,9 +51,12 @@ _RULES = (
 # v12 (menu v6): the operating text no longer names the neutral anchor (persist is listed first on its MENU line, and the budget
 # allows no more); the financial text keeps "median, ", byte-identical to fin.v7
 _YEAR1 = "Year 1 options keep reported quarters.\n"    # v11: operating only (the financial route has no ytd); the instruction's budget allows no more
+# v13 (SPEC_prompt_v13): operating only, so the financial text stays fin.v7; the budget is 0.6 of v7 from v13
+_GUIDE13 = ("A guidance entry also gives period: year, half or quarter, as the sentence states. Under \"found\", list such an entry "
+            "for every sentence that guides year 1's revenue, whether or not you choose guidance.\n")
 
 INSTRUCTION = ("TASK valuation_inputs. Choose the inputs from which code values the company; you never state a number, a value or a "
-               "price. " + _RULES.replace("{NEUTRAL}", "") + _YEAR1 + "Reply in this shape:\n" + _SHAPE)
+               "price. " + _RULES.replace("{NEUTRAL}", "") + _YEAR1 + _GUIDE13 + "Reply in this shape:\n" + _SHAPE)
 
 
 # WO_Q6: the financial route (banks, insurers; O3 retained equity). Its own text and version. Changing any text here: bump

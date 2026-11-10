@@ -14,7 +14,7 @@ import statistics
 from qwen_c import contract
 from qwen_c.value import forecast
 
-MENU_VERSION = "m3q.menu.v6"   # v6 2026-11-10 margin persistence: the operating record-neutral margin (years 1-2 where ytd is not measured, normalized, and so the long run) anchors on `persist`, listed first   # v5 2026-11-06 design revision 2: a guided revenue level too small to be the year's (a quarter's guide, a figure in unstated millions) is unreadable (QUARTER_SCALE)   # v4 2026-11-05 J2 revision 1: year 1's options other than ytd keep the reported quarters and set only the rest; the ytd floor   # v3 2026-11-04 E4: field-name aliases of the normalized key, the long run inheriting normalized's entry   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
+MENU_VERSION = "m3q.menu.v7"   # v7 2026-11-10 SPEC_prompt_v13: a guidance entry whose period is a half or a quarter is unreadable for a fiscal-year key   # v6 2026-11-10 margin persistence: the operating record-neutral margin (years 1-2 where ytd is not measured, normalized, and so the long run) anchors on `persist`, listed first   # v5 2026-11-06 design revision 2: a guided revenue level too small to be the year's (a quarter's guide, a figure in unstated millions) is unreadable (QUARTER_SCALE)   # v4 2026-11-05 J2 revision 1: year 1's options other than ytd keep the reported quarters and set only the rest; the ytd floor   # v3 2026-11-04 E4: field-name aliases of the normalized key, the long run inheriting normalized's entry   # v2 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): year 1's `ytd` option, the record-neutral year-1 growth and margin whenever it is measured   # v1 2026-11-03 F_SPEC_valuation_menu
 STEPS = (-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3)            # points added to an anchor
 YEARS = (3, 4, 5)
 FADES = (10, 5, 15, 20)
@@ -23,6 +23,7 @@ ANCHORS_OP = ("persist", "median", "p25", "p75", "last")   # v6: the operating r
 DRIVERS = ("pricing", "volume", "mix", "cost_program", "capex_program", "guidance", "backlog", "cycle_recovery", "cycle_downturn",
            "competition", "regulation", "secular_decline", "return_to_growth", "record_persistence")
 SIGNS = ("as_printed", "negative")
+PERIODS = ("year", "half", "quarter")                 # v7 (prompt v13): the period a guidance sentence states; optional, so v12 replies check as before
 TOL, TOL_RONIC = 0.001, 0.001                          # §3: 0.1 point for margins and growth, 0.1% relative for RONIC
 NEIGHBOUR_GROWTH = 0.02                                # §5: +-2 points where no offered growth value lies beyond Base
 CLIP = 0.03                                            # §5: margin neighbours stay inside [p25 - 3 points, p75 + 3 points]
@@ -211,6 +212,14 @@ def read_figure(text, metric, ordinal):
     return ((figs[k][0] + figs[k + 1][0]) / 2 if joined(k) else figs[k][0]), None
 
 
+def guidance_entry_ok(e, key, ids):
+    """A guidance entry's form: evidence an existing ID, the key's metric, sign, ordinal 1, 2, ...; v7: `period`, when given, one of
+    PERIODS (absent in v12 replies)."""
+    return (isinstance(e, dict) and e.get("evidence") in ids and e.get("metric") in METRICS.get(key, ()) and e.get("sign") in SIGNS
+            and isinstance(e.get("ordinal"), int) and not isinstance(e.get("ordinal"), bool) and e["ordinal"] >= 1
+            and ("period" not in e or e["period"] in PERIODS))
+
+
 def read_guidance(entry, key, ids, g1, m, fy0, fy_of):
     """(number, None) or (None, why) for one guidance entry (§2.2). `g1` the resolved year-1 growth (a level's year-1 revenue);
     `fy_of(period)` the fiscal year of a period."""
@@ -218,6 +227,8 @@ def read_guidance(entry, key, ids, g1, m, fy0, fy_of):
     fy = fy_of(ev.get("period"))
     if not ev.get("sentence") or not ((fy is not None and fy >= fy0) or str(ev.get("period") or "")[:10] > fy0):
         return None, "the evidence is not a sentence of a filing or 8-K item dated in or after the base fiscal year"
+    if entry.get("period") in ("half", "quarter"):                   # v7: every guided key is a fiscal year's (or a level of one)
+        return None, f"the sentence guides a {entry['period']}, not a fiscal year"
     x, why = read_figure(ev["text"], entry["metric"], entry["ordinal"])
     if why:
         return None, why

@@ -339,5 +339,5 @@ def test_a_departed_year_1_key_is_annotated_and_valued_at_the_record_neutral():
 
 
 def test_only_the_judged_year_1_keys_are_held():
-    assert menu.HELD == ("rev_growth.y1", "op_margin.y1") and checks.CHECKS_VERSION == "m3q.checks.v17"
+    assert menu.HELD == ("rev_growth.y1", "op_margin.y1") and checks.CHECKS_VERSION == "m3q.checks.v18"
     assert memo.MEMO_VERSION == "m3q.memo.v7"

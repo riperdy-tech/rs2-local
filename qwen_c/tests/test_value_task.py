@@ -8,7 +8,7 @@ from qwen_c import tasks
 from qwen_c.value import checks, menu, task
 from qwen_c.tests import test_value_checks as OP
 
-PINNED = "79f11a48a7dad6239ba7215995d5153bb37feaa676b486ceacb89e2efdfe5180"   # m3q.prompt.v12 (v11: f61b782d..., v10: 084f6ff5..., v9: 553705b3...)
+PINNED = "199bd0fca8ed3350f9265523c368cf6c7fccd0cb0788dc00b01959b813dd5603"   # m3q.prompt.v13 (v12: 79f11a48..., v11: f61b782d..., v10: 084f6ff5..., v9: 553705b3...)
 V7_INSTRUCTION_CHARS = 4065                                                     # m3q.prompt.v7's INSTRUCTION, shape included
 
 
@@ -25,8 +25,9 @@ def test_system_is_the_shared_text_and_the_formation_tasks_are_untouched():
     assert msgs[0]["content"] is tasks.SYSTEM
 
 
-def test_the_instruction_is_at_most_half_of_v7_and_names_no_figure_rules():
-    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v12" and len(task.INSTRUCTION) <= V7_INSTRUCTION_CHARS / 2
+def test_the_instruction_is_at_most_0_6_of_v7_and_names_no_figure_rules():
+    # v13 (SPEC_prompt_v13): the cap rose from half of v7 to 0.6 of v7 for the two new asks (period, found) and nothing else
+    assert task.VALUATION_PROMPT_VERSION == "m3q.prompt.v13" and len(task.INSTRUCTION) <= V7_INSTRUCTION_CHARS * 0.6
     for gone in ("quote", "bare adjective", "figures a cited item prints", "prob"):
         assert gone not in task.INSTRUCTION
 
@@ -37,6 +38,7 @@ def test_the_example_shape_in_the_prompt_passes_the_reply_rules():
     ids = dict(ids, **{"P4.s17": {"fact_id": "P4", "kind": "release", "period": "2026-02-01", "text": "Revenue grows 5%.", "sentence": True}})
     res = checks.check(example, ids, b, bar, OP.R, OP.ENDS)
     assert res["status"] == "ok" and res["numbers"]["rev_growth.y1"] == 0.05, res.get("errors")
+    assert [(f["number"], f["why"]) for f in res["found"]] == [(0.05, None)] and res["found_chosen"] == 0      # v13: found
 
 
 def test_user_message_carries_markers_the_record_and_the_menu_then_the_task_last():

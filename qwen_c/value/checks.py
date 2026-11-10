@@ -16,9 +16,9 @@ check(reply, ids, b, bar, r, fy_ends, route) returns
 """
 import math
 
-from qwen_c.value import desk, forecast, forecast_fin, menu
+from qwen_c.value import desk, forecast, forecast_fin, found, menu
 
-CHECKS_VERSION = "m3q.checks.v17"   # v17 2026-11-10 margin persistence: the anchors offered are the route's (menu.anchors), the record-neutral description names persist   # v16 2026-11-06 PREREG amendment 2 safe default: departed menu.HELD keys valued at the record-neutral, annotated held_at_record; numbers stay the reply's   # v15 2026-11-05 J2 revision 1: a year-1 revenue below what the year has already reported reverts (below_ytd_reported)   # v14 2026-11-04 J2: the outside-record annotation only on the keys the bar or growth_max spans (a guided capex crashed it)   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
+CHECKS_VERSION = "m3q.checks.v18"   # v18 2026-11-10 SPEC_prompt_v13: a guidance entry's optional period (menu v7); found, every year-1 revenue guidance sentence, read and annotated, never valued   # v17 2026-11-10 margin persistence: the anchors offered are the route's (menu.anchors), the record-neutral description names persist   # v16 2026-11-06 PREREG amendment 2 safe default: departed menu.HELD keys valued at the record-neutral, annotated held_at_record; numbers stay the reply's   # v15 2026-11-05 J2 revision 1: a year-1 revenue below what the year has already reported reverts (below_ytd_reported)   # v14 2026-11-04 J2: the outside-record annotation only on the keys the bar or growth_max spans (a guided capex crashed it)   # v13 2026-11-04 E4: aliases of the normalized key, the long run inheriting normalized's entry   # v12 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): the record-neutral reply from menu.neutral_base(route, m), year 1 at ytd where measured, in the check, the reverts and the record-neutral diagnostics alike   # v11 2026-11-03 F_SPEC_valuation_menu: menus, typed departures, reverts to a fixed point   # v10 RR_Q7: V12   # v9 CROSS_CHECK_Q3e   # v8..v3 2026-10-30/31 (see git)
 FILED_KINDS = ("statement", "annual_section", "quarterly_section")          # [Y] filed_record items cannot carry V3's span
 V4_KINDS = FILED_KINDS + ("filed_record",)
 PROB = {"bear": 0.25, "base": 0.5, "bull": 0.25}                           # §5: fixed
@@ -96,10 +96,9 @@ def _shape(reply, ids, m):
         if why:
             add(key, why)
     for key, e in guid.items():
-        if not (isinstance(e, dict) and e.get("evidence") in ids and e.get("metric") in menu.METRICS.get(key, ()) and e.get("sign") in menu.SIGNS
-                and isinstance(e.get("ordinal"), int) and not isinstance(e.get("ordinal"), bool) and e["ordinal"] >= 1):
-            add(f"guidance.{key}", f"an entry {{evidence: an existing ID, metric: one of {menu.METRICS.get(key, ())}, sign: one of "
-                                   f"{menu.SIGNS}, ordinal: 1, 2, ...}}")
+        if not menu.guidance_entry_ok(e, key, ids):
+            add(f"guidance.{key}", f"an entry {{evidence: an existing ID, metric: one of {menu.METRICS.get(key, ())}, period: one of "
+                                   f"{menu.PERIODS}, sign: one of {menu.SIGNS}, ordinal: 1, 2, ...}}")
     deps = reply.get("departures", [])
     if not isinstance(deps, list):
         add("departures", "a list")
@@ -193,6 +192,7 @@ def check(reply, ids, b, bar, r, fy_ends=(), route="operating"):
             err, base = {"reply": [f"{type(e).__name__}: {e}"]}, None
         if err:
             return dict(res, status="reply_invalid", errors=err)
+        if route == "operating": res["found"], res["found_chosen"], notes = found.read(reply, base, ids, m, b["fy0"], lambda p: fiscal_year_of(p, fy_ends)); res["annotations"] += notes   # v18: annotation only
         return _check(reply, base, ids, b, bar, r, fy_ends, m, neutral, res)
     except (KeyError, TypeError, ValueError, AttributeError, ZeroDivisionError, OverflowError) as e:
         # review 2026-11-03: past the reply rules a crash is the code's, not the model's; run.py records it as engine_defect
