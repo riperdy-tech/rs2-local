@@ -57,6 +57,8 @@ def run(limit):
             print("yield: cache/j2_yield.flag", flush=True)
             return 5
         n, pk = pool[t], pk_all[t]
+        if not pk.get("packet"):
+            continue                                # no packet, so S1b has no slot either (j2_run skips it the same way)
         src = Path(pk["packet"]).read_bytes()
         if sha(src) != pk["packet_sha256"]:
             sys.exit(f"STOP: {t} packet does not recompute")
