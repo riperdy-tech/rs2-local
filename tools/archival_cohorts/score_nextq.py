@@ -139,7 +139,7 @@ def name_row(cohort, results, realised):
     base = next((v[3] for v in views if v), None) or (results[0].get("base") if results else None) or {}
     y = base.get("ytd") or {}
     R0, yc, yp, pace = base.get("R0"), y.get("revenue"), y.get("revenue_prior"), y.get("rev_growth")
-    row = {"cohort": cohort, "pace": pace, "ytd_end": y.get("end")}
+    row = {"cohort": cohort, "pace": pace, "ytd_end": y.get("end"), "ytd_accn": y.get("accn"), "R0": R0, "yc": yc, "yp": yp}
     from qwen_c.value import menu                          # the menu's own rule decides whether year 1 has an unreported rest
     if menu._year1_rest(y, R0) is None or g_rest(pace, R0, yc, yp) is None:
         return dict(row, p1="no_rest_of_year")
@@ -172,3 +172,153 @@ def readings(rows):
     flips = sum(1 for r in scored if (r["points_qwen"] < r["points_pace"]) != (r["outcome"] == "win"))
     return dict(v, version=SCORER_VERSION, rows=len(rows), counts=dict(Counter(r.get("p1") for r in rows)),
                 winner_changes_under_points=flips)
+
+
+# ------------------------------------------------------------------ the driver: run once, on or after BY (PREREG v1.0 section 5)
+COHORTS = ("2025-10-01", "2025-11-20", "2026-05-20", "2026-08-20")
+SEEDS = (1200, 3200)
+BY = "2026-12-31"
+PRIOR_POOLS = ("archival_2025-12-31", "archival_2025-12-31_nd", "archival_2025-10-01", "archival_2025-10-01_pit", "archival_2026-06-15")
+UNREADABLE = "guidance_unreadable: rev_growth.y1 "          # checks writes it to `reverts`: a guidance pick code reverted ("attempted")
+
+
+def share(rows, key="outcome"):
+    """{wins, n, p}: the rows carrying win or loss under `key`, and the one-sided sign test."""
+    dec = [r[key] for r in rows if r.get(key) in ("win", "loss")]
+    return {"wins": dec.count("win"), "n": len(dec), "p": sign_p(dec.count("win"), len(dec))}
+
+
+def beside(row, g_realised, g_single):
+    """S1 and the single-quarter rule for one name with a realised quarter (reported, never deciding). The forecast of Qwen is its
+    departure, else the pace. `s1`: Qwen against the rule R; `single_vs_pace`, `qwen_vs_single`: the latest single quarter's growth."""
+    pace = row["pace"]
+    g_q = row.get("g_qwen", pace)
+    g_r, src = selection_rule(row.get("found"), pace, row["R0"], row["yc"], row["yp"])
+    e_q, e_p = error(g_q, g_realised), error(pace, g_realised)
+    out = {"rule_source": src, "g_rule": g_r, "s1": outcome(e_q, error(g_r, g_realised))}
+    if g_single is not None:
+        e_s = error(g_single, g_realised)
+        out.update(g_single=g_single, single_vs_pace=outcome(e_s, e_p), qwen_vs_single=outcome(e_q, e_s))
+    return out
+
+
+def score(names, realised, single):
+    """Every row and every reading. `names`: [{"meta": {cohort, cik, cell, sector, cap_tercile, in_prior_pool, ...}, "results": the two
+    stored results, or None (no packet)}], cohorts in T order. `realised(meta, ytd_end)`: the realised_q dict; `single(meta, row)`:
+    the latest single quarter's growth or None. Both are called only where a reading needs them."""
+    import statistics
+    from collections import Counter
+    rows, seen = [], set()
+    for n in names:
+        meta = dict(n["meta"], first_appearance=n["meta"]["cik"] not in seen)
+        seen.add(meta["cik"])
+        if n["results"] is None:
+            rows.append(dict(meta, p1="no_packet"))
+            continue
+        views = [seed_view(r) for r in n["results"]]
+        tried = sum(1 for r in n["results"] if any(a.startswith(UNREADABLE) for a in (r.get("checks") or {}).get("reverts") or []))
+        if not any(views):
+            rows.append(dict(meta, p1="no_checked_reply", attempted=tried))
+            continue
+        row = dict(name_row(meta["cohort"], n["results"], lambda end: realised(meta, end)), **meta, attempted=tried)
+        if all(views) and row["p1"] != "no_rest_of_year" and (
+                row["departure"] == "departs" or selection_rule(row["found"], row["pace"], row["R0"], row["yc"], row["yp"])[1] == "guidance"):
+            rq = realised(meta, row["ytd_end"])
+            if rq.get("status") == "ok" and error(row["pace"], rq["revenue_growth"]) is not None:
+                row.update(beside(row, rq["revenue_growth"], single(meta, row)))
+        rows.append(row)
+    scored = [r for r in rows if r["p1"] == "scored"]
+    for r in scored:
+        r["guidance_found"] = any(f.get("number") is not None for f in r.get("found") or [])
+
+    def cut(key):
+        return {str(k): share([r for r in scored if r.get(key) == k]) for k in sorted({r.get(key) for r in scored}, key=str)}
+    return {"version": SCORER_VERSION, "by": BY, "p1": readings(rows),
+            "attempted": dict(Counter(r["cohort"] for r in rows for _ in range(r.get("attempted", 0)))),
+            "sensitivity": {"first_appearance": readings([r for r in rows if r["first_appearance"]]),
+                            "without_cohort_1": readings([r for r in rows if r["cohort"] != COHORTS[0]]),
+                            "cohorts_2026": readings([r for r in rows if r["cohort"] in COHORTS[2:]]),
+                            "without_prior_pools": readings([r for r in rows if not r.get("in_prior_pool")])},
+            "s1": share(rows, "s1"),
+            "s4": {"median_e_qwen": statistics.median(r["e_qwen"] for r in scored) if scored else None,
+                   "median_e_pace": statistics.median(r["e_pace"] for r in scored) if scored else None},
+            "single_quarter": {"rule_vs_pace": share(scored, "single_vs_pace"), "qwen_vs_rule": share(scored, "qwen_vs_single")},
+            "segments": {k: cut(k) for k in ("option", "guidance_found", "cap_tercile", "sector")},
+            "rows": rows}
+
+
+def main():
+    """Reads the four cohorts' stored slots and SEC (online, standing approval) and writes score_nextq.json once. S2, S3 and S5 are
+    separate readings (returns; K2's annual reader)."""
+    import hashlib
+    import json
+    import sys
+    from datetime import date
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    for p in (root / "tools" / "archival_j2", root / "tools" / "paper_books", root):
+        if str(p) not in sys.path:
+            sys.path.insert(0, str(p))
+    import book_paths
+    import realised as annual
+    import realised_q
+    import same_filing as sf
+    from qwen_c import sec_store
+    from qwen_c.value import facts
+    if date.today().isoformat() < BY:
+        sys.exit(f"STOP: the scorer runs once, on or after {BY} (PREREG section 5); no cohort outcome is read before then")
+    value = book_paths.books() / "m3o" / "value"
+    out_path = value / "score_nextq.json"
+    if out_path.exists():
+        sys.exit(f"STOP: {out_path} exists; a score is never overwritten")
+
+    def census(d):
+        return [n for n in json.loads((value / d / "pool.json").read_text(encoding="utf-8"))["names"] if n.get("stage") is None]
+    prior = {n["cik"] for d in PRIOR_POOLS for n in census(d)}
+    names, store = [], {}
+    for T in COHORTS:
+        d = value / f"archival_cohort_{T}"
+        packets = json.loads((d / "runs.json").read_text(encoding="utf-8"))["packets"]
+        slots = json.loads((d / "slots.json").read_text(encoding="utf-8"))["slots"]
+        for n in census(f"archival_cohort_{T}"):
+            t = n["ticker"]
+            meta = {"cohort": T, "ticker": t, "cik": n["cik"], "cell": n["cell"], "sector": n["sector"], "cap_tercile": n["cap_tercile"],
+                    "in_prior_pool": n["cik"] in prior}
+            if not (packets.get(t) or {}).get("packet"):
+                names.append({"meta": meta, "results": None})
+                continue
+            results = []
+            for seed in SEEDS:
+                s = slots.get(f"{t}:{seed}")
+                if s is None:
+                    sys.exit(f"STOP: {T} {t}:{seed} has no slot; the scorer runs once, after every slot of all four cohorts")
+                raw = Path(s["result"]).read_bytes()
+                if hashlib.sha256(raw).hexdigest() != s["result_sha256"]:
+                    sys.exit(f"STOP: {T} {t}:{seed} result.json does not hash to its slot")
+                results.append(json.loads(raw.decode("utf-8")))
+            names.append({"meta": meta, "results": results})
+
+    def sec(meta):
+        k = (meta["cohort"], meta["cik"])
+        if k not in store:
+            store[k] = tuple(json.loads(sec_store.get(u, online=True).decode("utf-8"))
+                             for u in (facts.companyfacts_url(meta["cik"]), facts.submissions_url(meta["cik"])))
+        return store[k]
+
+    def realised(meta, end):
+        k = (meta["cohort"], meta["cik"], "rq")
+        if k not in store:
+            store[k] = realised_q.realised_q(*sec(meta), end, BY)
+        return store[k]
+
+    def single(meta, row):
+        return sf.quarter_measures(annual.store_facts(sec(meta)[0]), row["ytd_accn"], row["ytd_end"], "operating", None).get("revenue_growth")
+    doc = score(names, realised, single)
+    out_path.write_text(json.dumps(doc, indent=1), encoding="utf-8")
+    print(json.dumps({k: v for k, v in doc.items() if k != "rows"}, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

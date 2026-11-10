@@ -137,3 +137,47 @@ def test_readings_count_and_verdict():
     rows = [Q.name_row(c, [result(0.08), result(0.07)], realised_at(0.05)) for c in (1, 2, 3, 4) for _ in range(16)]
     r = Q.readings(rows)
     assert r["verdict"] == "PASS" and r["counts"] == {"scored": 64} and r["winner_changes_under_points"] == 0
+
+
+def named(cohort, cik, results, **meta):
+    return {"meta": dict({"cohort": cohort, "cik": cik, "cell": "S|T1", "sector": "S", "cap_tercile": "T1", "in_prior_pool": False}, **meta),
+            "results": results}
+
+
+def test_beside_scores_the_rule_r_and_the_single_quarter():
+    found = [{"number": 0.08, "period_of_evidence": "2025-08-01"}]
+    row = {"pace": PACE, "R0": R0, "yc": YC, "yp": YP, "found": found}                     # Qwen kept the pace; R is the guidance
+    out = Q.beside(row, 0.06, 0.12)
+    assert out["rule_source"] == "guidance" and out["g_rule"] == pytest.approx(223 / 210 - 1)
+    assert out["s1"] == "loss"                                                             # realised +6%: R (+6.19%) beats the pace
+    assert out["single_vs_pace"] == "loss" and out["qwen_vs_single"] == "win"              # +12% is further out than +10%
+    assert Q.beside(dict(row, found=[]), 0.06, None) == {"rule_source": "pace", "g_rule": PACE, "s1": "tie"}
+
+
+def test_score_counts_every_name_and_reads_only_what_a_reading_needs():
+    calls = []
+
+    def realised(meta, end):
+        calls.append((meta["cik"], end))
+        return {"status": "ok", "revenue_growth": 0.05, "quarter": {"report_date": "2025-09-30"}}
+    unread = result((YC + (R0 - YP) * (1 + PACE)) / R0 - 1, "ytd")
+    unread["checks"]["reverts"] = ["guidance_unreadable: rev_growth.y1 x"]
+    names = [named("2025-10-01", "1", [result(0.08), result(0.07)]),
+             named("2025-10-01", "2", None),
+             named("2025-10-01", "3", [result(None, status="no_call"), result(None, status="no_call")]),
+             named("2025-11-20", "1", [result(0.08), result(0.07)], in_prior_pool=True),
+             named("2025-11-20", "4", [unread, unread])]
+    doc = Q.score(names, realised, lambda meta, row: 0.12)
+    assert doc["p1"]["counts"] == {"scored": 2, "no_packet": 1, "no_checked_reply": 1, "no_departure": 1}
+    assert doc["attempted"] == {"2025-11-20": 2}
+    assert doc["sensitivity"]["first_appearance"]["counts"]["scored"] == 1
+    assert doc["sensitivity"]["without_prior_pools"]["counts"]["scored"] == 1
+    assert doc["sensitivity"]["without_cohort_1"]["counts"] == {"scored": 1, "no_departure": 1}
+    assert doc["single_quarter"]["qwen_vs_rule"] == {"wins": 2, "n": 2, "p": 0.25}
+    assert doc["segments"]["option"] == {"guidance": {"wins": 2, "n": 2, "p": 0.25}}
+    assert doc["s4"]["median_e_pace"] == pytest.approx(math.log(1.10 / 1.05))
+    assert sorted(set(calls)) == [("1", "2025-06-30")]            # a name that kept the pace and found no guidance reads no outcome
+
+
+def test_the_driver_is_set_to_the_registration():
+    assert Q.BY == "2026-12-31" and Q.SEEDS == (1200, 3200) and Q.COHORTS == ("2025-10-01", "2025-11-20", "2026-05-20", "2026-08-20")
