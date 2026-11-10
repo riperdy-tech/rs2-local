@@ -60,8 +60,11 @@ def run(limit):
         sys.exit("STOP: the rs2-local tree has uncommitted changes to tracked files")
     head = git("rev-parse", "HEAD")
     idx = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else {"git": head, "names": [n["ticker"] for n in names()], "slots": {}}
-    if idx["git"] != head:
-        sys.exit(f"STOP: the check began at {idx['git']}, the tree is at {head}")
+    if idx["git"] != head:                    # a later commit is accepted only if it changes nothing under qwen_c/ (the valuation code)
+        if subprocess.run(["git", "-C", str(ROOT), "diff", "--quiet", idx["git"], head, "--", "qwen_c"]).returncode:
+            sys.exit(f"STOP: the check began at {idx['git']}, the tree is at {head}, and qwen_c/ changed between them")
+        idx.setdefault("git_changes", []).append({"from": idx["git"], "to": head})
+        idx["git"] = head
     pk_all = json.loads((DIR / "runs.json").read_text(encoding="utf-8"))["packets"]
     pool = {n["ticker"]: n for n in json.loads((DIR / "pool.json").read_text(encoding="utf-8"))["names"]}
     env = dict(os.environ, RS2_ARCHIVAL_COE_DIR=str(DIR / "coe_pinned"), PYTHONIOENCODING="utf-8")
