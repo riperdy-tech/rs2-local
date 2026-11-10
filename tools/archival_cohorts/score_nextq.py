@@ -140,7 +140,8 @@ def name_row(cohort, results, realised):
     y = base.get("ytd") or {}
     R0, yc, yp, pace = base.get("R0"), y.get("revenue"), y.get("revenue_prior"), y.get("rev_growth")
     row = {"cohort": cohort, "pace": pace, "ytd_end": y.get("end")}
-    if pace is None or g_rest(pace, R0, yc, yp) is None:
+    from qwen_c.value import menu                          # the menu's own rule decides whether year 1 has an unreported rest
+    if menu._year1_rest(y, R0) is None or g_rest(pace, R0, yc, yp) is None:
         return dict(row, p1="no_rest_of_year")
     status, G = departure([v[0] if v else None for v in views], pace)
     row.update(departure=status, G=G)

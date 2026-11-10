@@ -99,8 +99,9 @@ def test_selection_rule_takes_the_latest_readable_record_else_the_pace():
     assert Q.selection_rule([{"number": None}], PACE, R0, YC, YP) == (PACE, "pace")
 
 
-def result(G, option="guidance", status="ok", found=()):
-    base = {"R0": R0, "ytd": {"revenue": YC, "revenue_prior": YP, "rev_growth": PACE, "end": "2025-06-30"}}
+def result(G, option="guidance", status="ok", found=(), quarter=2):
+    base = {"R0": R0, "ytd": {"revenue": YC, "revenue_prior": YP, "rev_growth": PACE, "end": "2025-06-30", "start": "2025-01-01",
+                              "year1_start": "2025-01-01", "quarter": quarter}}
     return {"status": status, "base": base, "checks": {"numbers": {"rev_growth.y1": G}, "options": {"rev_growth.y1": option},
                                                        "found": list(found)}}
 
@@ -128,6 +129,8 @@ def test_name_row_counts_what_does_not_enter():
     assert Q.name_row(1, [result(ytd_G, "ytd"), result(ytd_G, "ytd")], realised_at(0.05))["p1"] == "no_departure"
     assert Q.name_row(1, [result(0.08), result(0.07)], realised_at(None, "no_quarter_filed"))["p1"] == "no_realised"
     assert Q.name_row(1, [result(0.08), result(0.07)], realised_at(-1.0))["p1"] == "realised_not_positive"
+    # the menu did not map year 1's options onto a rest of the year (menu._year1_rest is None): outside the primary, counted
+    assert Q.name_row(1, [result(0.08, quarter=4), result(0.07, quarter=4)], realised_at(0.05))["p1"] == "no_rest_of_year"
 
 
 def test_readings_count_and_verdict():
