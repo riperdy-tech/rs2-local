@@ -1,6 +1,6 @@
 """cohort_run.py - the packets and valuations of one PREREG_cohorts_nextq cohort.
 
-    python tools/archival_cohorts/cohort_run.py packets --t T
+    python tools/archival_cohorts/cohort_run.py packets --t T [--limit N]
     python tools/archival_cohorts/cohort_run.py run --t T [--limit N] [--ticker X] [--continue-from <commit>]
 
 Directory: <books>/m3o/value/archival_cohort_<T>/ (pool.json from pool_cohort.py; coe_pinned/ from pin_coe.py). Index: runs.json there
@@ -55,11 +55,15 @@ def k2_entry(t, T):
     return dict(e, reused_from="archival_2025-10-01")
 
 
-def packets(d, pool, idx):
+def packets(d, pool, idx, limit=None):
+    did = 0
     for n in pool["pool"]:
         t = n["ticker"]
         if t in idx["packets"]:
             continue
+        if limit is not None and did >= limit:              # the smoke turn needs only the cohort's first packets
+            return 0
+        did += 1
         e = k2_entry(t, pool["T"])
         if e is None:
             try:
@@ -96,7 +100,7 @@ def main(argv=None):
     if idx["pool_sha256"] != sha(raw):
         sys.exit("STOP: pool.json changed since the index began")
     if a.phase == "packets":
-        return packets(d, pool, idx)
+        return packets(d, pool, idx, a.limit)
     J.DIR, J.SEEDS = d, SEEDS
     return J.run(pool, a.limit, a.ticker, a.continue_from)
 
