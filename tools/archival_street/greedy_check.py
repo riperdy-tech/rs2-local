@@ -47,6 +47,11 @@ def git(*a):
     return subprocess.run(["git", "-C", str(ROOT), *a], capture_output=True, text=True).stdout.strip()
 
 
+def same_code(a, b):
+    """True when commits a and b differ in nothing under qwen_c/ (the valuation code): a commit elsewhere does not change a valuation."""
+    return bool(a and b) and (a == b or subprocess.run(["git", "-C", str(ROOT), "diff", "--quiet", a, b, "--", "qwen_c"]).returncode == 0)
+
+
 def names():
     """The N_NAMES names: S1b names whose two S1b seeds are both ok, lowest sha256(ticker) first."""
     pool = {n["ticker"]: n for n in json.loads((DIR / "pool.json").read_text(encoding="utf-8"))["names"] if n.get("stage") is None}
@@ -96,7 +101,7 @@ def run(limit):
             res = rd / "result.json"
             body = json.loads(res.read_text(encoding="utf-8")) if (r.returncode == 0 and res.exists()) else {}
             pinned = "coe_archival_pinned" in ((body.get("coe") or {}).get("stamps") or [])
-            if (not body or body.get("status") == "engine_defect" or (body.get("versions") or {}).get("git", [None])[0] != head
+            if (not body or body.get("status") == "engine_defect" or not same_code(idx["git"], (body.get("versions") or {}).get("git", [None])[0])
                     or (body.get("status") != "no_call" and not pinned) or body.get("temperature") != temp):
                 print(t, seed, "STOP:", body.get("status") or "crash", (r.stderr or r.stdout)[-400:], flush=True)
                 return 7
