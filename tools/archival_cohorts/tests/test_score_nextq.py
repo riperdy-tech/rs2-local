@@ -97,3 +97,40 @@ def test_selection_rule_takes_the_latest_readable_record_else_the_pace():
     assert src == "guidance" and g == pytest.approx(Q.g_rest(0.08, R0, YC, YP))           # date tie: the first listed
     assert Q.selection_rule([], PACE, R0, YC, YP) == (PACE, "pace")
     assert Q.selection_rule([{"number": None}], PACE, R0, YC, YP) == (PACE, "pace")
+
+
+def result(G, option="guidance", status="ok", found=()):
+    base = {"R0": R0, "ytd": {"revenue": YC, "revenue_prior": YP, "rev_growth": PACE, "end": "2025-06-30"}}
+    return {"status": status, "base": base, "checks": {"numbers": {"rev_growth.y1": G}, "options": {"rev_growth.y1": option},
+                                                       "found": list(found)}}
+
+
+def realised_at(g, status="ok"):
+    calls = []
+    def f(end):
+        calls.append(end)
+        return {"status": status, "revenue_growth": g, "quarter": {"report_date": "2025-09-30"}}
+    f.calls = calls
+    return f
+
+
+def test_name_row_scores_a_departure_on_the_rest_of_year_and_anchors_on_ytd_end():
+    G = 0.08                                              # guided year; rest-of-year +6.19% against a pace of +10%
+    rq = realised_at(0.05)
+    row = Q.name_row(1, [result(G), result(0.07)], rq)
+    assert rq.calls == ["2025-06-30"] and row["p1"] == "scored" and row["G"] == G
+    assert row["g_qwen"] == pytest.approx(Q.g_rest(G, R0, YC, YP)) and row["outcome"] == "win"
+
+
+def test_name_row_counts_what_does_not_enter():
+    assert Q.name_row(1, [result(0.08), result(None, status="reply_invalid")], realised_at(0.05))["p1"] == "one_seed_invalid"
+    ytd_G = (YC + (R0 - YP) * (1 + PACE)) / R0 - 1
+    assert Q.name_row(1, [result(ytd_G, "ytd"), result(ytd_G, "ytd")], realised_at(0.05))["p1"] == "no_departure"
+    assert Q.name_row(1, [result(0.08), result(0.07)], realised_at(None, "no_quarter_filed"))["p1"] == "no_realised"
+    assert Q.name_row(1, [result(0.08), result(0.07)], realised_at(-1.0))["p1"] == "realised_not_positive"
+
+
+def test_readings_count_and_verdict():
+    rows = [Q.name_row(c, [result(0.08), result(0.07)], realised_at(0.05)) for c in (1, 2, 3, 4) for _ in range(16)]
+    r = Q.readings(rows)
+    assert r["verdict"] == "PASS" and r["counts"] == {"scored": 64} and r["winner_changes_under_points"] == 0

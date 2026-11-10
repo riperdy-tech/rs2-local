@@ -121,3 +121,53 @@ def selection_rule(found, pace, R0, yc, yp):
     best = max(enumerate(ok), key=lambda t: (str(t[1].get("period_of_evidence") or ""), -t[0]))[1]
     g = g_rest(best["number"], R0, yc, yp)
     return (g, "guidance") if g is not None else (pace, "pace")
+
+
+# ------------------------------------------------------------------ one name, from its stored seeds
+def seed_view(result):
+    """(G, option, found, base) of one stored valuation result, or None when it has no checked reply (status not ok*)."""
+    if not str(result.get("status", "")).startswith("ok"):
+        return None
+    c = result.get("checks") or {}
+    return (c.get("numbers") or {}).get("rev_growth.y1"), (c.get("options") or {}).get("rev_growth.y1"), c.get("found") or [], result["base"]
+
+
+def name_row(cohort, results, realised):
+    """One P1 row. `results`: the name's stored results (two seeds); `realised(ytd_end)`: the realised_q dict for the first quarter
+    after the year-to-date period (7.1). Every name gets a row; `p1` says whether it enters P1 and, if not, why (counted)."""
+    views = [seed_view(r) for r in results]
+    base = next((v[3] for v in views if v), None) or (results[0].get("base") if results else None) or {}
+    y = base.get("ytd") or {}
+    R0, yc, yp, pace = base.get("R0"), y.get("revenue"), y.get("revenue_prior"), y.get("rev_growth")
+    row = {"cohort": cohort, "pace": pace, "ytd_end": y.get("end")}
+    if pace is None or g_rest(pace, R0, yc, yp) is None:
+        return dict(row, p1="no_rest_of_year")
+    status, G = departure([v[0] if v else None for v in views], pace)
+    row.update(departure=status, G=G)
+    chosen = next((v for v in views if v and v[0] == G), None) if G is not None else None
+    row["option"] = chosen[1] if chosen else None
+    row["found"] = chosen[2] if chosen else (next((v[2] for v in views if v), []))
+    if status != "departs":
+        return dict(row, p1=status)
+    rq = realised(y["end"])
+    row.update(realised_status=rq.get("status"), realised=rq.get("revenue_growth"), quarter=(rq.get("quarter") or {}).get("report_date"))
+    if rq.get("status") != "ok":
+        return dict(row, p1="no_realised")
+    gq = g_rest(G, R0, yc, yp)
+    eq, ep = error(gq, rq["revenue_growth"]), error(pace, rq["revenue_growth"])
+    o = outcome(eq, ep)
+    if o is None:
+        return dict(row, p1="realised_not_positive", g_qwen=gq)
+    d = eq - ep if not (math.isinf(eq) and math.isinf(ep)) else 0.0
+    return dict(row, p1="tie" if o == "tie" else "scored", g_qwen=gq, e_qwen=eq, e_pace=ep, outcome=o, d=d,
+                points_qwen=abs(gq - rq["revenue_growth"]), points_pace=abs(pace - rq["revenue_growth"]))
+
+
+def readings(rows):
+    """The P1 verdict (7.5) and the counts of every row that did not enter it."""
+    from collections import Counter
+    scored = [r for r in rows if r.get("p1") == "scored"]
+    v = verdict(scored)
+    flips = sum(1 for r in scored if (r["points_qwen"] < r["points_pace"]) != (r["outcome"] == "win"))
+    return dict(v, version=SCORER_VERSION, rows=len(rows), counts=dict(Counter(r.get("p1") for r in rows)),
+                winner_changes_under_points=flips)
