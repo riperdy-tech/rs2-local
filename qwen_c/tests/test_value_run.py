@@ -115,3 +115,14 @@ def test_engine_defect_is_recorded_not_raised(setup, monkeypatch):
     monkeypatch.setattr(checks, "check", boom)
     res = value(p, out)
     assert res["status"] == "engine_defect" and (next(out.iterdir()) / "result.json").exists()
+
+
+def test_temperature_is_sent_only_when_asked_and_kept_in_the_result(setup, monkeypatch):
+    p, out = setup                                                    # the decoding check (greedy_check.py, 2026-11-10)
+    seen = []
+    monkeypatch.setattr(runner, "call", fake([guided(), guided()], seen))
+    res = value(p, out)
+    assert "temperature" not in seen[0]["options"] and res["temperature"] is None
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out, url="http://x", temperature=0.0)
+    assert seen[1]["options"]["temperature"] == 0.0 and res["temperature"] == 0.0
+    assert sorted(d.name.endswith("_t0") for d in out.iterdir()) == [False, True]       # its own run directory

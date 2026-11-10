@@ -74,7 +74,8 @@ def _prepare_financial(f, T, sector, allow_after_T):
 def _one_call(msgs, seed, opts, url):
     """(outcome, object or None, detail, response, seconds)."""
     body = {"model": runner.MODEL, "stream": False, "think": opts["think"], "messages": msgs,
-            "options": {"num_ctx": opts["num_ctx"], "num_predict": opts["num_predict"], "seed": seed}}
+            "options": {"num_ctx": opts["num_ctx"], "num_predict": opts["num_predict"], "seed": seed,
+                        **({"temperature": opts["temperature"]} if opts.get("temperature") is not None else {})}}
     t0 = time.monotonic()
     kind, resp, detail = runner.call(body, url, runner.TASK_TIMEOUT_S)
     secs = round(time.monotonic() - t0, 3)
@@ -87,11 +88,15 @@ def _one_call(msgs, seed, opts, url):
 
 
 def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner.SEED_BASE, online=True, root=None, out_root=RUNS,
-          allow_after_T=False, opts=None):
+          allow_after_T=False, opts=None, temperature=None):
     packet, src = runner.load_packet(packet_path)
-    opts = opts or {"num_ctx": runner.NUM_CTX, "num_predict": NUM_PREDICT, "think": runner.THINK}
+    opts = dict(opts or {"num_ctx": runner.NUM_CTX, "num_predict": NUM_PREDICT, "think": runner.THINK})
+    if temperature is not None:                                       # the decoding check (2026-11-10): overrides the Modelfile's 0.6
+        opts["temperature"] = temperature
     url = url or runner.llm_provider.OLLAMA_URL
     run_dir = out_root / f"{packet['ticker']}_{runner.t_compact(packet['decision_time_utc'])}_{runner.sha256_bytes(src)[:12]}_{seed}"
+    if temperature is not None:
+        run_dir = run_dir.with_name(f"{run_dir.name}_t{temperature:g}")
     (run_dir / "raw").mkdir(parents=True, exist_ok=True)
     result = {"ticker": packet["ticker"], "T": packet["decision_time_utc"], "packet_sha256": runner.sha256_bytes(src), "seed": seed,
               "versions": {"desk": desk.DESK_VERSION, "facts": facts.FACTS_VERSION, "inputs": inputs.INPUTS_VERSION,
@@ -100,7 +105,7 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
                            "forecast_fin": forecast_fin.FORECAST_FIN_VERSION, "sentences": sentences.SENTENCES_VERSION,
                            "menu": menu.MENU_VERSION, "memo": memo.MEMO_VERSION, "contract": runner.contract.CONTRACT,
                            "model": runner.MODEL, "git": runner.git_state()},
-              "authority": "diagnostic_only"}
+              "authority": "diagnostic_only", "temperature": temperature}       # None: the Modelfile's sampling
     try:
         f, b, bar, record, r, prov, fy_ends = prepare(packet, cik, sector, market_cap, online=online, root=root,
                                                       allow_after_T=allow_after_T, family=family)
@@ -166,9 +171,10 @@ def main(argv=None):
     ap.add_argument("--family", required=True, help="the census family; operating, commodity and financial are valued")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--allow-anchor-after-T", action="store_true", help="the E2 regression on consumed dates only")
+    ap.add_argument("--temperature", type=float, help="override the Modelfile's sampling temperature (0: greedy; the decoding check)")
     a = ap.parse_args(argv)
     res = value(a.packet, a.cik, a.sector, a.market_cap, seed=a.seed, online=not a.offline, allow_after_T=a.allow_anchor_after_T,
-                family=a.family)
+                family=a.family, temperature=a.temperature)
     print(json.dumps({k: res.get(k) for k in ("ticker", "status", "reason", "values")}, default=str))
 
 
