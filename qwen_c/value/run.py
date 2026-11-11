@@ -24,7 +24,13 @@ REPAIR_SEED_OFFSET = 50000
 
 
 MAX_STUB_DAYS = 800
-NUM_PREDICT = 24576    # smokes 1-2: 12,288 and 16,384 ran out in thinking; prompt ~35k + 24.5k is well inside NUM_CTX
+THINK = "high"         # 2026-11-11 (operator): the valuation call thinks at the template's maximum (Ollama "high" = xhigh). The
+#                        reading tasks keep runner.THINK. Records: commit d9270d4 (2026-08-23, medium stopped reading the pack),
+#                        ab_reports/consensus/LEVER2_AB_GEV_SUMMARY.md (2026-09-17, medium did not converge); every valuation
+#                        from 2026-10 to this date ran at "medium". Each result records its options.
+NUM_PREDICT = 49152    # 2026-11-11 with THINK "high": at "medium" the output was at most 12,808 tokens (median 5,820, 188 calls)
+#                        and the prompt at most 43,676; 43.7k + 49.2k stays inside NUM_CTX 98,304. Before: 24,576 (12,288 and
+#                        16,384 ran out in thinking at "medium").
 ROUTED = ("operating", "commodity")      # ruling 17: every other family not routed below is a named no_call
 FINANCIAL = ("financial",)   # WO_Q6: the financial route (O3). mortgage_reit is not routed until a name is covered (CROSS_CHECK_Q3 7)
 
@@ -90,7 +96,7 @@ def _one_call(msgs, seed, opts, url):
 def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner.SEED_BASE, online=True, root=None, out_root=RUNS,
           allow_after_T=False, opts=None, temperature=None):
     packet, src = runner.load_packet(packet_path)
-    opts = dict(opts or {"num_ctx": runner.NUM_CTX, "num_predict": NUM_PREDICT, "think": runner.THINK})
+    opts = dict(opts or {"num_ctx": runner.NUM_CTX, "num_predict": NUM_PREDICT, "think": THINK})
     if temperature is not None:                                       # the decoding check (2026-11-10): overrides the Modelfile's 0.6
         opts["temperature"] = temperature
     url = url or runner.llm_provider.OLLAMA_URL
@@ -105,7 +111,8 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
                            "forecast_fin": forecast_fin.FORECAST_FIN_VERSION, "sentences": sentences.SENTENCES_VERSION,
                            "menu": menu.MENU_VERSION, "memo": memo.MEMO_VERSION, "contract": runner.contract.CONTRACT,
                            "model": runner.MODEL, "git": runner.git_state()},
-              "authority": "diagnostic_only", "temperature": temperature}       # None: the Modelfile's sampling
+              "authority": "diagnostic_only", "temperature": temperature,       # None: the Modelfile's sampling
+              "options": {k: opts[k] for k in ("num_ctx", "num_predict", "think")}}
     try:
         f, b, bar, record, r, prov, fy_ends = prepare(packet, cik, sector, market_cap, online=online, root=root,
                                                       allow_after_T=allow_after_T, family=family)
