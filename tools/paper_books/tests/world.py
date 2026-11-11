@@ -183,6 +183,12 @@ class World:
         (self.root / "value" / f"fv_{T}.json").write_bytes(jdump(snap))
         return snap
 
+    def write_exits(self, records, raw=None):
+        """Writes value/fv_exits.jsonl (TB2a) as the holdings monitor will: one JSON object per line; raw replaces the bytes."""
+        (self.root / "value").mkdir(exist_ok=True)
+        body = raw if raw is not None else "".join(json.dumps(r, sort_keys=True) + "\n" for r in records).encode("utf-8")
+        (self.root / "value" / "fv_exits.jsonl").write_bytes(body)
+
     # --- engine
     def run(self, value=False):
         self.materialize()

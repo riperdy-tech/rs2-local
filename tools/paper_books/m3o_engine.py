@@ -16,6 +16,7 @@ candidate of the map's "candidates" list; it starts from cash at the first forma
 FV (PREREG_m3o_bookV.json, 2026-11-11): the book in which the valuation picks. Outside SERIES like FD, main group only. It fills on its own
 session (the first New York open after fv_<T>.json was written by formation_fv.py, read from value_dir) and decides only at a formation whose
 snapshot exists and whose fill is priced; its holdings, counts and drifted weights are recomputed on every run. value_dir None: FV is off.
+Between formations FV reads value_dir/fv_exits.jsonl (WO_TB2a): a listed name is sold at its effective_session open and its weight is cash to the next decision.
 B1 is the deterministic text rule (3N baseline B); it is never called verified.
 """
 import argparse, csv, hashlib, io, json, math, re, statistics, subprocess, sys
@@ -506,12 +507,14 @@ def ret_of(t, px, F, exit_F, last_day):
     return r[t], log
 
 
-def arm_step(pre, plan, px, F, exit_F, last_day):
+def arm_step(pre, plan, px, F, exit_F, last_day, exits=None):
     """The period: rebalance to the plan at the fill open (monthly_step), entries of pending slots at their later open, drift to the exit.
-    Turnover is one-way from the drifted pre-trade weights, CASH excluded; a missing price is a 0.0 return (held as cash)."""
+    Turnover is one-way from the drifted pre-trade weights, CASH excluded; a missing price is a 0.0 return (held as cash).
+    exits ({ticker: date}, FV only): a position held to that open, sold there (turnover 0.5 * its drifted value), its value cash to the end."""
     pos, rets, events = plan["positions"], {}, []
+    exits = exits or {}
     for t in pos:
-        rets[t], log = ret_of(t, px, F, exit_F, last_day)
+        rets[t], log = ret_of(t, px, F, exits.get(t, exit_F), last_day)
         events += log
     cash_target = plan["cash"] + sum(s["weight"] for s in plan["slots"].values())
     target = dict(pos)
@@ -535,15 +538,20 @@ def arm_step(pre, plan, px, F, exit_F, last_day):
             cash += sl["weight"]
         r_fill, _ = ret_of(t, px, F, exit_F, last_day)
         drag[sl["kind"]] += sl["weight"] * (r_fill - r)
+    cash_fill = cash
+    for t in pos:
+        if t in exits:
+            cash += pos[t] * (1.0 + rets[t])
+            turnover += 0.5 * pos[t] * (1.0 + rets[t])
     total = 1.0 + gross
     if total <= 0:
         raise Stop("a book is entirely lost; no valid next weight")
-    post = {t: w * (1.0 + rets[t]) / total for t, w in pos.items()}
+    post = {t: w * (1.0 + rets[t]) / total for t, w in pos.items() if t not in exits}
     post.update({t: w * (1.0 + r) / total for t, (w, r) in entered.items()})
     if cash > 1e-12:
         post["CASH"] = cash / total
     return {"gross": gross, "turnover": turnover, "post": post, "events": events, "rets": rets, "drag": drag,
-            "n": len(pos) + len(entered), "n_cash_slots": len(plan["slots"]) - len(entered), "cash_weight": cash}
+            "n": len(pos) + len(entered), "n_cash_slots": len(plan["slots"]) - len(entered), "cash_weight": cash_fill}
 
 
 def period_record(rec, F, exit_F, last_day, step, spy, label, extra=None):
@@ -862,7 +870,8 @@ def run(forward_dir, inputs_dir, ledger_dir, factor_loader=None, prices_dir=None
                 u_cov.setdefault(group, []).append(cov)
                 u_in[T], u_rec[T] = uin
 
-    fv_per = fv_decisions(L, fv_snapshots(fv_forms, value_dir, last_day), px, last_day) if fv_forms else []
+    exits = fv_exits(value_dir) if value_dir is not None else []
+    fv_per = fv_decisions(L, fv_snapshots(fv_forms, value_dir, last_day), px, last_day, exits) if fv_forms or exits else []
     if fv_per:
         periods["main"]["FV"] = fv_per
     groups = {}
@@ -970,10 +979,53 @@ def fv_snapshots(fv_forms, value_dir, last_day):
     return out
 
 
-def fv_decisions(L, decisions, px, last_day):
+EXIT_KEYS = ("formation_T", "ticker", "reason", "warning_kind", "warning_event_id", "decided_utc", "effective_session", "revaluation")
+
+
+def fv_exits(value_dir):
+    """The exit decisions of <value_dir>/fv_exits.jsonl (append-only; the holdings monitor writes it): [(record, sha256 of its line bytes)],
+    [] when the file is missing. Stop on a line that is not an object with the keys, a reason outside the two, an effective_session that is not
+    the first open after decided_utc, or a second line for the same (formation_T, ticker)."""
+    p = Path(value_dir) / "fv_exits.jsonl"
+    if not p.exists():
+        return []
+    out, seen = [], set()
+    for k, raw in enumerate(p.read_bytes().split(b"\n"), 1):
+        raw = raw.rstrip(b"\r")
+        if not raw.strip():
+            continue
+        try:
+            r = json.loads(raw)
+        except ValueError as e:
+            raise Stop(f"{p.name} line {k}: not JSON ({e})")
+        if not isinstance(r, dict) or any(key not in r for key in EXIT_KEYS):
+            raise Stop(f"{p.name} line {k}: not an object with the keys {EXIT_KEYS}")
+        if r["reason"] not in ("revalued_not_cheap", "under_review"):
+            raise Stop(f"{p.name} line {k}: reason {r['reason']!r} is neither revalued_not_cheap nor under_review")
+        try:
+            eff = first_open_after(parse_utc(r["decided_utc"])).isoformat()
+        except (ValueError, TypeError, AttributeError) as e:
+            raise Stop(f"{p.name} line {k}: decided_utc unreadable ({type(e).__name__}: {e})")
+        if r["effective_session"] != eff:
+            raise Stop(f"{p.name} line {k}: effective_session {r['effective_session']} is not the first open after decided_utc ({eff})")
+        key = (r["formation_T"], r["ticker"])
+        if key in seen:
+            raise Stop(f"{p.name} line {k}: a second exit for {key}")
+        seen.add(key)
+        out.append((r, sha256_bytes(raw)))
+    return out
+
+
+def fv_decisions(L, decisions, px, last_day, exits=()):
     """FV's lines (appended to L["actions"]) and period records for its decisions, in order; each period runs from the decision's fill session
-    to the next decision's, the last to the last close. Holdings, counts and drifted weights are carried here, from cash."""
+    to the next decision's, the last to the last close. Holdings, counts and drifted weights are carried here, from cash.
+    exits: fv_exits' records. One whose effective session is priced makes a between_formations line; it is applied (the name is sold at that
+    open, cash after) unless the next FV decision's fill is on or before it."""
     inputs_v = {"prereg_bookV": sha256_bytes(Path(PREREG_BOOKV).read_bytes())}
+    known = {d[0][0]["formation_T"] for d in decisions}
+    for r, _ in exits:
+        if r["formation_T"] not in known:
+            raise Stop(f"fv_exits: ({r['formation_T']}, {r['ticker']}) is not under an FV decision (no priced snapshot at that formation)")
     pre, counts, per = {"CASH": 1.0}, {}, []
     for k, ((rec, inputs, book, ev, mp, retro), snap, snap_sha, fill) in enumerate(decisions):
         T, nxt = rec["formation_T"], decisions[k + 1][3] if k + 1 < len(decisions) else None
@@ -996,7 +1048,30 @@ def fv_decisions(L, decisions, px, last_day):
                 "value_reason": None if v.get("valued") else (v.get("reason") or ("operator_excluded" if action == "operator_excluded" else "not_in_snapshot")),
                 "periods_held": now[t]["periods_held"] if t in now else None, "missed": now[t]["missed"] if t in now else None})
             L["actions"].append(line)
-        step = arm_step(pre, plan, px, fill, nxt, last_day)
+        applied, bf = {}, []
+        for r, r_sha in exits:
+            if r["formation_T"] != T or date.fromisoformat(r["effective_session"]) > last_day:
+                continue                                       # another decision's, or not priced yet: no line, no effect
+            t, eff = r["ticker"], date.fromisoformat(r["effective_session"])
+            if t not in plan["positions"]:
+                raise Stop(f"fv_exits: ({T}, {t}) is not held under that decision")
+            if eff <= fill:
+                raise Stop(f"fv_exits: ({T}, {t}) is effective {eff}, on or before the decision's fill {fill}")
+            sup = nxt is not None and eff >= nxt
+            if not sup:
+                applied[t] = eff
+            n = ev.get(t)
+            prov = {"qwen_c_commit": n["qwen_c_commit"] if n["state"] == "complete" else None, "builder_code": n["builder_code"]} if n is not None else {}
+            line = action_line(rec, fv_inputs, "FV", t, "exit", "V2", r["reason"], ["superseded_by_next_decision"] if sup else [], pre, plan, prov, retro)
+            line.update(kind="between_formations", fill_session=eff.isoformat(), a0_fill_session=rec["fill_session"], weight_target=0.0,
+                        inputs={**fv_inputs, "fv_exit": r_sha},
+                        exit={"warning_kind": r["warning_kind"], "warning_event_id": r["warning_event_id"], "decided_utc": r["decided_utc"],
+                              "effective_session": r["effective_session"], "applied": not sup, "revaluation": r["revaluation"]})
+            L["actions"].append(line)
+            bf.append({"ticker": t, "reason": r["reason"], "effective_session": r["effective_session"], "applied": not sup,
+                       "return_to_exit": ret_of(t, px, fill, eff, last_day)[0],
+                       "return_after_exit": None if sup else ret_of(t, px, eff, nxt, last_day)[0]})
+        step = arm_step(pre, plan, px, fill, nxt, last_day, applied)
         spy, _ = ret_of("SPY", px, fill, nxt, last_day)
 
         def g(ts):
@@ -1008,18 +1083,20 @@ def fv_decisions(L, decisions, px, last_day):
                             "expensive_half": g({t for t in valued if cut is not None and names[t]["cheapness"] < cut}),
                             "unvalued": g(set(ev) - valued)},
                  "leavers": [{"ticker": t, "reason": reason, "return": ret_of(t, px, fill, nxt, last_day)[0]}
-                             for (t, action, _, reason, _, _) in dec if t in pre and action in ("exit", "operator_excluded")]}
+                             for (t, action, _, reason, _, _) in dec if t in pre and action in ("exit", "operator_excluded")],
+                 "between_formations": bf}
         per.append(period_record(rec, fill, nxt, last_day, step, spy, arm_label("FV", T, retro), extra))
-        pre, counts = step["post"], {t: now[t] for t in plan["positions"]}
+        pre, counts = step["post"], {t: now[t] for t in plan["positions"] if t not in applied}
     return per
 
 
 def fv_held_now(L):
     """The sorted tickers FV holds after its latest decision in the recomputed action lines L["actions"]: the latest formation that has FV
-    lines, those with action enter or hold. (Mid-month leavers are not subtracted here.)"""
+    lines, those with action enter or hold, less a name with an applied between_formations line at that formation."""
     fv = [l for l in L["actions"] if l["arm"] == "FV" and l["kind"] == "at_fill_open"]
     last = max((l["formation_T"] for l in fv), default=None)
-    return sorted(l["ticker"] for l in fv if l["formation_T"] == last and l["action"] in ("enter", "hold"))
+    gone = {l["ticker"] for l in L["actions"] if l["arm"] == "FV" and l["kind"] == "between_formations" and l["formation_T"] == last and l["exit"]["applied"]}
+    return sorted(l["ticker"] for l in fv if l["formation_T"] == last and l["action"] in ("enter", "hold") and l["ticker"] not in gone)
 
 
 def write_ledger(L, marks, ledger_dir):

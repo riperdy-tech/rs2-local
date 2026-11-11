@@ -77,7 +77,7 @@ read the same git objects from the `stock-screener` development checkout. Tests:
 | FD (PREREG_m3o_bookD) | FQ, with each restricted name replaced by the next B1-clean watchlist candidate | the A0 fill session |
 | FV (PREREG_m3o_bookV, engine v4) | the A0 names the valuation calls cheap (cheapness at or above the median), kept while still cheap; its decisions only at formations with a `value/fv_<T>.json` | the first open after that file was written |
 
-`m3o_engine.py --value-dir` (default `<books>/m3o/value`) turns FV on; `run(value_dir=None)` leaves every line as it was.
+`m3o_engine.py --value-dir` (default `<books>/m3o/value`) turns FV on; `run(value_dir=None)` leaves every line as it was. FV also reads the append-only `value/fv_exits.jsonl` (written by the holdings monitor; a hand-written file in tests): a held name it lists is sold at the exit's `effective_session` open (its weight cash to the next FV decision), with a `between_formations` action line (`exit`, rule V2); an exit on or after the next FV fill is flagged `superseded_by_next_decision` and changes nothing.
 
 ## ENGINE_SHA256: a recorded version change
 
