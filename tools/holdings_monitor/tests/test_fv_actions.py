@@ -230,17 +230,32 @@ def test_a_missing_field_exits(w, field, value):
     assert w.journal("decided")[0]["revaluation"]["detail"] == [field]
 
 
-def test_a_refused_packet_exits(w):
+def test_a_packet_that_cannot_be_built_waits_twice_and_is_no_value_at_the_third_failure(w):
+    w.build_refuses = True
+    w.warn("AAA", "event_found")
+    for k in (1, 2):                                                  # a refusal and a network failure look alike: it is tried again
+        rep = w.run()
+        assert rep["decided"] == [] and w.journal("decided") == [] and w.exits() == []
+        assert [(x["reason"], x["attempt"]) for x in w.journal("waiting")] == [("packet_not_built", a) for a in range(1, k + 1)]
+    w.run()
+    d = w.journal("decided")[0]
+    assert reason_of(w) == "packet_refused" and w.calls["slot"] == [] and d["revaluation"]["detail"] == "no packet"
+    assert d["revaluation"]["packet_attempts"] == 3 and len(w.exits()) == 1
+
+
+def test_a_packet_built_at_the_second_try_is_valued(w):
     w.build_refuses = True
     w.warn("AAA", "event_found")
     w.run()
-    assert reason_of(w) == "packet_refused" and w.calls["slot"] == [] and w.journal("decided")[0]["revaluation"]["detail"] == "no packet"
+    w.build_refuses = False
+    w.run()
+    assert w.journal("decided")[0]["revaluation"]["reason"] is None and len(w.calls["slot"]) == 2
 
 
-def test_no_verified_commit_is_a_refused_packet(w):
+def test_no_verified_commit_is_a_refused_packet_at_the_third_pass(w):
     (w.checks / "check_1.json").unlink()
     w.warn("AAA", "event_found")
-    w.run()
+    w.run(), w.run(), w.run()
     assert reason_of(w) == "packet_refused" and w.calls["build"] == []
 
 
@@ -398,6 +413,20 @@ def test_a_warning_after_the_new_decision_waited_for_it_and_is_acted_on_under_it
 
 
 # ---------------------------------------------------------------- 8. resume, failures, the flag
+
+def test_a_price_no_slot_has_used_is_taken_again_on_a_later_day(w):
+    from datetime import timedelta
+    w.warn("AAA", "event_found")
+    w.gpu_ok = False
+    assert w.run()["exit"] == 4 and w.calls["prices"] == ["AAA"] and w.calls["slot"] == []     # the GPU was busy: no slot used the price
+    assert w.run()["exit"] == 4 and w.calls["prices"] == ["AAA"]                              # the same day: the price is kept
+    w.now = w.now + timedelta(days=1)
+    w.closes = w.closes + [{"date": w.now.date().isoformat(), "close": 60.0}]
+    w.gpu_ok = True
+    assert w.run()["exit"] == 0 and w.calls["prices"] == ["AAA", "AAA"]
+    rv = w.journal("decided")[0]["revaluation"]
+    assert rv["price_now"] == 60.0 and all(c["fields"]["market_cap"] == rv["market_cap_moved"] for c in w.calls["slot"])
+
 
 def test_a_pass_stopped_after_seed_1000_runs_only_seed_3000_next(w):
     w.warn("AAA", "event_found")

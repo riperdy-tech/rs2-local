@@ -290,7 +290,9 @@ class Pass:
         if missing:
             return "decided", "revalued_not_cheap", {**obj, "reason": "field_missing", "detail": missing}
         obj["market_cap"] = cap
-        if st["price"] is None:                                           # b. one fetch, kept so a resumed pass uses the same prices
+        today = self.clock().date().isoformat()
+        if st["price"] is None or (not st["slots"] and st["price"]["fetched_utc"][:10] != today):   # b. one fetch, kept once a slot has used it;
+            st["price"] = None                                            # before that a later day's pass takes the price again
             try:
                 price_T, price_now = pick_prices(self.prices(t), T)
             except Exception as e:  # noqa: BLE001  the source failed: the warning waits
@@ -306,19 +308,29 @@ class Pass:
         moved = st["price"]["market_cap_moved"]
         obj.update(price_T=st["price"]["price_T"], price_now=st["price"]["price_now"], market_cap_moved=moved)
         if st["packet"] is None and st["packet_refused"] is None:         # c. filings only, at the read's T and the commit the read used
-            c = M.verified_commit(self.checks_dir, read_T)
+            c, why = M.verified_commit(self.checks_dir, read_T), None
             if c is None:
-                st["packet_refused"] = "no_verified_commit_at_T"
+                why = "no_verified_commit_at_T"
             else:
                 try:
                     pk = self.build(t, read_T, c["commit"], c["check_file"], self.screener_repo, self.worktree)
                     st["packet"] = {"packet": pk["packet"], "packet_sha256": pk["packet_sha256"], "builder_version": pk.get("builder_version"),
                                     "commit": c["commit"], "file_sha256": sha256_file(pk["packet"])}
-                except M.PacketRefused as ex:
-                    st["packet_refused"] = str(ex)
+                except M.PacketRefused as ex:                             # the builder's refusal and a timeout or network failure look alike
+                    why = str(ex)
+            if why is not None:                                           # so it is tried again on later passes; only the third failure is "no value"
+                st["packet_failures"] = st.get("packet_failures", 0) + 1
+                if st["packet_failures"] >= MAX_FAILS:
+                    st["packet_refused"] = why
+                self.save()
+                if st["packet_refused"] is None:
+                    self.journal_once("waiting", f"waiting:{wid}:packet:{st['packet_failures']}", t, warning_event_id=wid, reason="packet_not_built",
+                                      detail=why, attempt=st["packet_failures"])
+                    return "wait", "packet_not_built", None
             self.save()
         if st["packet"] is None:
-            return "decided", "revalued_not_cheap", {**obj, "reason": "packet_refused", "detail": st["packet_refused"]}
+            return "decided", "revalued_not_cheap", {**obj, "reason": "packet_refused", "detail": st["packet_refused"],
+                                                     "packet_attempts": st.get("packet_failures")}
         pk = st["packet"]
         obj.update(packet=pk["packet"], packet_sha256=pk["packet_sha256"])
         pn = {"packet": pk["packet"], "packet_sha256": pk["packet_sha256"]}
