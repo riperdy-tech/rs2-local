@@ -1529,8 +1529,26 @@ def ledger_inputs(ledger_dir=LEDGER_DIR, forward_dir=FORWARD_DIR):
         causes = line.get("causes") or ([line.get("rule")] if line.get("action") == "new_entry_restricted" and line.get("rule") else [])
         if causes:
             restricted[t] = "+".join(sorted(set(causes) | set(filter(None, restricted.get(t, "").split("+")))))
-    out.update(source="m3o_ledger", ledger_formation_T=led_T, books=books, restricted=restricted)
+    books.pop("FV", None)                                               # FV's book is not the newest formation's lines (below)
+    fv_book = _fv_book(Path(ledger_dir) / "actions.jsonl")
+    if fv_book is not None:
+        books["FV"] = fv_book
+    out.update(source="m3o_ledger", ledger_formation_T=led_T, books=dict(sorted(books.items())), restricted=restricted)
     return out
+
+
+def _fv_book(actions_path):
+    """The names paper book FV holds now (WO_TB2b part 1): those with an `enter` or `hold` at_fill_open line at the latest formation that has
+    FV at_fill_open lines (FV may have skipped the newest formation, or not be priced at it yet), less every name with a between_formations line
+    at that formation whose exit was applied. None when FV has no at_fill_open line anywhere."""
+    lines = [l for l in _jsonl(actions_path) if l.get("arm") == "FV"]
+    fills = [l for l in lines if l.get("kind") == "at_fill_open" and l.get("ticker")]
+    if not fills:
+        return None
+    last = max(l["formation_T"] for l in fills)
+    gone = {l["ticker"] for l in lines if l.get("kind") == "between_formations" and l.get("formation_T") == last
+            and (l.get("exit") or {}).get("applied") is True}
+    return sorted({l["ticker"] for l in fills if l["formation_T"] == last and l.get("action") in ("enter", "hold")} - gone)
 
 
 def default_git_show(repo, commit, path):

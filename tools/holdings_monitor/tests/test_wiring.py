@@ -85,6 +85,50 @@ def test_a_late_q1_restriction_marks_the_name_restricted(dirs):
     assert inp["books"] == {} and inp["restricted"] == {"BBB": "Q1"}
 
 
+def fv_exit(T, t, applied):
+    return {**act(T, "FV", t, "exit", kind="between_formations", rule="V2"), "exit": {"applied": applied}}
+
+
+def test_fv_book_is_the_latest_formation_with_fv_lines_when_the_newest_has_none(dirs):
+    fwd, led = dirs
+    write_jsonl(led / "formations.jsonl", [{"formation_T": "2026-11-30"}, {"formation_T": "2026-12-31"}])
+    write_jsonl(led / "actions.jsonl", [
+        act("2026-11-30", "FV", "XOLA", "enter"), act("2026-11-30", "FV", "AAA", "enter"),
+        act("2026-12-31", "F", "BBB", "enter"), act("2026-12-31", "FQ", "BBB", "enter"),        # FV skipped (or is not priced at) the newest formation
+    ])
+    inp = M.ledger_inputs(led, fwd)
+    assert inp["ledger_formation_T"] == "2026-12-31" and inp["books"] == {"F": ["BBB"], "FQ": ["BBB"], "FV": ["AAA", "XOLA"]}
+    write_jsonl(led / "actions.jsonl", [act("2026-12-31", "FV", "AAA", "enter"), act("2026-11-30", "FV", "XOLA", "enter")])     # the latest FV formation wins
+    assert M.ledger_inputs(led, fwd)["books"] == {"FV": ["AAA"]}
+
+
+def test_fv_book_loses_a_name_with_an_applied_exit_but_not_a_superseded_one(dirs):
+    fwd, led = dirs
+    write_jsonl(led / "formations.jsonl", [{"formation_T": "2026-11-30"}])
+    T = "2026-11-30"
+    write_jsonl(led / "actions.jsonl", [
+        act(T, "FV", "AAA", "enter"), act(T, "FV", "BBB", "hold"), act(T, "FV", "XOLA", "enter"), act(T, "FV", "XGON", "exit"),
+        act(T, "FV", "NEWB", "not_entered"), act(T, "FV", "AAA", "enter_after_pending", kind="pending_resolution"),   # FV reads enter / hold only
+        fv_exit(T, "AAA", True), fv_exit(T, "BBB", False),
+        fv_exit("2026-10-31", "XOLA", True),                                # an applied exit under another formation does not touch this one
+    ])
+    assert M.ledger_inputs(led, fwd)["books"] == {"FV": ["BBB", "XOLA"]}
+    write_jsonl(led / "actions.jsonl", [act(T, "FV", "AAA", "enter"), fv_exit(T, "AAA", True)])
+    assert M.ledger_inputs(led, fwd)["books"] == {"FV": []}                 # sold: FV holds nothing, the key stays (an FV line exists)
+
+
+def test_the_other_arms_are_read_as_before_when_fv_is_present(dirs):
+    fwd, led = dirs
+    write_jsonl(led / "formations.jsonl", [{"formation_T": "2026-10-30"}])
+    T = "2026-10-30"
+    write_jsonl(led / "actions.jsonl", [act(T, "F", "AAA", "enter"), act(T, "FQ", "BBB", "enter_after_pending", kind="pending_resolution"),
+                                        act(T, "FV", "AAA", "enter", causes=["Q1"]), fv_exit(T, "AAA", True)])
+    inp = M.ledger_inputs(led, fwd)
+    assert inp["books"] == {"F": ["AAA"], "FQ": ["BBB"], "FV": []} and inp["restricted"] == {"AAA": "Q1"}
+    write_jsonl(led / "actions.jsonl", [act(T, "F", "AAA", "enter")])        # no FV line anywhere: no FV key
+    assert M.ledger_inputs(led, fwd)["books"] == {"F": ["AAA"]}
+
+
 def test_no_forward_formation_is_an_error(tmp_path):
     with pytest.raises(M.MonitorError):
         M.ledger_inputs(tmp_path / "l", tmp_path / "f")
