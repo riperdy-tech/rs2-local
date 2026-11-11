@@ -180,4 +180,4 @@ def test_score_counts_every_name_and_reads_only_what_a_reading_needs():
 
 
 def test_the_driver_is_set_to_the_registration():
-    assert Q.BY == "2026-12-31" and Q.SEEDS == (1200, 3200) and Q.COHORTS == ("2025-10-01", "2025-11-20", "2026-05-20", "2026-08-20")
+    assert Q.BY == "2026-11-20" and Q.SEEDS == (1200, 3200) and Q.COHORTS == ("2025-10-01", "2025-11-20", "2026-05-20", "2026-08-20")

@@ -177,7 +177,7 @@ def readings(rows):
 # ------------------------------------------------------------------ the driver: run once, on or after BY (PREREG v1.0 section 5)
 COHORTS = ("2025-10-01", "2025-11-20", "2026-05-20", "2026-08-20")
 SEEDS = (1200, 3200)
-BY = "2026-12-31"
+BY = "2026-11-20"   # PREREG_cohorts_nextq v1.0 amendment 1 (operator 2026-11-11); was 2026-12-31
 PRIOR_POOLS = ("archival_2025-12-31", "archival_2025-12-31_nd", "archival_2025-10-01", "archival_2025-10-01_pit", "archival_2026-06-15")
 UNREADABLE = "guidance_unreadable: rev_growth.y1 "          # checks writes it to `reverts`: a guidance pick code reverted ("attempted")
 
