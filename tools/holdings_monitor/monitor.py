@@ -1350,6 +1350,8 @@ class Monitor:
                  last_good_at=common["finished_at"] or iso(now),
                  last_good={"run_id": common["run_id"], "decision_time_utc": T, "finished_at": common["finished_at"],
                             "manifest_sha256": common["manifest_sha256"], "analysis_sha256": man.get("analysis_sha256")})
+        queued = ((s["queue"].get(ticker) or {}).get("triggers")) or {}      # the triggers this read covered, taken before _retire removes them
+        covered_triggers = [{"id": tid, "kind": queued[tid].get("kind"), "priority": queued[tid].get("priority")} for tid in covered if tid in queued]
         if covered:
             self._retire(s, ticker, covered, now)
         s["ran_keys"][common["run_key"]] = {"run_id": common["run_id"], "ticker": ticker, "t": iso(now)}
@@ -1365,7 +1367,8 @@ class Monitor:
         warning_kind = (q1["verdict"] if q1["verdict"] in ("event_found", "news_event") else ("thesis_changed" if compare == "changed" else None))
         line = {"name_state": state, "warning_kind": warning_kind, "pending_review": n["pending_review"], "pending_reasons": reasons,
                 "thesis_compare": compare, "points": {k: v["state"] for k, v in (tp or {}).get("points", {}).items()},
-                "thesis_change_status": (tp or {}).get("status"), "q1": q1, "compared_with_run": _prior_ref(prior), **common}
+                "thesis_change_status": (tp or {}).get("status"), "q1": q1, "compared_with_run": _prior_ref(prior),
+                "triggers": covered_triggers, **common}
         if warning_kind == "news_event":
             line["news_claims"] = [c for c in q1["news_claims"] if c["acts_as_news_event"]]
         self._emit(s, "resolved", ticker, now, "resolved:" + _event_id(ticker, common["run_id"]), evidence=ev, **line)

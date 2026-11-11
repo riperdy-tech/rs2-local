@@ -33,6 +33,16 @@ def test_resolve_an_ok_run_sets_state_points_and_clears_the_entry(root, tmp_path
     assert [l["kind"] for l in mon.journal_lines()].count("resolved") == 1
 
 
+def test_resolved_line_names_the_triggers_it_covered(root, tmp_path):
+    mon = M.Monitor(root)
+    mon.enqueue(AAA, [trig("sec:X", 0, "2026-10-29T10:00:00Z"), trig("late", 2, "2026-12-01T00:00:00Z", "news")], NOW)    # the second is after T
+    line = mon.resolve(make_run(tmp_path, tc_claims=[tc("p1", "unchanged")]), now=AFTER)
+    assert line["triggers"] == [{"id": "sec:X", "kind": "sec_filing", "priority": 0}]
+    assert [l["triggers"] for l in mon.journal_lines() if l["kind"] == "resolved"] == [line["triggers"]]
+    mon2 = M.Monitor(root / "empty")                                                    # no queue entry: an empty list
+    assert mon2.resolve(make_run(tmp_path / "b", tc_claims=[tc("p1", "unchanged")]), now=AFTER)["triggers"] == []
+
+
 def test_thesis_point_states_stay_distinct(root, tmp_path):
     mon = M.Monitor(root)
     claims = [tc("p1", "unchanged"), tc("p2", "unknown"), tc("p3", "unsupported"), tc("p4", "changed", support="quote_not_found"),
