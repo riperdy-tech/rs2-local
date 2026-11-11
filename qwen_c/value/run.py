@@ -31,6 +31,11 @@ THINK = "high"         # 2026-11-11 (operator): the valuation call thinks at the
 NUM_PREDICT = 49152    # 2026-11-11 with THINK "high": at "medium" the output was at most 12,808 tokens (median 5,820, 188 calls)
 #                        and the prompt at most 43,676; 43.7k + 49.2k stays inside NUM_CTX 98,304. Before: 24,576 (12,288 and
 #                        16,384 ran out in thinking at "medium").
+WINDOW_MARGIN = 2048   # 2026-11-11, the rule of 230c00d F2 (2026-09-27) brought to this call: every request's num_predict is
+MIN_PREDICT = 1024     # min(configured, num_ctx - the estimated prompt - 2,048); under 1,024 the call is not sent. A thinking loop
+#                        then ends as a length stop inside the window and gets the one retry, where a turn at the window edge got
+#                        an HTTP 500 (two samples of 2026-09-27: PHASE_4_AMENDMENTS). The estimate is runner.CHARS_PER_TOKEN
+#                        (ruling 4.2).
 ROUTED = ("operating", "commodity")      # ruling 17: every other family not routed below is a named no_call
 FINANCIAL = ("financial",)   # WO_Q6: the financial route (O3). mortgage_reit is not routed until a name is covered (CROSS_CHECK_Q3 7)
 
@@ -78,9 +83,14 @@ def _prepare_financial(f, T, sector, allow_after_T):
 
 
 def _one_call(msgs, seed, opts, url):
-    """(outcome, object or None, detail, response, seconds)."""
+    """(outcome, object or None, detail, response, seconds, the num_predict sent)."""
+    prompt = runner.ollama_raw.render_prompt(runner.ollama_raw.template_messages(msgs), None, opts["think"])
+    cap = min(opts["num_predict"], int(opts["num_ctx"] - len(prompt) / runner.CHARS_PER_TOKEN - WINDOW_MARGIN))
+    if cap < MIN_PREDICT:
+        return "context_overflow", None, (f"preflight: {len(prompt)} prompt characters / {runner.CHARS_PER_TOKEN} leave {cap} output "
+                                          f"tokens inside num_ctx {opts['num_ctx']} less {WINDOW_MARGIN}: not sent"), None, 0.0, cap
     body = {"model": runner.MODEL, "stream": False, "think": opts["think"], "messages": msgs,
-            "options": {"num_ctx": opts["num_ctx"], "num_predict": opts["num_predict"], "seed": seed,
+            "options": {"num_ctx": opts["num_ctx"], "num_predict": cap, "seed": seed,
                         **({"temperature": opts["temperature"]} if opts.get("temperature") is not None else {})}}
     t0 = time.monotonic()
     kind, resp, detail = runner.call(body, url, runner.TASK_TIMEOUT_S)
@@ -88,9 +98,11 @@ def _one_call(msgs, seed, opts, url):
     if kind == "reply":
         kind, detail = runner.reply_problem(resp, opts["num_ctx"]) or (kind, detail)
     if kind != "reply":
-        return kind, None, detail, resp, secs
+        return kind, None, detail, resp, secs, cap
     obj, perr = runner.parse_reply(((resp or {}).get("message") or {}).get("content"))
-    return ("reply" if perr is None else "malformed"), obj, perr, resp, secs
+    if perr is not None and (resp or {}).get("done_reason") == "length":
+        perr += f"; done_reason is length: the reply was cut at num_predict {cap}"
+    return ("reply" if perr is None else "malformed"), obj, perr, resp, secs, cap
 
 
 def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner.SEED_BASE, online=True, root=None, out_root=RUNS,
@@ -127,9 +139,10 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
     retry, attempts, res = None, [], None
     for n, s in enumerate((seed, seed + REPAIR_SEED_OFFSET), 1):
         msgs = task.messages(packet, record, b, bar, r, prov, retry=retry)
-        outcome, obj, detail, resp, secs = _one_call(msgs, s, opts, url)
+        outcome, obj, detail, resp, secs, cap = _one_call(msgs, s, opts, url)
         runner._write_json(run_dir / "raw" / f"attempt_{n}.json", {"messages": msgs, "response": resp, "outcome": outcome, "detail": detail})
-        att = {"attempt": n, "seed": s, "outcome": outcome, "detail": detail, "seconds": secs}
+        att = {"attempt": n, "seed": s, "outcome": outcome, "detail": detail, "seconds": secs, "num_predict": cap,
+               **{k: (resp or {}).get(k) for k in ("prompt_eval_count", "eval_count", "done_reason")}}
         if outcome == "reply":
             try:
                 res = checks.check(obj, ids, b, bar, r, fy_ends, route="financial" if family in FINANCIAL else "operating")
@@ -148,6 +161,8 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
         if outcome == "malformed" and n == 1:
             retry = ((((resp or {}).get("message") or {}).get("content") or ""), [f"not valid JSON: {detail}"])
             continue
+        if outcome == "infra_retry" and n == 1:                           # 230c00d F1: a server error gets one retry (the same
+            continue                                                      # prompt at the repair seed); a second ends the valuation
         break
     result["attempts"] = attempts                                     # ruling 23: every attempt keeps its inputs, checks and values
     last = attempts[-1]

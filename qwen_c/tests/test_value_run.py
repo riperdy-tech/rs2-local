@@ -117,6 +117,62 @@ def test_engine_defect_is_recorded_not_raised(setup, monkeypatch):
     assert res["status"] == "engine_defect" and (next(out.iterdir()) / "result.json").exists()
 
 
+def test_the_output_cap_stays_inside_the_window_and_is_recorded(setup, monkeypatch):
+    p, out = setup                                                    # 230c00d F2 brought to the valuation call (2026-11-11)
+    seen = []
+    monkeypatch.setattr(runner, "call", fake([guided(), guided()], seen))
+    res = value(p, out)
+    assert seen[0]["options"]["num_predict"] == run.NUM_PREDICT == res["attempts"][0]["num_predict"]     # a short prompt: the configured cap
+    assert res["options"] == {"num_ctx": runner.NUM_CTX, "num_predict": run.NUM_PREDICT, "think": "high"}
+    assert res["attempts"][0]["eval_count"] == 500 and res["attempts"][0]["done_reason"] is None
+    chars = len(runner.ollama_raw.render_prompt(runner.ollama_raw.template_messages(seen[0]["messages"]), None, "high"))
+    ctx = int(chars / runner.CHARS_PER_TOKEN) + run.WINDOW_MARGIN + 5000
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out / "b", url="http://x",
+                    opts={"num_ctx": ctx, "num_predict": run.NUM_PREDICT, "think": "high"})
+    assert 4990 <= seen[1]["options"]["num_predict"] <= 5000 and res["attempts"][0]["num_predict"] == seen[1]["options"]["num_predict"]
+
+
+def test_a_prompt_that_leaves_no_room_is_not_sent(setup, monkeypatch):
+    p, out = setup
+    seen = []
+    monkeypatch.setattr(runner, "call", fake([guided()], seen))
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out, url="http://x",
+                    opts={"num_ctx": 2500, "num_predict": run.NUM_PREDICT, "think": "high"})
+    assert res["status"] == "context_overflow" and not seen and "not sent" in res["attempts"][0]["detail"]
+
+
+def test_a_server_error_gets_one_retry_and_a_second_ends_the_valuation(setup, monkeypatch):
+    p, out = setup                                                    # 230c00d F1: the HTTP 500 of a turn at the window edge
+    seen = []
+    def call(body, url, timeout):
+        seen.append(body)
+        if len(seen) == 1:
+            return "infra_retry", None, "HTTP 500: x"
+        return fake([None, guided()], [None])(body, url, timeout)
+    monkeypatch.setattr(runner, "call", call)
+    res = value(p, out)
+    assert res["status"] == "ok" and [a["outcome"] for a in res["attempts"]] == ["infra_retry", "reply"]
+    assert seen[1]["options"]["seed"] == runner.SEED_BASE + run.REPAIR_SEED_OFFSET and seen[1]["messages"] == seen[0]["messages"]
+    monkeypatch.setattr(runner, "call", lambda body, url, timeout: ("infra_retry", None, "HTTP 500: x"))
+    res = run.value(p, "1", "Technology", 180e6, family="operating", out_root=out / "b", url="http://x")
+    assert res["status"] == "infra_retry" and len(res["attempts"]) == 2 and not res.get("values")
+
+
+def test_a_reply_cut_at_the_cap_says_so_and_is_retried(setup, monkeypatch):
+    p, out = setup                                                    # a thinking loop ends as a length stop with no answer
+    seen = []
+    def call(body, url, timeout):
+        seen.append(body)
+        if len(seen) == 1:
+            return "reply", {"message": {"content": "", "thinking": "x" * 100}, "prompt_eval_count": 1000,
+                             "eval_count": body["options"]["num_predict"], "done": True, "done_reason": "length"}, None
+        return fake([None, guided()], [None])(body, url, timeout)
+    monkeypatch.setattr(runner, "call", call)
+    res = value(p, out)
+    assert res["status"] == "ok" and [a["outcome"] for a in res["attempts"]] == ["malformed", "reply"]
+    assert "done_reason is length" in res["attempts"][0]["detail"] and res["attempts"][0]["done_reason"] == "length"
+
+
 def test_temperature_is_sent_only_when_asked_and_kept_in_the_result(setup, monkeypatch):
     p, out = setup                                                    # the decoding check (greedy_check.py, 2026-11-10)
     seen = []
