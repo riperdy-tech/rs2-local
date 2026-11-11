@@ -91,7 +91,7 @@ def test_an_applied_exit_period_line_and_the_next_decision(tmp_path):
     x = bf(L, T1, "D")
     assert (x["arm"], x["kind"], x["action"], x["rule"], x["reason"], x["flags"], x["label"]) == (
         "FV", "between_formations", "exit", "V2", "revalued_not_cheap", [], "shadow_pre_3N_close")
-    assert (x["fill_session"], x["a0_fill_session"], x["weight_target"], x["formation_T"]) == (X1, F1, 0.0, T1) and x["weight_before"] == 0.0
+    assert (x["fill_session"], x["a0_fill_session"], x["weight_target"], x["formation_T"]) == (X1, F1, 0.0, T1) and x["weight_before"] == pytest.approx(1 / 3)   # its weight at T1's fill
     assert x["exit"] == {"warning_kind": "thesis_changed", "warning_event_id": "ev-D", "decided_utc": D1, "effective_session": X1, "applied": True,
                          "revaluation": rec["revaluation"]}
     fv_in = act(L, T1, "FV", "D")["inputs"]
@@ -250,6 +250,13 @@ def test_stop_when_the_formation_is_not_an_fv_decision(tmp_path):
     w.write_exits([xr(T1, "A")])
     with pytest.raises(E.Stop, match="not under an FV decision"):
         w.run(value=True)
+
+
+def test_an_exit_not_priced_yet_under_a_formation_with_no_decision_yet_says_nothing(tmp_path):
+    w = scenario(tmp_path, snaps=(T1,))
+    w.write_exits([xr(T2, "A", "2026-10-16T20:30:00Z")])               # effective after the last price day; T2 has no snapshot yet
+    L, _ = w.run(value=True)
+    assert not [l for l in L["actions"] if l["kind"] == "between_formations"]
 
 
 # ---------------------------------------------------------------- append-only

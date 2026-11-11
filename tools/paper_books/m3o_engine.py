@@ -1023,8 +1023,8 @@ def fv_decisions(L, decisions, px, last_day, exits=()):
     open, cash after) unless the next FV decision's fill is on or before it."""
     inputs_v = {"prereg_bookV": sha256_bytes(Path(PREREG_BOOKV).read_bytes())}
     known = {d[0][0]["formation_T"] for d in decisions}
-    for r, _ in exits:
-        if r["formation_T"] not in known:
+    for r, _ in exits:                                         # priced, yet under no decision: a contradiction; not priced yet: nothing to say
+        if r["formation_T"] not in known and date.fromisoformat(r["effective_session"]) <= last_day:
             raise Stop(f"fv_exits: ({r['formation_T']}, {r['ticker']}) is not under an FV decision (no priced snapshot at that formation)")
     pre, counts, per = {"CASH": 1.0}, {}, []
     for k, ((rec, inputs, book, ev, mp, retro), snap, snap_sha, fill) in enumerate(decisions):
@@ -1064,6 +1064,7 @@ def fv_decisions(L, decisions, px, last_day, exits=()):
             prov = {"qwen_c_commit": n["qwen_c_commit"] if n["state"] == "complete" else None, "builder_code": n["builder_code"]} if n is not None else {}
             line = action_line(rec, fv_inputs, "FV", t, "exit", "V2", r["reason"], ["superseded_by_next_decision"] if sup else [], pre, plan, prov, retro)
             line.update(kind="between_formations", fill_session=eff.isoformat(), a0_fill_session=rec["fill_session"], weight_target=0.0,
+                        weight_before=plan["positions"][t],                    # the weight it was bought or kept at, at this decision's fill
                         inputs={**fv_inputs, "fv_exit": r_sha},
                         exit={"warning_kind": r["warning_kind"], "warning_event_id": r["warning_event_id"], "decided_utc": r["decided_utc"],
                               "effective_session": r["effective_session"], "applied": not sup, "revaluation": r["revaluation"]})
