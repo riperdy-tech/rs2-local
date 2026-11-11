@@ -354,6 +354,12 @@ def crashed_run(run_root, ticker="AAA", n=1, T="2026-10-30T01:00:00Z", old=True)
     return d
 
 
+def started_by(mon, run_dir, key="k"):
+    """The executor's record (Monitor.record_start) of the run that wrote `run_dir`: its ticker and packet sha256 from the manifest."""
+    man = json.loads((Path(run_dir) / "manifest.json").read_text(encoding="utf-8"))
+    mon.record_start(man["ticker"], man["packet"]["packet_sha256"], key, NOW - timedelta(days=3))
+
+
 def known_monitor(root, entry_time="2026-10-29T10:00:00Z"):
     mon = M.Monitor(root)
     mon.enqueue(AAA, [trig("sec:t1", 3, entry_time)], NOW - timedelta(days=3))
@@ -381,7 +387,7 @@ def test_read_ledger_reports_only_crashed_runs(tmp_path):
 def test_a_crashed_run_is_requeued_once_through_the_retry_and_dropped_after_the_second(tmp_path):
     rr = tmp_path / "rr"
     mon = known_monitor(tmp_path / "root")
-    crashed_run(rr, n=1)
+    started_by(mon, crashed_run(rr, n=1))
     out = mon.crash_scan(rr, NOW)
     assert out["crashed"] == ["AAA_1"] and out["requeued"] == ["AAA_1"] and out["dropped"] == []
     assert mon.ordered()[0]["attempts"] == 1
@@ -398,7 +404,7 @@ def test_a_crashed_run_is_requeued_once_through_the_retry_and_dropped_after_the_
 def test_a_crashed_run_with_no_covering_entry_gets_one_rerun_trigger(tmp_path):
     rr = tmp_path / "rr"
     mon = known_monitor(tmp_path / "root", entry_time="2026-10-31T00:00:00Z")    # the only trigger is later than the crashed run's T
-    crashed_run(rr, n=1, T="2026-10-30T01:00:00Z")
+    started_by(mon, crashed_run(rr, n=1, T="2026-10-30T01:00:00Z"))
     out = mon.crash_scan(rr, NOW)
     assert out["requeued"] == ["AAA_1"]
     e = mon.ordered()[0]
@@ -416,7 +422,7 @@ def test_a_name_with_no_queue_entry_at_all_gets_the_rerun_trigger(tmp_path):
     s = mon._load()
     s["queue"].clear()                                                        # the name is known, nothing is queued
     M.write_json_atomic(mon.core_path, s)
-    crashed_run(rr, n=1)
+    started_by(mon, crashed_run(rr, n=1))
     assert mon.crash_scan(rr, NOW)["requeued"] == ["AAA_1"]
     assert [e["ticker"] for e in mon.ordered()] == ["AAA"] and mon.ordered()[0]["priority"] == 2
 
@@ -424,14 +430,49 @@ def test_a_name_with_no_queue_entry_at_all_gets_the_rerun_trigger(tmp_path):
 def test_the_scan_leaves_alone_a_young_run_an_unknown_name_and_an_unreadable_manifest(tmp_path):
     rr = tmp_path / "rr"
     mon = known_monitor(tmp_path / "root")
-    crashed_run(rr, n=1, old=False)                                           # written just now: in progress
-    crashed_run(rr, ticker="XZZZ", n=2)                                       # a name the monitor has never seen
+    started_by(mon, crashed_run(rr, n=1, old=False))                          # written just now: in progress
+    started_by(mon, crashed_run(rr, ticker="XZZZ", n=2), key="k2")            # a name the monitor has never seen
     (rr / "runs" / "XD_3").mkdir(parents=True)
     age(rr / "runs" / "XD_3")
     before = json.dumps(mon._load(), sort_keys=True)
     out = mon.crash_scan(rr, datetime.now(timezone.utc))
-    assert out["too_recent"] == ["AAA_1"] and out["not_monitored"] == ["XZZZ_2"] and out["unmapped"] == ["XD_3"]
+    assert out["too_recent"] == ["AAA_1"] and out["not_monitored"] == ["XZZZ_2"]
+    assert out["crashed"] == ["AAA_1", "XZZZ_2"]                              # the unreadable manifest names no ticker: not ours, not counted
     assert json.dumps(mon._load(), sort_keys=True) == before and out["requeued"] == []
+
+
+def test_a_foreign_running_run_in_the_root_is_left_alone_and_not_counted(tmp_path):
+    rr = tmp_path / "rr"
+    mon = known_monitor(tmp_path / "root")
+    crashed_run(rr, n=1)                                                      # a known name, old, `running`, but no record: another writer's
+    foreign = crashed_run(rr, n=2)
+    mon.record_start("AAA", "0" * 64, "k", NOW - timedelta(days=3))           # the monitor's own record is for a different packet
+    before = json.dumps(mon._load(), sort_keys=True)
+    out = mon.crash_scan(rr, NOW)
+    assert out == {"crashed": [], "requeued": [], "dropped": [], "already_recorded": [], "too_recent": [], "not_monitored": []}
+    assert json.dumps(mon._load(), sort_keys=True) == before and not [l for l in mon.journal_lines() if l["kind"] == "failed"]
+    assert foreign.exists() and mon.ordered()[0]["attempts"] == 0
+    started_by(mon, foreign, key="k2")                                        # once the monitor has recorded that packet, the run is its own
+    assert mon.crash_scan(rr, NOW)["crashed"] == ["AAA_1", "AAA_2"]
+
+
+def test_the_executor_records_a_run_before_it_starts_it(tmp_path):
+    from test_executor import Rig
+    rig = Rig(tmp_path)
+    rig.queue(AAA, "a", 3, "2026-10-29T10:00:00Z")
+    seen, run = {}, rig.runner
+
+    def runner(packet, tasks, seed, cwd):
+        seen["at_start"] = rig.state()["started"]
+        return run(packet, tasks, seed, cwd)
+    rig.runner = runner
+    rig.go()
+    (rec,) = seen["at_start"].values()                                       # the record existed when the runner was called
+    assert rec["ticker"] == "AAA" and len(rec["packet_sha256"]) == 64 and rec["started"] == "2026-10-30T03:00:00Z" and rec["run_key"] in seen["at_start"]
+    rig.runs.mkdir(parents=True, exist_ok=True)
+    foreign = crashed_run(rig.wt / "cache" / "m3m", ticker="BBB", n=7)       # another writer's run in the same root, `running` for two days
+    out = M.Monitor(rig.root).crash_scan(rig.wt / "cache" / "m3m", NOW)
+    assert out["crashed"] == [] and foreign.exists()
 
 
 # ---------------------------------------------------------------- item 5: nothing in the module calls os.kill on Windows

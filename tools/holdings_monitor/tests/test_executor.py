@@ -53,12 +53,14 @@ class Rig:
         self.mon = M.Monitor(self.root)
         self.build_calls, self.run_calls, self.script, self.fixed_sha, self.refuse, self.n = [], [], {}, {}, {}, 0
         self.packets = {}
+        self.news_files = []
 
     def queue(self, info, tid="sec:1", pr=3, time=EARLY, kind="sec_filing"):
         self.mon.enqueue(info, [trig(tid, pr, time, kind)], NOW)
 
-    def build(self, ticker, T, commit, record, repo, cwd):
+    def build(self, ticker, T, commit, record, repo, cwd, news_file=None):
         self.build_calls.append((ticker, T, commit, record, str(repo), str(cwd)))
+        self.news_files.append(news_file)
         if ticker in self.refuse:
             raise M.PacketRefused(self.refuse[ticker])
         s = self.fixed_sha.get(ticker) or sha(f"{ticker}|{T}|{commit}")

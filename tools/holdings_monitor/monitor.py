@@ -18,7 +18,8 @@ limit and the 30-day tail are the spec's own numbers.
 
 FILES (all under the monitor's root, `<rs2_state_dir>/paper_books/monitor/` by default: tools/paper_books/book_paths.py)
     state/monitor.json         the one core record: queue, name states, run keys, the monitored set's last-seen dates and the OUTBOX
-    state/gather_<CIK>.json    one gather record per CIK (seen filings and headlines, closes), committed after its triggers are queued
+    state/gather_<CIK>.json    one gather record per CIK (seen filings and headlines, news rows with article text, closes), committed after its triggers are queued
+    news/<ticker>_<T>.json     the news rows one packet is built with (written by the executor, passed to the packet builder as --news-file)
     state/monitor.lock         single instance; a lock whose pid is dead is taken over
     journal.jsonl              append-only, one line per lifecycle step: discovered, queued, analysed, resolved, failed
 
@@ -78,6 +79,10 @@ PRICE_MOVE_SESSIONS = 5                                       # DESIGN
 FILING_TEXT_CHARS = 3_000_000
 HEAD_CHARS = 3000
 CRASH_MIN_AGE_HOURS = 6                                       # DESIGN: a `running` run younger than this is in progress, not crashed (a full run takes about 12 minutes)
+NEWS_TEXT_ROWS = 5                                            # DESIGN: new news rows whose article text is fetched per gather (category-found rows first, then newest)
+NEWS_TEXT_CHARS = 6_000                                       # DESIGN: characters of article text kept on a row
+NEWS_PACKET_ROWS = 8                                          # DESIGN: news rows handed to one packet (newest first)
+NEWS_PACKET_DAYS = 7                                          # DESIGN: with no earlier resolved run, a packet takes news from this many days before T
 
 P0_ITEMS = frozenset({"1.02", "1.03", "2.04", "2.06", "3.01", "4.01", "4.02"})
 EARNINGS_ITEMS = frozenset({"2.02"})
@@ -189,7 +194,9 @@ NEWS_QUERIES = (
     ("w_regulatory", '"{p}" (approval OR approves OR regulator OR FDA OR clearance OR rejected)', "bing news"),
     ("w_policy", '"{p}" (government OR tariff OR license OR licence OR subsidy OR ban)', "bing news"),
     ("w_contract", '"{p}" (contract OR awarded OR agreement OR deal)', "bing news"),
+    ("w_competition", '"{p}" (competitor OR rival OR entrant OR "price cut" OR "market share" OR launches)', "bing news"),
 )
+CATEGORY_KEYS = frozenset(key for key, _, _ in NEWS_QUERIES if key != "w_name")   # a row found by any of these is a category row
 
 
 def normalize_title(title):
@@ -304,16 +311,30 @@ def online_filing_text(cik, accession, primary_document=None, form=None):
     return joined[:FILING_TEXT_CHARS] if joined else None
 
 
+def online_article(url, title):
+    """The plain text of one news page through the reader `main` already owns (analyst_tools.fetch_page, as company_news._read_article calls
+    it: the headline is the known title, so a blocked page falls back to a free copy), or None when the page is unreadable. The whole page
+    text comes back (the caller keeps NEWS_TEXT_CHARS of it)."""
+    sys.path.insert(0, str(ROOT / "tools" / "audit_202608"))
+    import analyst_tools
+    res = analyst_tools.fetch_page(url, cap=FILING_TEXT_CHARS, known_urls={url: title})
+    if not isinstance(res, dict) or res.get("error"):
+        return None
+    text = str(res.get("text") or "").strip()
+    return text or None
+
+
 def searx_news(company, ticker, today, endpoint=SEARX_URL, get_json=None, pause_s=1.0, sleep=time.sleep):
-    """The news of the last week from SearXNG (followup_news, P6.6): five queries, rows with a title and address, the issuer's distinctive
-    word in title or text, low-trust addresses dropped. Rows {date, source, title, url, snippet}. Raises on a total failure."""
+    """The news of the last week from SearXNG (followup_news, P6.6): the NEWS_QUERIES, rows with a title and address, the issuer's distinctive
+    word in title or text, low-trust addresses dropped. Rows {date, source, title, url, snippet, found_by}; a row several queries returned
+    is one row and `found_by` lists every NEWS_QUERIES key that returned it. Raises on a total failure."""
     def default_get(url):
         with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=60) as r:
             return json.loads(r.read().decode("utf-8", "replace"))
     get = get_json or default_get
     press = press_name(company, ticker)
     pattern = _word_pattern(name_token(press) or press)
-    rows, seen, errors = [], set(), []
+    rows, by_key, errors = [], {}, []
     for i, (key, template, engines) in enumerate(NEWS_QUERIES):
         params = {"q": template.format(p=press), "time_range": "week", "format": "json"}
         params.update({"engines": engines} if engines else {"categories": "news"})
@@ -331,12 +352,16 @@ def searx_news(company, ticker, today, endpoint=SEARX_URL, get_json=None, pause_
             if not url or not title or any(bad in url for bad in LOW_TRUST) or not pattern.search(title + " " + content):
                 continue
             k = (normalize_title(title), normalize_url(url))
-            if k[0] in seen or k[1] in seen:
+            hit = by_key[k[0]] if k[0] in by_key else by_key.get(k[1])
+            if hit is not None:
+                if key not in hit["found_by"]:
+                    hit["found_by"].append(key)
                 continue
-            seen.update(k)
             m = re.match(r"^(\d{4}-\d{2}-\d{2})", str(res.get("publishedDate") or "").strip())
-            rows.append({"date": m.group(1) if m else None, "source": str(res.get("engine") or ""), "title": title, "url": url,
-                         "snippet": content[:420]})
+            row = {"date": m.group(1) if m else None, "source": str(res.get("engine") or ""), "title": title, "url": url,
+                   "snippet": content[:420], "found_by": [key]}
+            by_key[k[0]] = by_key[k[1]] = row
+            rows.append(row)
     if errors and len(errors) == len(NEWS_QUERIES):
         raise MonitorError("every news query failed: " + "; ".join(errors[:2]))
     return rows
@@ -409,12 +434,14 @@ def members(books, newest_book, restricted, today, last_seen=None):
 @dataclass
 class Sources:
     """The injected data sources. submissions(cik) -> SEC submissions JSON; filing_text(cik, accession, primary_document, form) -> str or
-    None; prices(ticker) -> {"source", "quote_date", "closes": [{"date", "close"}]}; news(company, ticker, today) -> [row].
-    None means the source is not used (and that is recorded in the gather's errors)."""
+    None; prices(ticker) -> {"source", "quote_date", "closes": [{"date", "close"}]}; news(company, ticker, today) -> [row];
+    article(url, title) -> the plain text of the page, or None. None means the source is not used (and that is recorded in the gather's
+    errors)."""
     submissions: object = None
     filing_text: object = None
     prices: object = None
     news: object = None
+    article: object = None
 
 
 def parse_submissions(sub, cik):
@@ -526,7 +553,8 @@ def gather_name(info, gstate, src, now, peers=None, first_since=None):
     gstate  the stored record of this CIK, or None at the name's first gather
     peers   {ticker: company} of the other monitored names, for the cross-issuer annotation
     first_since  at a first gather, filings accepted before this are recorded as seen and not reported (default now - 7 days)
-    result  {"filings": [new filing dicts with "hits", "annotations", "level"], "news": [new rows], "news_dropped_no_issuer_word": n,
+    result  {"filings": [new filing dicts with "hits", "annotations", "level"], "news": [new rows; those whose article was read also carry
+             "text", "text_sha256", "text_chars_full", "read_from"], "news_dropped_no_issuer_word": n,
              "news_seen_not_reported": n, "price": signal or None, "price_source", "errors": [...], "first": bool}
     A source that fails leaves its part of the stored record untouched, so it is tried again at the next gather.
     """
@@ -616,14 +644,39 @@ def gather_name(info, gstate, src, now, peers=None, first_since=None):
                     res["news_seen_not_reported"] += 1
                     continue
                 r = {k: row.get(k) for k in ("title", "url", "source", "snippet")}
-                r.update(label="secondary", key=tkey)
+                r.update(label="secondary", key=tkey, found_by=list(row.get("found_by") or []))
                 if day:
                     r["date"] = day
                 else:
                     r["first_seen"] = iso(now)
                 res["news"].append(r)
+            if res["news"]:
+                if src.article is None:
+                    res["errors"].append("news text: no article source")
+                else:
+                    # article text for a few new rows: category-found rows first, then the newest (a stable sort, so ties keep their order)
+                    pick = sorted(res["news"], key=lambda r: str(r.get("date") or r["first_seen"])[:10], reverse=True)
+                    pick = sorted(pick, key=lambda r: not (CATEGORY_KEYS & set(r["found_by"])))[:NEWS_TEXT_ROWS]
+                    for r in pick:
+                        try:
+                            text = src.article(r["url"], r["title"])
+                        except Exception as e:  # noqa: BLE001
+                            res["errors"].append(f"article {r['url']}: {type(e).__name__}: {str(e)[:120]}")
+                            continue
+                        if not (text and str(text).strip()):
+                            res["errors"].append(f"article {r['url']}: no text")
+                            continue
+                        kept = str(text)[:NEWS_TEXT_CHARS]
+                        if not pat.search(kept):
+                            r["annotations"] = ["text_does_not_name_issuer"]      # annotate: the row stays, its text is dropped
+                            continue
+                        r.update(text=kept, text_sha256=sha256_bytes(kept.encode("utf-8")), text_chars_full=len(str(text)), read_from=r["url"])
         cutoff = _stamp(now - timedelta(days=SEEN_KEEP_DAYS))
         g["news_seen"] = {k: d for k, d in g["news_seen"].items() if d >= cutoff}
+        if rows is not None:
+            kept_rows = g.setdefault("news_rows", {})                          # the rows with text, for the packet; pruned with the seen-set
+            kept_rows.update({r["key"]: r for r in res["news"] if r.get("text")})
+            g["news_rows"] = {k: r for k, r in kept_rows.items() if k in g["news_seen"]}
 
     # prices
     if src.prices is not None:
@@ -657,13 +710,21 @@ def gather_name(info, gstate, src, now, peers=None, first_since=None):
 
 
 def build_triggers(info, res, held, now):
-    """The triggers one gather produced (SPEC 3): filings by level, the price move (P3). News queues nothing (open choice)."""
+    """The triggers one gather produced (SPEC 3): filings by level, the price move (P3), and news (P3, SPEC v2 2.1): at most one `news`
+    trigger per gather, when a new row was found by a category query (CATEGORY_KEYS) AND its article text was read. News without text
+    queues nothing."""
     out = []
     for f in res["filings"]:
         out.append({"id": f"sec:{f['accession']}", "kind": "sec_filing", "priority": priority_for(f["level"], held),
                     "time": f["accepted_utc"] or iso(now), "reasons": f["level_reasons"], "form": f["form"], "items": f["items"],
                     "accession": f["accession"], "accepted_raw": f["accepted_raw"], "filing_date": f["filing_date"],
                     "primary_document": f["primary_document"], "hits": f["hits"], "annotations": f["annotations"]})
+    cat = [r for r in res["news"] if CATEGORY_KEYS & set(r.get("found_by") or []) and r.get("text")]
+    if cat:
+        out.append({"id": f"news:{info['ticker']}:{_stamp(now)}", "kind": "news", "priority": 3, "time": iso(now),
+                    "reasons": ["news_" + k for k in sorted(CATEGORY_KEYS & {k for r in cat for k in r["found_by"]})], "annotations": [],
+                    "evidence": [{"key": r["key"], "title": r["title"], "date": r.get("date"), "first_seen": r.get("first_seen"),
+                                  "found_by": r["found_by"]} for r in cat]})
     sig = res["price"]
     if sig and not sig.get("suppressed") and (sig["sigma_trigger"] or sig["move_trigger"]):
         why = (["sigma_%.1f" % PRICE_SIGMAS] if sig["sigma_trigger"] else []) + (["move_%d%%_%dd" % (PRICE_MOVE * 100, PRICE_MOVE_SESSIONS)]
@@ -679,13 +740,40 @@ import m3o_engine  # noqa: E402  (the single owner of Q1; a second copy here dis
 
 
 def q1_verdict(analysis, packet, T_date):
-    """The Q1 verdict of a run's material_events task, by m3o_engine.q1: {"verdict": "event_found" | "escalation" | "none", "claims": [...],
-    "escalations": [...]}. A claim acts when it is critical, supported, and announced_pending or occurred with a date printed in a cited
-    item within 180 days before T; an undated or date_unsupported claim is an escalation that does not act."""
-    items = {e.get("fact_id"): e.get("text") or "" for e in packet.get("evidence") or []}
-    q = m3o_engine.q1(analysis, as_date(T_date), Q1_EVENT_CLASS, items)
-    verdict = "event_found" if q["restricted"] else ("escalation" if q["escalations"] else "none")
-    return {"verdict": verdict, "claims": q["claims"], "escalations": q["escalations"]}
+    """The Q1 verdict of a run's material_events task, by m3o_engine.q1: {"verdict": "event_found" | "news_event" | "escalation" | "none",
+    "claims": [...], "escalations": [...]}. A claim acts when it is critical, supported, and announced_pending or occurred with a date printed
+    in a cited item within 180 days before T; an undated or date_unsupported claim is an escalation that does not act.
+
+    A packet item of kind `news` is secondary (a press report), and m3o_engine.q1 does not tell it from a filing. When the packet has news
+    items, q1 is given only the claims that cite at least one primary item and only the primary items' text (so a date printed only in a
+    press report cannot support a Q1 date). The claims left out are listed apart as `news_claims` (each with its cited news ids); one whose
+    event_type is a Q1 event type and whose support is `supported` makes the verdict `news_event` when Q1 itself found no event. A packet
+    with no news items is read exactly as before, and its result has no `news_claims`."""
+    evidence = packet.get("evidence") or []
+    news_ids = {e.get("fact_id") for e in evidence if e.get("kind") == "news"}
+    if not news_ids:
+        items = {e.get("fact_id"): e.get("text") or "" for e in evidence}
+        q = m3o_engine.q1(analysis, as_date(T_date), Q1_EVENT_CLASS, items)
+        verdict = "event_found" if q["restricted"] else ("escalation" if q["escalations"] else "none")
+        return {"verdict": verdict, "claims": q["claims"], "escalations": q["escalations"]}
+    primary = {e.get("fact_id"): e.get("text") or "" for e in evidence if e.get("kind") != "news"}
+    me = (analysis.get("tasks") or {}).get("material_events") or {}
+    claims = me.get("claims") or []
+    kept = [c for c in claims if any(f in primary for f in c.get("fact_ids") or [])]
+    apart = [c for c in claims if not any(f in primary for f in c.get("fact_ids") or [])]
+    split = {**analysis, "tasks": {**(analysis.get("tasks") or {}), "material_events": {**me, "claims": kept}}}
+    q = m3o_engine.q1(split, as_date(T_date), Q1_EVENT_CLASS, primary)
+    news_claims = [{"class": Q1_EVENT_CLASS[c["event_type"]], "event_type": c.get("event_type"), "support": c.get("support"),
+                    "status": c.get("status"), "occurred_on": c.get("occurred_on"), "fact_ids": c.get("fact_ids"),
+                    "news_ids": [f for f in c.get("fact_ids") or [] if f in news_ids], "claim": (c.get("claim") or "")[:300],
+                    "acts_as_news_event": c.get("support") == "supported"} for c in apart if c.get("event_type") in Q1_EVENT_CLASS]
+    if q["restricted"]:
+        verdict = "event_found"
+    elif any(c["acts_as_news_event"] for c in news_claims):
+        verdict = "news_event"
+    else:
+        verdict = "escalation" if q["escalations"] else "none"
+    return {"verdict": verdict, "claims": q["claims"], "escalations": q["escalations"], "news_claims": news_claims}
 
 
 # ---------------------------------------------------------------- thesis points
@@ -840,7 +928,7 @@ class Monitor:
     def _load(self):
         s = read_json(self.core_path, None)
         if s is None:
-            s = {"version": 1, "queue": {}, "names": {}, "ran_keys": {}, "last_seen": {}, "ciks": {}, "outbox": []}
+            s = {"version": 1, "queue": {}, "names": {}, "ran_keys": {}, "last_seen": {}, "ciks": {}, "outbox": [], "started": {}}
         return s
 
     def _commit(self, s):
@@ -1004,6 +1092,19 @@ class Monitor:
             self._commit(s)
             return line
 
+    def record_start(self, ticker, packet_sha256, key, started):
+        """The executor records a run it is about to start: {ticker, packet_sha256, run_key, started}, kept HANDLED_KEEP_DAYS. The crash scan marks
+        as crashed only a run directory that matches such a record (ticker and packet sha256); every other `running` directory in the run
+        root belongs to another writer."""
+        started = utc(started)
+        with self.locked():
+            s = self._load()
+            self._flush(s)
+            cutoff = iso(started - timedelta(days=HANDLED_KEEP_DAYS))
+            s["started"] = {k: v for k, v in (s.get("started") or {}).items() if v["started"] >= cutoff}
+            s["started"][key] = {"ticker": ticker, "packet_sha256": packet_sha256, "run_key": key, "started": iso(started)}
+            self._commit(s)
+
     def _refresh_due(self, s, info, now):
         """The P4 trigger of a name with no run for 14 days (a name never run is due at once), unless it is already queued."""
         if info["ticker"] in s["queue"]:
@@ -1062,7 +1163,7 @@ class Monitor:
                     self._emit(s, "discovered", t, now, "discovered:" + _event_id(t, "news", _stamp(now), sorted(r["key"] for r in res["news"])),
                                evidence=[{"kind": "news", "label": "secondary", "date": r.get("date"), "first_seen": r.get("first_seen"),
                                           "title": r["title"], "url": r["url"]} for r in res["news"][:50]],
-                               trigger=None, secondary=True, n_news=len(res["news"]), queues_nothing=True,
+                               trigger=None, secondary=True, n_news=len(res["news"]), queues_nothing=not any(x["kind"] == "news" for x in trig),
                                news_dropped_no_issuer_word=res["news_dropped_no_issuer_word"],
                                source_ids=[r["key"] for r in res["news"][:50]], times={"detected_at": iso(now)})
                 self._commit(s)                                           # the queue and the journal first ...
@@ -1226,6 +1327,8 @@ class Monitor:
             compare = "not_run"
         if q1["verdict"] == "event_found":
             state = "event_found"
+        elif q1["verdict"] == "news_event":
+            state = "news_event"
         elif compare == "changed":
             state = "thesis_changed"
         elif compare in ("unchanged", "not_applicable"):
@@ -1248,26 +1351,35 @@ class Monitor:
         ev = [{"fact_id": e["fact_id"], "accession": (e.get("source") or {}).get("accession"), "accepted_raw": e.get("accepted_raw"),
                "effective_at": e.get("effective_at"), "name": e.get("name")}
               for e in packet.get("evidence") or [] if e.get("fact_id") in cited]
-        line = {"name_state": state, "pending_review": n["pending_review"], "pending_reasons": reasons,
+        warning_kind = (q1["verdict"] if q1["verdict"] in ("event_found", "news_event") else ("thesis_changed" if compare == "changed" else None))
+        line = {"name_state": state, "warning_kind": warning_kind, "pending_review": n["pending_review"], "pending_reasons": reasons,
                 "thesis_compare": compare, "points": {k: v["state"] for k, v in (tp or {}).get("points", {}).items()},
                 "thesis_change_status": (tp or {}).get("status"), "q1": q1, "compared_with_run": _prior_ref(prior), **common}
+        if warning_kind == "news_event":
+            line["news_claims"] = [c for c in q1["news_claims"] if c["acts_as_news_event"]]
         self._emit(s, "resolved", ticker, now, "resolved:" + _event_id(ticker, common["run_id"]), evidence=ev, **line)
         n["runs"][common["run_id"]] = {"outcome": "resolved", "name_state": state}
         return {"kind": "resolved", **line}
 
     # -- the crash scan
     def crash_scan(self, run_root, now, min_age_hours=CRASH_MIN_AGE_HOURS):
-        """Find qwen_c runs of known names that crashed (read_ledger's `crashed`: no readable manifest, or `running` with no finished_at,
-        and older than min_age_hours so a run in progress is left alone), record each as a `failed` run through resolve(), and make sure the
-        name is queued for one more run. Each crashed run is handled once: a second scan finds it recorded and does nothing.
+        """Find qwen_c runs of known names that crashed (read_ledger's `crashed`, and older than min_age_hours so a run in progress is left
+        alone), record each as a `failed` run through resolve(), and make sure the name is queued for one more run. Each crashed run is
+        handled once: a second scan finds it recorded and does nothing.
+
+        Only a run the monitor itself started is ever marked: its manifest must name the ticker and packet sha256 of a record the executor
+        made before starting it (record_start). A formation run, the site worker or the cohort run also write in this run root; any other
+        `running` directory (and any directory with no readable manifest, which names no ticker) is left alone and not counted.
 
         The re-queue is the retry resolve() already gives an entry that covers the crashed run. A name with no such entry gets a P2 trigger
         `rerun:<run_id>` at the crashed run's decision time, with its attempts preset so that a second failure drops it (once, not forever)."""
         now = utc(now)
         run_root = Path(run_root)
-        out = {"crashed": [], "requeued": [], "dropped": [], "already_recorded": [], "too_recent": [], "unmapped": [], "not_monitored": []}
+        out = {"crashed": [], "requeued": [], "dropped": [], "already_recorded": [], "too_recent": [], "not_monitored": []}
+        started = list((self._load().get("started") or {}).values())
         for r in read_ledger(run_root):
-            if r.get("status") != "crashed":
+            if r.get("status") != "crashed" or not any(v["ticker"] == r.get("ticker") and v["packet_sha256"] == r.get("packet_sha256")
+                                                      for v in started):
                 continue
             run_id, d = r["run_id"], run_root / "runs" / r["run_id"]
             out["crashed"].append(run_id)
@@ -1279,10 +1391,7 @@ class Monitor:
             if age_h is not None and age_h < min_age_hours:
                 out["too_recent"].append(run_id)
                 continue
-            ticker = r.get("ticker")
-            if not ticker:
-                out["unmapped"].append(run_id)                           # no readable manifest: no name to re-queue
-                continue
+            ticker = r["ticker"]
             n = self._load()["names"].get(ticker)
             if n is None:
                 out["not_monitored"].append(run_id)
@@ -1325,7 +1434,9 @@ class Monitor:
 
 def _evidence(t):
     return {"id": t["id"], "kind": t["kind"], "time": t["time"], "accession": t.get("accession"), "form": t.get("form"),
-            "items": t.get("items"), "accepted_raw": t.get("accepted_raw"), "label": "primary" if t["kind"] == "sec_filing" else t["kind"]}
+            "items": t.get("items"), "accepted_raw": t.get("accepted_raw"),
+            "label": "primary" if t["kind"] == "sec_filing" else ("secondary" if t["kind"] == "news" else t["kind"]),
+            **({"rows": t.get("evidence")} if t["kind"] == "news" else {})}
 
 
 def _prior_ref(prior):
@@ -1503,7 +1614,7 @@ def read_ledger(root):
 # ---------------------------------------------------------------- item 3: one gather pass and the command line
 
 def live_sources(now):
-    """The real sources: SEC submissions (one fetch per CIK per pass, kept), filing text, yfinance closes, SearXNG news."""
+    """The real sources: SEC submissions (one fetch per CIK per pass, kept), filing text, yfinance closes, SearXNG news, article text."""
     cache = {}
 
     def submissions(cik):
@@ -1515,7 +1626,7 @@ def live_sources(now):
         time.sleep(0.5)                                                 # Yahoo is not hammered
         return yf_prices(ticker, now)
     return Sources(submissions=submissions, filing_text=online_filing_text, prices=prices,
-                   news=lambda company, ticker, today: searx_news(company, ticker, date.fromisoformat(today)))
+                   news=lambda company, ticker, today: searx_news(company, ticker, date.fromisoformat(today)), article=online_article)
 
 
 def resolve_companies(todo, tickers, submissions):
@@ -1584,7 +1695,6 @@ def format_report(r):
 
 # ================================================================ WO_P3b1: the executor (queue entry -> packet -> qwen_c -> resolve)
 
-PYTHON = r"C:\Program Files\Python312\python.exe"
 WORKTREE = ROOT                                                         # the qwen_c run worktree: this repository (main's qwen_c)
 CHECKS_DIR = book_paths.books() / "m3l_verifier" / "out"                # where tools/paper_books/check_new_runs.py writes check_*.json
 SEED_BASE = 1000
@@ -1642,11 +1752,14 @@ def _json_tail(text):
     return json.loads(text[text.index("{"):])
 
 
-def qwen_build_packet(ticker, T, commit, verified_record, screener_repo, cwd):
+def qwen_build_packet(ticker, T, commit, verified_record, screener_repo, cwd, news_file=None):
     """Build one verified-regime packet through the qwen_c CLI, run in the run worktree (as o2_packets.py does):
-    {"packet", "packet_sha256", "builder_version", "annotations"}. Raises PacketRefused with the refusal text."""
-    cmd = [PYTHON if Path(PYTHON).exists() else sys.executable, "-m", "qwen_c.packet", "--ticker", ticker, "--T", T, "--commit", commit,
+    {"packet", "packet_sha256", "builder_version", "annotations"}. Raises PacketRefused with the refusal text.
+    `news_file` (news_file_for) is passed as `--news-file`; without it the command is as it was before news."""
+    cmd = [sys.executable, "-m", "qwen_c.packet", "--ticker", ticker, "--T", T, "--commit", commit,
            "--verified-record", str(verified_record), "--screener-repo", str(screener_repo), "--online"]
+    if news_file is not None:
+        cmd += ["--news-file", str(news_file)]
     try:
         r = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=PACKET_TIMEOUT_S)
     except subprocess.TimeoutExpired as e:
@@ -1667,7 +1780,7 @@ def qwen_build_packet(ticker, T, commit, verified_record, screener_repo, cwd):
 def qwen_run(packet, tasks, seed_base, cwd):
     """One qwen_c run through the CLI, in the run worktree: `<packet> [--tasks a,b] --seed-base N`. Returns the runner's result
     ({"run_dir", "status", ...}), {"refused": text} when the runner refused to start (exit 2), or {"crashed": text} when it left no result."""
-    cmd = [PYTHON if Path(PYTHON).exists() else sys.executable, "-m", "qwen_c.runner", str(packet)]
+    cmd = [sys.executable, "-m", "qwen_c.runner", str(packet)]
     if tasks:
         cmd += ["--tasks", tasks]
     cmd += ["--seed-base", str(seed_base)]
@@ -1713,6 +1826,42 @@ def unresolved_finished_run(run_root, name_rec, ticker, packet_sha256, prompt, c
     return best[1] if best else None
 
 
+def _news_moment(row):
+    """When a stored news row happened: its date at 00:00 UTC, or its first-seen time; None when it has neither."""
+    if row.get("date"):
+        return datetime.combine(as_date(row["date"]), dtime(0, 0), tzinfo=timezone.utc)
+    return parse_utc(row["first_seen"]) if row.get("first_seen") else None
+
+
+def news_file_for(mon, entry, T):
+    """Write `<root>/news/<ticker>_<T compact>.json` for a queue entry about to be packed and return (path, number of rows).
+
+    The rows are the name's stored news rows that have article text and whose date (or first-seen time) is after the name's last resolved
+    run's decision time (NEWS_PACKET_DAYS before T when there is none) and not after T, newest first, at most NEWS_PACKET_ROWS. The file is
+    written even when it holds no row; the caller passes it to the packet builder only when it does."""
+    ticker = entry["ticker"]
+    n = mon._load()["names"].get(ticker) or {}
+    last = (n.get("last_good") or {}).get("decision_time_utc")
+    t_dt = parse_utc(T)
+    stored = ((read_json(mon.state_dir / f"gather_{int(entry['cik'])}.json", None) or {}).get("news_rows") or {}).values()
+    take = []
+    for r in stored:
+        at = _news_moment(r)
+        if not r.get("text") or at is None or at > t_dt:
+            continue
+        if (at > parse_utc(last)) if last else (at >= t_dt - timedelta(days=NEWS_PACKET_DAYS)):
+            take.append((at, r))
+    take.sort(key=lambda x: x[0], reverse=True)
+    rows = []
+    for _, r in take[:NEWS_PACKET_ROWS]:
+        when = {"date": r["date"]} if r.get("date") else {"first_seen": r["first_seen"]}
+        rows.append({"title": r["title"], "url": r["url"], "publisher": urllib.parse.urlparse(str(r["url"])).netloc.lower().removeprefix("www.") or r.get("source"),
+                     **when, "found_by": r.get("found_by") or [], "text": r["text"], "text_sha256": r["text_sha256"]})
+    path = mon.root / "news" / f"{ticker}_{T.replace('-', '').replace(':', '')}.json"
+    write_json_atomic(path, {"ticker": ticker, "T": T, "rows": rows})
+    return path, len(rows)
+
+
 def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SCREENER_REPO, limit=None, dry_run=False, build=None,
              runner=None, versions=None, clock=None, seed_base=SEED_BASE, crash_scan=True):
     """One executor pass (WO_P3b1): the queue's entries in order (priority, then trigger time), at most `limit`, each at most once.
@@ -1721,8 +1870,9 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
     `build` (a refusal: `failed`, the refusal's text); the run key from the packet (a key already run: the entry is absorbed and nothing
     runs); a finished run with that key that was never resolved is resolved instead of run again; otherwise `runner` runs qwen_c and
     resolve() reads the run. A runner refusal that is the infrastructure (gpu_busy, Ollama unreadable) stops the pass and counts no attempt.
-    Injectable: build(ticker, T, commit, verified_record, screener_repo, cwd) -> {"packet", "packet_sha256", "builder_version", ...} or
-    raises PacketRefused; runner(packet, tasks, seed_base, cwd) -> {"run_dir", ...} | {"refused": text} | {"crashed": text};
+    Injectable: build(ticker, T, commit, verified_record, screener_repo, cwd[, news_file=path]) -> {"packet", "packet_sha256",
+    "builder_version", ...} or raises PacketRefused (`news_file` is passed only when the entry has news rows, see news_file_for);
+    runner(packet, tasks, seed_base, cwd) -> {"run_dir", ...} | {"refused": text} | {"crashed": text};
     versions(worktree) -> (prompt_version, contract); clock() -> aware datetime.
 
     One instance: state/executor.lock (take_lock; a dead pid is taken over). dry_run takes no lock and changes nothing. Returns
@@ -1763,8 +1913,10 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
                 row["outcome"] = "failed:no_verified_commit_at_T"
                 continue
             row.update(commit=c["commit"], check_file=c["check_file"])
+            news_path, row["news_rows"] = news_file_for(mon, e, T)
             try:
-                pk = build(t, T, c["commit"], c["check_file"], screener_repo, worktree)
+                pk = build(t, T, c["commit"], c["check_file"], screener_repo, worktree,
+                           **({"news_file": str(news_path)} if row["news_rows"] else {}))
             except PacketRefused as ex:
                 mon.fail_entry(t, T, "packet_refused", str(ex), now)
                 row["outcome"] = "failed:packet_refused"
@@ -1780,6 +1932,7 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
             if run_dir is not None:
                 row["recovered_run"] = str(run_dir)                       # finished before a crash, never resolved: resolve it, do not run again
             else:
+                mon.record_start(t, pk["packet_sha256"], key, now)       # the crash scan marks only runs the monitor recorded here
                 res = runner(pk["packet"], tasks, seed_base, worktree)
                 if res.get("refused") is not None:
                     why = str(res["refused"])
