@@ -158,7 +158,6 @@ def test_a_packet_with_news_loads_in_the_runner_and_the_ids_are_unique(tmp_path)
     ("news_row_no_text", [{**row(1), "text": None}], "ACME"),
     ("news_text_sha_mismatch", [row(1, text_sha256="0" * 64)], "ACME"),
     ("news_row_after_T", [row(1), row(2, date="2026-10-30")], "ACME"),                       # row 2 only: the file is refused
-    ("news_row_after_T", [row(1, date="2026-10-29")], "ACME"),                              # the day of T: end of day is after 13:00Z
     ("news_row_after_T", [row(1, date=None, first_seen="2026-10-29T13:00:01Z")], "ACME"),
     ("news_row_date_unreadable", [row(1, date=None)], "ACME"),
     ("news_row_date_unreadable", [row(1, date="yesterday")], "ACME"),
@@ -199,6 +198,12 @@ def test_dates_a_day_is_end_of_day_utc_a_time_with_a_zone_is_converted_and_date_
                            row(2, date="2026-10-27", first_seen="2026-10-28T00:00:00Z")])
     got = [e["effective_at"] for e in pk["evidence"][-2:]]
     assert got == ["2026-10-28T11:30:00Z", "2026-10-27T23:59:59Z"]
+
+
+def test_a_row_dated_the_day_of_T_is_taken_and_counts_at_T_and_is_newer_than_a_prior_run_of_that_day(tmp_path):
+    pk, _ = add(tmp_path, [row(1, date="2026-10-29"), row(2, date="2026-10-28")])            # T is 2026-10-29T13:00:00Z
+    assert [e["effective_at"] for e in pk["evidence"][-2:]] == [T, "2026-10-28T23:59:59Z"]
+    assert tasks.effective_after(pk, "2026-10-29T09:00:00Z")[-1:] == ["N1"]                  # a run earlier that day did not read it
 
 
 def test_a_row_exactly_at_T_is_not_after_T(tmp_path):

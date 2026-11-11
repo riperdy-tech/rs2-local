@@ -7,8 +7,10 @@ a packet built without a news file is the dict `packet.build` returns, unchanged
 
 THE NEWS FILE. {"ticker", "T", "rows": [{"title", "url", "publisher", "date" or "first_seen", "found_by", "text", "text_sha256"}]}.
 `date` is a day (YYYY-MM-DD) or an ISO time with a zone; `first_seen` is an ISO time with a zone; `date` wins when both are present.
-A day is read as the END of that day in UTC (the latest the report could have been public), so a report dated the day of T is after T
-unless T is at the end of the day: the refusal is the conservative one. `text_sha256` is the sha256 of the row's text as UTF-8.
+A day is read as the END of that day in UTC (the latest the report could have been public), except the day of T itself, which is read
+as T: a search engine gives a report's day and not its hour, the monitor hands over only rows it has already gathered, and its gather
+runs at 21:00 UTC, so a refusal of T's own day would refuse the reports of the hours after the US close, the ones that matter most
+(coordinator's audit, 2026-11-11). A row dated a later day than T is refused. `text_sha256` is the sha256 of the row's text as UTF-8.
 
 THE ITEM. kind `news`; title; form, period and accepted_raw none; effective_at the row's time (UTC, Z); source {"label": "secondary",
 "publisher", "url"}; raw_sha256 the row's text_sha256; found_by; text the row's text, as given. ids N1, N2, ... in the file's order, after
@@ -59,8 +61,9 @@ def load_news_file(path):
     return obj, hashlib.sha256(raw).hexdigest()
 
 
-def _row_time(row, n):
-    """The row's effective time, an aware UTC datetime. `date` wins over `first_seen`."""
+def _row_time(row, n, T):
+    """The row's effective time, an aware UTC datetime. `date` wins over `first_seen`. A day is the end of that day in UTC; the day of T
+    itself is T (see the module docstring)."""
     v = row.get("date") if row.get("date") not in (None, "") else row.get("first_seen")
     if not isinstance(v, str) or not v.strip():
         raise PacketRefused("news_row_date_unreadable", f"row {n}: no date and no first_seen")
@@ -68,7 +71,7 @@ def _row_time(row, n):
     try:
         if _DAY.match(v):
             d = date.fromisoformat(v)
-            return datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+            return T if d == T.date() else datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
         dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
     except ValueError as e:
         raise PacketRefused("news_row_date_unreadable", f"row {n}: {v!r} is not a day or an ISO time ({e})") from e
@@ -101,8 +104,8 @@ def add_news(pk, news, file_sha256):
             raise PacketRefused("news_row_no_text", f"row {n} has no text")
         if hashlib.sha256(text.encode("utf-8")).hexdigest() != r.get("text_sha256"):
             raise PacketRefused("news_text_sha_mismatch", f"row {n}: the text does not hash to its text_sha256")
-        if _row_time(r, n) > T:
-            raise PacketRefused("news_row_after_T", f"row {n} is dated {_packet._z(_row_time(r, n))}, after T {_packet._z(T)}")
+        if _row_time(r, n, T) > T:
+            raise PacketRefused("news_row_after_T", f"row {n} is dated {_packet._z(_row_time(r, n, T))}, after T {_packet._z(T)}")
     items, notes, stop = [], [], False
     room = NEWS_CAP
     for n, r in enumerate(rows, 1):
@@ -120,7 +123,7 @@ def add_news(pk, news, file_sha256):
         room -= len(text)
         items.append({"kind": "news", "name": "news", "title": r.get("title"),
                       "source": {"label": "secondary", "publisher": r.get("publisher"), "url": r.get("url")}, "form": None, "period": None,
-                      "accepted_raw": None, "effective_at": _packet._z(_row_time(r, n)), "raw_sha256": r["text_sha256"],
+                      "accepted_raw": None, "effective_at": _packet._z(_row_time(r, n, T)), "raw_sha256": r["text_sha256"],
                       "found_by": r.get("found_by"), "text": text, "fact_id": f"N{len(items) + 1}"})
     out = dict(pk)
     out["evidence"] = list(pk["evidence"]) + items
