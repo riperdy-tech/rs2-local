@@ -22,7 +22,11 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import book_paths  # noqa: E402
 import forward_ledger as FL  # noqa: E402
-import m3o_engine as E  # noqa: E402
+try:                                       # FV must never block the formation: an engine that cannot even be imported leaves fv_held null
+    import m3o_engine as E  # noqa: E402
+    E_ERROR = None
+except (Exception, SystemExit) as _e:      # noqa: BLE001
+    E, E_ERROR = None, f"m3o_engine could not be imported: {type(_e).__name__}: {_e}"
 
 INPUTS = book_paths.books() / "m3o" / "inputs"
 CHECKS = book_paths.books() / "m3l_verifier" / "out"
@@ -83,8 +87,8 @@ def main():
             print("unchanged:", path)
             return 0
         sys.exit(f"STOP: the decision changed from run {old['run_id']} to {rec['run_id']}; re-queue by hand (WO_O2 step 5)")
-    if T.isoformat() >= E.FV_START:
-        rec["fv_held"], err = fv_held(names)
+    if E is None or T.isoformat() >= E.FV_START:
+        rec["fv_held"], err = fv_held(names) if E is not None else (None, E_ERROR)
         if err:
             rec["fv_held_error"] = err
             print(f"fv_held: the engine could not run, FV's held names are not carried: {err}")

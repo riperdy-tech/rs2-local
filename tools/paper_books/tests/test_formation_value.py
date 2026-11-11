@@ -369,3 +369,15 @@ def test_the_fv_snapshot_follows_the_finished_flag_and_never_a_limited_pass(worl
     sys.argv[:] = ["formation_value.py", T]
     assert FV.main() == 0 and world.fv == [T] and (world.state / f"value_finished_{T}.flag").exists()
     assert FV.main() == 0 and world.fv == [T, T]                           # the task's next pass calls it again; formation_fv finds the file: "unchanged"
+
+
+def test_a_failing_fv_snapshot_exits_8_after_the_valuations_and_the_flag_are_done(world, monkeypatch):
+    def boom(T):
+        raise SystemExit("STOP: something in formation_fv")
+    finish_q1(world)
+    monkeypatch.setattr(FV.formation_fv, "main", boom)
+    assert FV.main() == 8
+    assert (world.state / f"value_finished_{T}.flag").exists() and world.consensus == [T]     # the valuations of record are complete
+    monkeypatch.setattr(FV, "formation_fv", None)
+    monkeypatch.setattr(FV, "FV_IMPORT_ERROR", "ImportError: x")
+    assert FV.main() == 8

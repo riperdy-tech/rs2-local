@@ -29,7 +29,8 @@ writes; resumable: a filled slot is never re-run). One instance at a time (value
 When every slot is filled, formation_consensus.main writes consensus_<T>.json (design revision 2, rule (a): the value of record from
 the two seeds, no model call), then value_finished_<T>.flag is written, then formation_fv.main writes fv_<T>.json (PREREG_m3o_bookV; once,
 later passes find it). The names valued are the map's names plus its "fv_held" entries that have a packet (their index entry carries
-"role": "fv_held"; a ticker in both lists stops).
+"role": "fv_held"; a ticker in both lists stops). A failure of formation_fv is printed and the pass exits 8: the valuations and the flag
+stand, FV has no snapshot for the formation until a human looks.
 """
 import argparse
 import hashlib
@@ -48,7 +49,11 @@ sys.path.insert(0, str(HERE))
 import book_paths  # noqa: E402
 import formation_run as FR  # noqa: E402
 import formation_consensus as FC  # noqa: E402
-import formation_fv  # noqa: E402
+try:                                       # FV's snapshot is secondary: a failure there never stops the valuations of record
+    import formation_fv  # noqa: E402
+    FV_IMPORT_ERROR = None
+except (Exception, SystemExit) as _e:      # noqa: BLE001
+    formation_fv, FV_IMPORT_ERROR = None, f"{type(_e).__name__}: {_e}"
 import paths  # noqa: E402
 
 ROOT = HERE.parents[1]                                                    # the rs2-local repo root: qwen_c runs from here
@@ -393,7 +398,13 @@ def one_pass():
     if not a.ticker and a.limit is None and all(str(s) in idx["names"][t]["slots"] for t in todo for s in SEEDS):
         FC.main(a.formation_T)                # design revision 2, rule (a): the value of record from the two seeds, before the flag
         (STATE / f"value_finished_{a.formation_T}.flag").write_text("done")
-        formation_fv.main(a.formation_T)      # PREREG_m3o_bookV: FV's snapshot, written once (later passes of the task find it: "unchanged")
+        try:                                  # PREREG_m3o_bookV: FV's snapshot, written once (later passes of the task find it: "unchanged")
+            if formation_fv is None:
+                raise RuntimeError(f"formation_fv could not be imported: {FV_IMPORT_ERROR}")
+            formation_fv.main(a.formation_T)
+        except (Exception, SystemExit) as e:  # noqa: BLE001  the valuations and their flag are done; FV has no snapshot until a human looks
+            print(f"FV SNAPSHOT NOT WRITTEN for {a.formation_T}: {type(e).__name__}: {e}", flush=True)
+            return 8
     return 0
 
 

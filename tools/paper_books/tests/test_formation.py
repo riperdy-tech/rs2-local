@@ -353,3 +353,11 @@ def test_a_frozen_formation_with_names_left_to_run_does_not_hold_the_gpu(tmp_pat
     assert R.formation_waiting()
     (inputs / f"formation_{T}.frozen.json").write_bytes(path.read_bytes())   # frozen at its fill: BBB is cash for good
     assert not R.formation_waiting()
+
+
+def test_decide_writes_the_map_when_the_engine_cannot_even_be_imported(decide, monkeypatch):
+    monkeypatch.setattr(D, "E", None)
+    monkeypatch.setattr(D, "E_ERROR", "m3o_engine could not be imported: SystemExit: x")
+    assert D.main() == 0
+    m = load(decide.path)
+    assert m["fv_held"] is None and "could not be imported" in m["fv_held_error"] and m["book"]
