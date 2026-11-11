@@ -4,7 +4,8 @@
 
 Names in state `to_build` are built through the qwen_c packet CLI (python -m qwen_c.packet, run from this repository's root); a refusal sets state `analysis_incomplete` with its reason. The map
 is rewritten after each name (tmp + replace), so the script resumes. Excluded names are never built.
-The map's "candidates" (paper book FD) are built the same way after the book names: state built, or packet_refused with its reason.
+The map's "candidates" (paper book FD) and "fv_held" (paper book FV) are built the same way after the book names: state built, or packet_refused
+with its reason.
 """
 import json
 import os
@@ -39,20 +40,21 @@ def build(t, m):
 
 
 def build_candidates(path, m):
-    for c in m.get("candidates") or []:
-        if c["state"] != "to_build":
-            continue
-        r = build(c["ticker"], m)
-        try:
-            out = json.loads(r.stdout[r.stdout.index("{"):])
-            pk = json.loads(Path(out["packet"]).read_text(encoding="utf-8"))
-            if m["builder_version"] not in (None, pk["builder_version"]):
-                sys.exit(f"STOP: candidate {c['ticker']} built with {pk['builder_version']}, the map holds {m['builder_version']}")
-            c.update(packet=out["packet"], packet_sha256=out["packet_sha256"], state="built", annotations=out["annotations"])
-        except (ValueError, KeyError, OSError):
-            c.update(state="packet_refused", detail=(r.stderr or r.stdout)[-600:])
-        save(path, m)
-        print("candidate", c["ticker"], c["state"], flush=True)
+    for key in ("candidates", "fv_held"):
+        for c in m.get(key) or []:
+            if c["state"] != "to_build":
+                continue
+            r = build(c["ticker"], m)
+            try:
+                out = json.loads(r.stdout[r.stdout.index("{"):])
+                pk = json.loads(Path(out["packet"]).read_text(encoding="utf-8"))
+                if m["builder_version"] not in (None, pk["builder_version"]):
+                    sys.exit(f"STOP: {key} {c['ticker']} built with {pk['builder_version']}, the map holds {m['builder_version']}")
+                c.update(packet=out["packet"], packet_sha256=out["packet_sha256"], state="built", annotations=out["annotations"])
+            except (ValueError, KeyError, OSError):
+                c.update(state="packet_refused", detail=(r.stderr or r.stdout)[-600:])
+            save(path, m)
+            print(key, c["ticker"], c["state"], flush=True)
 
 
 def main():
