@@ -17,7 +17,7 @@ horizon date dk = the k-th SPY bar after d0, due once it is on or before the las
 come from ONE fetch of the name, so one adjustment basis.
 
 MISSING PRICES are annotated, never dropped: `ok` (bars on d0, d1, dk), `stale_bar` (the last bar on or before the date is used, dates in
-used_d0 / used_d1 / used_dk), `no_price` (no bar on or before d0, or none after it, and the horizon is more than 5 SPY bars past due; a delisted
+used_d0 / used_d1 / used_dk), `no_price` (no bar in the 7 days up to d0, or none after it, and the horizon is more than 5 SPY bars past due; a delisted
 name lands here and stays in every count). A fetch that raises writes nothing: the error is in the report and the fill is tried again.
 """
 import argparse
@@ -33,7 +33,7 @@ import monitor as M
 HORIZONS = (1, 20, 60)
 YARDSTICK = "SPY"
 NO_PRICE_AFTER = 5                                            # DESIGN (the order's number): a fill with no bars is written as no_price once more than this many SPY bars past due
-YARDSTICK_BACKFILL_DAYS = 7                                   # the yardstick fetch starts this many days before the earliest base session, so a holiday still leaves a bar on or before it
+BACKFILL_DAYS = 7                                             # a fetch starts this many days before the base session, so a day without a bar (a holiday, a halt) still leaves a bar on or before it
 KINDS = ("event_found", "news_event", "thesis_changed", None)
 
 
@@ -85,7 +85,7 @@ def _read_row(line, held_by, led_T, now):
 
 def _fill(row, k, d0, d1, dk, spy, fetch, now, overdue):
     """The fill line of one horizon, or None when the name has no usable bars yet. Raises what the fetch raises."""
-    source, got = fetch(row["ticker"], d0, dk)
+    source, got = fetch(row["ticker"], d0 - timedelta(days=BACKFILL_DAYS), dk)
     bars = [b for b in _bars(got) if b[0] <= dk]
     base = _at(bars, d0)
     after = [b for b in bars if b[0] > d0]
@@ -109,11 +109,12 @@ def _fill(row, k, d0, d1, dk, spy, fetch, now, overdue):
 
 def update(root=M.MONITOR_ROOT, now=None, fetch=None, ledger=None):
     """Add a `read` line for every resolved journal line not yet logged, then write every fill that is due. Returns the report:
-    {"rows_added", "fills_written": {k: {status: n}}, "not_yet_due", "errors": {ticker: message}, "ledger_error"}."""
+    {"rows_added", "fills_written": {k: {status: n}}, "not_yet_due", "no_bars_yet" (due, the name has no usable bars, still inside the wait),
+    "errors": {ticker: message}, "ledger_error"}."""
     now = M.utc(now)
     fetch = fetch or M._yf_fetch
     path = log_path(root)
-    report = {"rows_added": 0, "fills_written": {}, "not_yet_due": 0, "errors": {}, "ledger_error": None}
+    report = {"rows_added": 0, "fills_written": {}, "not_yet_due": 0, "no_bars_yet": 0, "errors": {}, "ledger_error": None}
     logged = {l.get("run_id") for l in M._jsonl(path) if l.get("kind") == "read"}
     new = [l for l in M.Monitor(root).journal_lines() if l.get("kind") == "resolved" and l["run_id"] not in logged]
     if new:
@@ -133,7 +134,7 @@ def update(root=M.MONITOR_ROOT, now=None, fetch=None, ledger=None):
     today = M.last_completed_session(now)
     base_sessions = {r["run_id"]: M.last_completed_session(M.parse_utc(r["decision_time_utc"])) for r, _ in open_}
     try:
-        source, got = fetch(YARDSTICK, min(base_sessions.values()) - timedelta(days=YARDSTICK_BACKFILL_DAYS), today)
+        source, got = fetch(YARDSTICK, min(base_sessions.values()) - timedelta(days=BACKFILL_DAYS), today)
         spy_bars = [b for b in _bars(got) if b[0] <= today]
     except Exception as e:
         report["errors"][YARDSTICK] = f"{type(e).__name__}: {e}"
@@ -153,7 +154,7 @@ def update(root=M.MONITOR_ROOT, now=None, fetch=None, ledger=None):
             report["errors"][r["ticker"]] = f"{type(e).__name__}: {e}"
             continue
         if line is None:
-            report["not_yet_due"] += 1
+            report["no_bars_yet"] += 1
             continue
         fills.append(line)
         by = report["fills_written"].setdefault(str(k), {})

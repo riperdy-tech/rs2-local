@@ -101,7 +101,7 @@ def test_all_three_closes_of_a_fill_come_from_one_fetch(root):
     assert (f["c0"], f["c1"], f["ck"]) == (100.0 + i, 101.0 + i, 120.0 + i) and f["status"] == "ok" and f["source"] == "stub"
     assert f["ret_from_before"] == pytest.approx(f["ck"] / f["c0"] - 1) and f["ret_from_next_close"] == pytest.approx(f["ck"] / f["c1"] - 1)
     assert (f["spy_c0"], f["spy_ret_from_before"], f["spy_ret_from_next_close"]) == (100.0, 0.0, 0.0)
-    assert px.of("TSTA").count(("TSTA", D0, ss[i + 20])) == 1 and len(px.of("TSTA")) == 3        # k = 1, 20 and 60 are all due: one fetch each, d0 to dk
+    assert px.of("TSTA").count(("TSTA", D0 - timedelta(days=7), ss[i + 20])) == 1 and len(px.of("TSTA")) == 3    # k = 1, 20 and 60 are all due: one fetch each, to dk
     assert len(px.of("SPY")) == 1                                              # one yardstick fetch for the whole update
 
 
@@ -119,12 +119,20 @@ def test_a_missing_bar_gives_stale_bar_with_the_used_dates(root):
 def test_no_bars_after_the_base_date_waits_then_is_no_price(root):
     journal(root, {"run_id": "R1", "ticker": "TSTA"})
     px = Prices({"TSTA": [(D0, 10.0)]})                                         # delisted after d0
-    W.update(root, datetime(2026, 8, 10, 21, 0, tzinfo=timezone.utc), px, LEDGER)      # SPY bars after d1 (08-03): 08-04 .. 08-10 is 5
-    assert W.rows(root)[0]["fills"] == {}
+    rep = W.update(root, datetime(2026, 8, 10, 21, 0, tzinfo=timezone.utc), px, LEDGER)      # SPY bars after d1 (08-03): 08-04 .. 08-10 is 5
+    assert W.rows(root)[0]["fills"] == {} and rep["no_bars_yet"] == 1 and rep["not_yet_due"] == 2
     W.update(root, datetime(2026, 8, 11, 21, 0, tzinfo=timezone.utc), px, LEDGER)      # six: more than 5 past due
     f = W.rows(root)[0]["fills"]["1"]
     assert f["status"] == "no_price" and f["last_bar_date"] == D0.isoformat() and f["last_bar_close"] == 10.0 and f["c0"] is None
     assert f["spy_c0"] == 100.0 and f["ret_from_before"] is None
+
+
+def test_no_bar_on_the_base_date_uses_the_last_bar_before_it(root):
+    journal(root, {"run_id": "R1", "ticker": "TSTA"})                           # halted on d0 (Fri 07-31): the close of Thu 07-30 is the close before
+    px = Prices({"TSTA": [(date(2026, 7, 30), 10.0), (D1, 12.0)]})
+    W.update(root, datetime(2026, 8, 5, 21, 0, tzinfo=timezone.utc), px, LEDGER)
+    f = W.rows(root)[0]["fills"]["1"]
+    assert f["status"] == "stale_bar" and f["used_d0"] == "2026-07-30" and f["c0"] == 10.0 and f["ret_from_before"] == pytest.approx(0.2)
 
 
 def test_no_bar_at_all_on_or_before_the_base_date_is_no_price_not_stale(root):
