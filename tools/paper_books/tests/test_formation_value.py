@@ -48,6 +48,8 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(FV, "gpu_ok", lambda: (True, None))
     w.consensus = []
     monkeypatch.setattr(FV.FC, "main", lambda T: w.consensus.append(T))
+    w.fv = []
+    monkeypatch.setattr(FV.formation_fv, "main", lambda T: w.fv.append(T))
     monkeypatch.setattr(FV, "git", lambda *a: HEAD if a[0] == "rev-parse" else "")
     monkeypatch.setattr(subprocess, "run", fake_value_run(w))
     monkeypatch.setattr(sys, "argv", ["formation_value.py", T])
@@ -315,3 +317,55 @@ def test_the_seed_consensus_is_written_before_the_finished_flag(world):
     finish_q1(world)
     assert FV.main() == 0
     assert world.consensus == [T] and (world.state / f"value_finished_{T}.flag").exists()
+
+
+def held_entry(w, t, state="built", packet=True):
+    if not packet:
+        return {"ticker": t, "packet": None, "state": state}
+    p = w.map.parent.parent / "packets" / f"{t}.json"
+    p.write_text(json.dumps({"ticker": t, "decision_time_utc": DEC, "cik": "0000000002"}), encoding="utf-8")
+    return {"ticker": t, "packet": str(p), "packet_sha256": hashlib.sha256(p.read_bytes()).hexdigest(), "state": state}
+
+
+def set_held(w, entries):
+    m = json.loads(w.map.read_text(encoding="utf-8"))
+    m["fv_held"] = entries
+    w.map.write_text(json.dumps(m), encoding="utf-8")
+
+
+def test_fv_held_names_are_valued_with_their_role_and_book_names_carry_no_new_field(world, monkeypatch):
+    monkeypatch.setattr(FV, "stocks_rows", lambda commit: {t: {"symbol": t, "sector": "Industrials", "marketCap": 1e9} for t in ("AAA", "BBB", "DDD")})
+    set_held(world, [held_entry(world, "DDD"), held_entry(world, "EEE", "packet_refused", packet=False), held_entry(world, "OPXC")])
+    finish_q1(world)
+    assert FV.main() == 0
+    idx = index(world)
+    assert set(idx["names"]) == {"AAA", "BBB", "DDD"}                      # no packet: not valued; operator-excluded (the list): not valued
+    assert idx["names"]["DDD"]["role"] == "fv_held" and "role" not in idx["names"]["AAA"] and "role" not in idx["names"]["BBB"]
+    assert set(idx["names"]["DDD"]["slots"]) == {"1000", "3000"} and idx["names"]["DDD"]["formation_state"] == "built" and idx["names"]["DDD"]["cik"] == "0000000002"
+    assert [Path(c[0][3]).stem for c in world.calls] == ["AAA", "AAA", "BBB", "BBB", "DDD", "DDD"]
+    assert world.consensus == [T] and world.fv == [T]
+
+
+def test_a_ticker_in_the_book_and_in_fv_held_stops_before_any_valuation(world):
+    set_held(world, [held_entry(world, "BBB")])
+    finish_q1(world)
+    with pytest.raises(SystemExit, match="BBB"):
+        FV.main()
+    assert world.calls == [] and not (world.value / f"formation_{T}.json").exists()
+
+
+def test_a_null_fv_held_values_the_book_alone(world):
+    set_held(world, None)
+    finish_q1(world)
+    assert FV.main() == 0 and set(index(world)["names"]) == {"AAA", "BBB"}
+
+
+def test_the_fv_snapshot_follows_the_finished_flag_and_never_a_limited_pass(world):
+    finish_q1(world)
+    sys.argv[:] = ["formation_value.py", T, "--limit", "1"]
+    assert FV.main() == 0 and world.fv == []
+    sys.argv[:] = ["formation_value.py", T, "--ticker", "AAA"]
+    assert FV.main() == 0 and world.fv == []
+    sys.argv[:] = ["formation_value.py", T]
+    assert FV.main() == 0 and world.fv == [T] and (world.state / f"value_finished_{T}.flag").exists()
+    assert FV.main() == 0 and world.fv == [T, T]                           # the task's next pass calls it again; formation_fv finds the file: "unchanged"

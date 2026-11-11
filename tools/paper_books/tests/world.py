@@ -130,6 +130,8 @@ class World:
                 m["label"] = f["label"]
             if f.get("candidates") is not None:                  # paper book FD (PREREG_m3o_bookD)
                 m["candidates"] = [self.candidate_entry(T, t, self.spec.get((T, t), {}), i) for i, t in enumerate(f["candidates"])]
+            if "fv_held" in f:                                    # paper book FV (PREREG_m3o_bookV); None is the map's null
+                m["fv_held"] = None if f["fv_held"] is None else [{"ticker": t, "packet": None, "state": "to_build"} for t in f["fv_held"]]
             (self.inputs / f"formation_{T}.json").write_bytes(jdump(m))
 
     def packet(self, T, t, s):
@@ -171,13 +173,23 @@ class World:
             entry["run_dir"] = f"../runs/{T}_{t}"
         return entry
 
-    # --- engine
-    def run(self):
-        self.materialize()
-        return E.run(self.forward, self.inputs, self.ledger, factor_loader=self.loader())
+    def snapshot(self, T, names, written=None, **over):
+        """Writes value/fv_<T>.json as formation_fv.py would (names: {ticker: entry}); written_utc defaults to the morning after the A0 fill
+        session. The fill_session is the engine's first_open_after unless over replaces it; over replaces any other key too."""
+        written = written or f"{E.fl.next_session(date.fromisoformat(FILLS[T])).isoformat()}T10:00:00Z"
+        snap = {"formation_T": T, "written_utc": written, "fill_session": E.first_open_after(E.parse_utc(written)).isoformat(),
+                "consensus_sha256": "0" * 64, "index_sha256": "1" * 64, "map_sha256": "2" * 64, "names": names, **over}
+        (self.root / "value").mkdir(exist_ok=True)
+        (self.root / "value" / f"fv_{T}.json").write_bytes(jdump(snap))
+        return snap
 
-    def write(self):
-        L, marks = self.run()
+    # --- engine
+    def run(self, value=False):
+        self.materialize()
+        return E.run(self.forward, self.inputs, self.ledger, factor_loader=self.loader(), value_dir=self.root / "value" if value else None)
+
+    def write(self, value=False):
+        L, marks = self.run(value)
         return E.write_ledger(L, marks, self.ledger)
 
     def lines(self, name):

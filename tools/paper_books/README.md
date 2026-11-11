@@ -54,6 +54,12 @@ from the repo root (`py` = `"C:\Program Files\Python312\python.exe"`):
    A crash, an engine_defect, an environment no_call or a code change mid-formation writes `value_STOP_<T>.flag` and the task stays
    idle until a human looks; `value_finished_<T>.flag` marks the end (then `-Remove`). Logs: `value.out`, `value.err`. Tests:
    `tests/test_formation_value.py`.
+   From the 2026-11-30 formation the map also holds `fv_held` (paper book FV: the names FV holds that the new book dropped;
+   `formation_decide.py` takes them from the engine's recomputation, `formation_packets.py` builds their packets, `formation_value.py`
+   values them with `"role": "fv_held"` in the index). When the last valuation and `consensus_<T>.json` are written,
+   `formation_value.py` calls `formation_fv.py <T>`, which writes `value/fv_<T>.json` once (cheapness per name, and FV's own fill session:
+   the first New York open after the file is written); later passes find it and leave it. If the next formation's map already exists,
+   FV skips <T>. Tests: `tests/test_formation_fv.py`.
 5. Before the fill open: `py tools/paper_books/formation_freeze.py <T>` copies the map to `formation_<T>.frozen.json` (refuses a second
    freeze), writes the one-line witness to `<books>/m3o/witness/formation_<T>.txt` and prints it. Publishing the witness (a public commit
    and push) is by hand, after a scan.
@@ -62,6 +68,16 @@ from the repo root (`py` = `"C:\Program Files\Python312\python.exe"`):
 
 The packet CLI reads the output commits through `paths.py` `screener_publish_repo` (the clone the verifier uses); the old scratch scripts
 read the same git objects from the `stock-screener` development checkout. Tests: `tests/test_formation.py`.
+
+## The engine's series
+
+| Series | What it holds | Fills |
+| --- | --- | --- |
+| F, FB, FQ, FQ_decisions_only, F_ex_operator | the A0 book; minus B1; minus B1 and Q1; analysis series; the book without the operator's names | the A0 fill session |
+| FD (PREREG_m3o_bookD) | FQ, with each restricted name replaced by the next B1-clean watchlist candidate | the A0 fill session |
+| FV (PREREG_m3o_bookV, engine v4) | the A0 names the valuation calls cheap (cheapness at or above the median), kept while still cheap; its decisions only at formations with a `value/fv_<T>.json` | the first open after that file was written |
+
+`m3o_engine.py --value-dir` (default `<books>/m3o/value`) turns FV on; `run(value_dir=None)` leaves every line as it was.
 
 ## ENGINE_SHA256: a recorded version change
 

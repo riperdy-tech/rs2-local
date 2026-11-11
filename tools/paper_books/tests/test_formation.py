@@ -102,6 +102,51 @@ def test_decide_stops_without_a_verifier_record_and_writes_nothing(decide):
     assert not decide.path.exists()
 
 
+def fv_lines(*rows):
+    return {"actions": [{"arm": "FV", "kind": "at_fill_open", "formation_T": f, "ticker": t, "action": a} for f, t, a in rows]}, {}
+
+
+def test_decide_carries_fv_held_from_the_engine_recomputation(decide, monkeypatch):
+    monkeypatch.setattr(D.E, "FV_START", T)
+    calls = []
+    L = fv_lines(("2026-09-30", "HLDZ", "enter"), ("2026-10-30", "AAA", "hold"), ("2026-10-30", "HLDZ", "hold"), ("2026-10-30", "HLDY", "enter"),
+                 ("2026-10-30", "OPXB", "hold"), ("2026-10-30", "HLDW", "exit"))
+    monkeypatch.setattr(D.E, "run", lambda *a, **k: calls.append((a, k)) or L)
+    assert D.main() == 0
+    m = load(decide.path)
+    assert m["fv_held"] == [{"ticker": "HLDY", "packet": None, "state": "to_build"}, {"ticker": "HLDZ", "packet": None, "state": "to_build"}]   # AAA is in the book,
+    assert "fv_held_error" not in m and m["book"] == ["AAA", "BBB", EXCL]                                                                      # OPXB excluded
+    (args, kw), = calls
+    assert args[0] == FL.HERE and args[1] == decide.inputs and kw == {"value_dir": D.VALUE}
+
+
+def test_decide_first_formation_has_an_empty_fv_held_list(decide, monkeypatch):
+    monkeypatch.setattr(D.E, "FV_START", T)
+    monkeypatch.setattr(D.E, "run", lambda *a, **k: fv_lines())
+    D.main()
+    assert load(decide.path)["fv_held"] == []
+
+
+def test_decide_never_lets_fv_block_the_formation(decide, monkeypatch, capsys):
+    monkeypatch.setattr(D.E, "FV_START", T)
+    for exc in (D.E.Stop("stored line differs"), KeyError("boom")):
+        def boom(*a, **k):
+            raise exc
+        monkeypatch.setattr(D.E, "run", boom)
+        decide.path.unlink(missing_ok=True)
+        assert D.main() == 0
+        m = load(decide.path)
+        assert m["fv_held"] is None and type(exc).__name__ in m["fv_held_error"] and str(exc).strip("'") in m["fv_held_error"]
+        assert m["book"] == ["AAA", "BBB", EXCL] and m["run_id"] == "111" and {t: n["state"] for t, n in m["names"].items()}["AAA"] == "to_build"
+        assert "fv_held" in capsys.readouterr().out
+
+
+def test_decide_before_fv_start_writes_no_fv_key_and_never_runs_the_engine(decide, monkeypatch):
+    monkeypatch.setattr(D.E, "run", lambda *a, **k: pytest.fail("the engine must not run before FV_START"))
+    D.main()
+    assert "fv_held" not in load(decide.path) and "fv_held_error" not in load(decide.path)
+
+
 def test_decide_stops_when_the_ledger_has_no_decision(decide, monkeypatch):
     monkeypatch.setattr(FL, "decision_for", lambda t, runs: (None, None, "no verified run"))
     with pytest.raises(SystemExit) as e:
@@ -145,6 +190,36 @@ def test_packets_build_to_build_names_only_and_resume(tmp_path, monkeypatch):
     assert argv[argv.index("--commit") + 1] == COMMIT and argv[argv.index("--T") + 1] == "2026-10-30T21:00:00Z"
     calls.clear()                                                         # a rerun finds nothing to_build: no subprocess at all
     assert P.main() == 0 and calls == []
+
+
+def test_packets_build_fv_held_entries_like_candidates(tmp_path, monkeypatch):
+    held = [{"ticker": "HLDA", "packet": None, "state": "to_build"}, {"ticker": "HLDB", "packet": None, "state": "to_build"},
+            {"ticker": "HLDC", "packet": "j.json", "state": "built"}]
+    cands = [{"ticker": "CCC", "fct_rank": 3, "packet": None, "state": "to_build"}]
+    path = write_map(tmp_path / "inputs", {"AAA": "to_run"}, fv_held=held, candidates=cands)
+    monkeypatch.setattr(P, "INPUTS", tmp_path / "inputs")
+    monkeypatch.setattr(book_paths, "screener_repo", lambda: tmp_path / "screener")
+    calls = []
+    monkeypatch.setattr(subprocess, "run", fake_packet_run(tmp_path, calls, refuse={"HLDB"}))
+    monkeypatch.setattr(sys, "argv", ["formation_packets.py", T])
+    assert P.main() == 0
+    m = load(path)
+    h = {e["ticker"]: e for e in m["fv_held"]}
+    assert (h["HLDA"]["state"], h["HLDA"]["packet_sha256"]) == ("built", "sha_HLDA") and h["HLDA"]["annotations"]
+    assert h["HLDB"]["state"] == "packet_refused" and "no filing" in h["HLDB"]["detail"] and h["HLDC"] == held[2]
+    assert m["candidates"][0]["state"] == "built"
+    assert [c[0][c[0].index("--ticker") + 1] for c in calls] == ["CCC", "HLDA", "HLDB"]            # candidates, then fv_held; built ones are not rebuilt
+    calls.clear()
+    assert P.main() == 0 and calls == []
+
+
+@pytest.mark.parametrize("held", [None, "absent"])
+def test_packets_read_a_null_or_missing_fv_held_as_empty(tmp_path, monkeypatch, held):
+    path = write_map(tmp_path / "inputs", {"AAA": "to_run"}, **({} if held == "absent" else {"fv_held": None}))
+    monkeypatch.setattr(P, "INPUTS", tmp_path / "inputs")
+    monkeypatch.setattr(subprocess, "run", fake_packet_run(tmp_path, []))
+    monkeypatch.setattr(sys, "argv", ["formation_packets.py", T])
+    assert P.main() == 0 and load(path).get("fv_held") is None and load(path)["names"]["AAA"]["state"] == "to_run"
 
 
 def test_packets_stop_on_a_builder_version_change(tmp_path, monkeypatch):
