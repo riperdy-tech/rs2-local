@@ -270,6 +270,27 @@ def test_an_entry_with_no_news_rows_builds_the_packet_as_before_and_one_with_row
     assert read(rig2.news_files[0])["rows"][0]["title"] == "Alphatest Corp story 1"
 
 
+def test_the_news_file_the_monitor_writes_is_one_the_news_packet_builder_takes_and_its_items_reach_the_q1_split(tmp_path):
+    """The two halves of the news path against each other, with no stub between them: news_file_for's file through qwen_c.news_packet onto a
+    packet, and that packet through q1_verdict."""
+    from qwen_c import news_packet
+    acme = read(M.ROOT / "qwen_c" / "tests" / "fixtures_b" / "packet_acme.json")               # T 2026-10-29T13:00:00Z
+    mon = M.Monitor(tmp_path / "m")
+    mon.enqueue({"ticker": acme["ticker"], "cik": 1, "company": "Alphatest Corp"},
+                [{"id": "sec:1", "kind": "sec_filing", "priority": 3, "time": "2026-10-29T10:00:00Z", "reasons": [], "annotations": []}], NOW)
+    stored(mon, [with_text(nrow(1, "2026-10-29")), with_text(nrow(2, "2026-10-27")),
+                 with_text(nrow(3, title="Alphatest undated"), date=None, first_seen="2026-10-29T12:00:00Z")])
+    path, n = M.news_file_for(mon, mon.ordered()[0], acme["decision_time_utc"])
+    obj, file_sha = news_packet.load_news_file(path)
+    pk = news_packet.add_news(acme, obj, file_sha)
+    news = [e for e in pk["evidence"] if e["kind"] == "news"]
+    assert n == 3 and [e["fact_id"] for e in news] == ["N1", "N2", "N3"]
+    assert [e["effective_at"] for e in news] == ["2026-10-29T12:00:00Z", "2026-10-29T13:00:00Z", "2026-10-27T23:59:59Z"]
+    assert news[1]["source"] == {"label": "secondary", "publisher": "news.example.com", "url": "https://news.example.com/1"}
+    q = M.q1_verdict(analysis(claim(occurred_on="not stated", fact_ids=("N2",))), pk, datetime(2026, 10, 29).date())
+    assert q["verdict"] == "news_event" and q["news_claims"][0]["news_ids"] == ["N2"]
+
+
 def test_a_dry_run_writes_no_news_file(tmp_path):
     rig = Rig(tmp_path)
     rig.queue(AAA, "a", 3, "2026-10-29T10:00:00Z")
@@ -285,7 +306,9 @@ def test_the_packet_cli_gets_news_file_only_when_given(tmp_path, monkeypatch):
         returncode=0, stdout=json.dumps({"packet": str(pk), "packet_sha256": "abc"}), stderr=""))
     M.qwen_build_packet("AAA", "2026-10-29T10:00:00Z", "c", "ck.json", "r", tmp_path)
     M.qwen_build_packet("AAA", "2026-10-29T10:00:00Z", "c", "ck.json", "r", tmp_path, news_file="n.json")
-    assert seen[0][-1] == "--online" and seen[1][-2:] == ["--news-file", "n.json"] and seen[1][:-2] == seen[0]
+    assert seen[0][-1] == "--online" and seen[0][1:3] == ["-m", "qwen_c.packet"]
+    assert seen[1][-2:] == ["--news-file", "n.json"] and seen[1][1:3] == ["-m", "qwen_c.news_packet"]       # the news packet has its own builder module
+    assert seen[1][3:-2] == seen[0][3:]
 
 
 # ---------------------------------------------------------------- 5. the Q1 split

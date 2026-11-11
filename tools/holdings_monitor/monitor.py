@@ -1766,8 +1766,9 @@ def _json_tail(text):
 def qwen_build_packet(ticker, T, commit, verified_record, screener_repo, cwd, news_file=None):
     """Build one verified-regime packet through the qwen_c CLI, run in the run worktree (as o2_packets.py does):
     {"packet", "packet_sha256", "builder_version", "annotations"}. Raises PacketRefused with the refusal text.
-    `news_file` (news_file_for) is passed as `--news-file`; without it the command is as it was before news."""
-    cmd = [sys.executable, "-m", "qwen_c.packet", "--ticker", ticker, "--T", T, "--commit", commit,
+    With `news_file` (news_file_for) the packet is built by `qwen_c.news_packet --news-file` (the SEC packet plus the press reports; its
+    own module, because editing packet.py would move the sha256 of every packet); without it the command is as it was before news."""
+    cmd = [sys.executable, "-m", "qwen_c.packet" if news_file is None else "qwen_c.news_packet", "--ticker", ticker, "--T", T, "--commit", commit,
            "--verified-record", str(verified_record), "--screener-repo", str(screener_repo), "--online"]
     if news_file is not None:
         cmd += ["--news-file", str(news_file)]
