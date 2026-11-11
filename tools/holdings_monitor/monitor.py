@@ -82,7 +82,8 @@ CRASH_MIN_AGE_HOURS = 6                                       # DESIGN: a `runni
 NEWS_TEXT_ROWS = 5                                            # DESIGN: new news rows whose article text is fetched per gather (category-found rows first, then newest)
 NEWS_TEXT_CHARS = 6_000                                       # DESIGN: characters of article text kept on a row
 NEWS_PACKET_ROWS = 8                                          # DESIGN: news rows handed to one packet (newest first)
-NEWS_PACKET_DAYS = 7                                          # DESIGN: with no earlier resolved run, a packet takes news from this many days before T
+NEWS_PACKET_DAYS = 7                                          # DESIGN: a packet takes news from this many days before T
+NEWS_STALE_REASONS = frozenset({"occurred_outside_window", "occurred_on_after_T", "unknown_status"})   # DESIGN: m3o_engine.q1 reasons that keep a press-report claim from acting
 
 P0_ITEMS = frozenset({"1.02", "1.03", "2.04", "2.06", "3.01", "4.01", "4.02"})
 EARNINGS_ITEMS = frozenset({"2.02"})
@@ -746,9 +747,12 @@ def q1_verdict(analysis, packet, T_date):
 
     A packet item of kind `news` is secondary (a press report), and m3o_engine.q1 does not tell it from a filing. When the packet has news
     items, q1 is given only the claims that cite at least one primary item and only the primary items' text (so a date printed only in a
-    press report cannot support a Q1 date). The claims left out are listed apart as `news_claims` (each with its cited news ids); one whose
-    event_type is a Q1 event type and whose support is `supported` makes the verdict `news_event` when Q1 itself found no event. A packet
-    with no news items is read exactly as before, and its result has no `news_claims`."""
+    press report cannot support a Q1 date). The claims left out are those that cite a news item and no primary item (a claim citing
+    nothing in the packet stays with Q1, as before). They are listed apart as `news_claims`, each with its cited news ids and `q1_reason`:
+    what the same owner, m3o_engine.q1, says of it when read against the news items' text. A supported one makes the verdict `news_event`
+    when Q1 itself found no event, unless its own printed date puts the event more than 180 days before T or after T (NEWS_STALE_REASONS:
+    a press report of this week that retells an old event is not a new one; an undated one acts, DESIGN, to be read against the recall
+    replay). A packet with no news items is read exactly as before, and its result has no `news_claims`."""
     evidence = packet.get("evidence") or []
     news_ids = {e.get("fact_id") for e in evidence if e.get("kind") == "news"}
     if not news_ids:
@@ -757,16 +761,19 @@ def q1_verdict(analysis, packet, T_date):
         verdict = "event_found" if q["restricted"] else ("escalation" if q["escalations"] else "none")
         return {"verdict": verdict, "claims": q["claims"], "escalations": q["escalations"]}
     primary = {e.get("fact_id"): e.get("text") or "" for e in evidence if e.get("kind") != "news"}
+    news_text = {e.get("fact_id"): e.get("text") or "" for e in evidence if e.get("kind") == "news"}
     me = (analysis.get("tasks") or {}).get("material_events") or {}
     claims = me.get("claims") or []
-    kept = [c for c in claims if any(f in primary for f in c.get("fact_ids") or [])]
-    apart = [c for c in claims if not any(f in primary for f in c.get("fact_ids") or [])]
-    split = {**analysis, "tasks": {**(analysis.get("tasks") or {}), "material_events": {**me, "claims": kept}}}
-    q = m3o_engine.q1(split, as_date(T_date), Q1_EVENT_CLASS, primary)
-    news_claims = [{"class": Q1_EVENT_CLASS[c["event_type"]], "event_type": c.get("event_type"), "support": c.get("support"),
-                    "status": c.get("status"), "occurred_on": c.get("occurred_on"), "fact_ids": c.get("fact_ids"),
-                    "news_ids": [f for f in c.get("fact_ids") or [] if f in news_ids], "claim": (c.get("claim") or "")[:300],
-                    "acts_as_news_event": c.get("support") == "supported"} for c in apart if c.get("event_type") in Q1_EVENT_CLASS]
+    is_apart = [any(f in news_ids for f in c.get("fact_ids") or []) and not any(f in primary for f in c.get("fact_ids") or []) for c in claims]
+    kept = [c for c, a in zip(claims, is_apart) if not a]
+    apart = [c for c, a in zip(claims, is_apart) if a]
+    tasks = analysis.get("tasks") or {}
+    q = m3o_engine.q1({**analysis, "tasks": {**tasks, "material_events": {**me, "claims": kept}}}, as_date(T_date), Q1_EVENT_CLASS, primary)
+    qn = m3o_engine.q1({**analysis, "tasks": {**tasks, "material_events": {**me, "claims": apart}}}, as_date(T_date), Q1_EVENT_CLASS, news_text)
+    news_claims = [{"class": e["class"], "event_type": e["event_type"], "support": e["support"], "status": e["status"],
+                    "occurred_on": e["occurred_on"], "fact_ids": e["fact_ids"],
+                    "news_ids": [f for f in e["fact_ids"] or [] if f in news_ids], "claim": e["claim"], "q1_reason": e["reason"],
+                    "acts_as_news_event": e["support"] == "supported" and e["reason"] not in NEWS_STALE_REASONS} for e in qn["claims"]]
     if q["restricted"]:
         verdict = "event_found"
     elif any(c["acts_as_news_event"] for c in news_claims):
@@ -1346,6 +1353,10 @@ class Monitor:
         if covered:
             self._retire(s, ticker, covered, now)
         s["ran_keys"][common["run_key"]] = {"run_id": common["run_id"], "ticker": ticker, "t": iso(now)}
+        read_news = ["u:" + normalize_url(str((e.get("source") or {}).get("url") or "")) for e in packet.get("evidence") or [] if e.get("kind") == "news"]
+        if read_news:                                                      # the press reports this resolved run read are not handed to a later packet (news_file_for)
+            cutoff = iso(now - timedelta(days=SEEN_KEEP_DAYS))
+            n["news_packed"] = {**{k: v for k, v in (n.get("news_packed") or {}).items() if v >= cutoff}, **{k: iso(now) for k in read_news}}
         cited = {fid for task in ("thesis_change", "material_events") for c in (analysis.get("tasks") or {}).get(task, {}).get("claims") or []
                  for fid in c.get("fact_ids") or []}
         ev = [{"fact_id": e["fact_id"], "accession": (e.get("source") or {}).get("accession"), "accepted_raw": e.get("accepted_raw"),
@@ -1836,20 +1847,22 @@ def _news_moment(row):
 def news_file_for(mon, entry, T):
     """Write `<root>/news/<ticker>_<T compact>.json` for a queue entry about to be packed and return (path, number of rows).
 
-    The rows are the name's stored news rows that have article text and whose date (or first-seen time) is after the name's last resolved
-    run's decision time (NEWS_PACKET_DAYS before T when there is none) and not after T, newest first, at most NEWS_PACKET_ROWS. The file is
-    written even when it holds no row; the caller passes it to the packet builder only when it does."""
+    The rows are the name's stored news rows that have article text, were not in the packet of an earlier resolved run of the name
+    (`news_packed`, by address: Monitor._resolved), and whose date (or first-seen time) is within NEWS_PACKET_DAYS before T and not after
+    T, newest first, at most NEWS_PACKET_ROWS. A dated row counts as 00:00 UTC of its date, so "after the last run" cannot be told by time
+    for a row published later on the day of that run; the record of what was read can. The file is written even when it holds no row; the
+    caller passes it to the packet builder only when it does."""
     ticker = entry["ticker"]
     n = mon._load()["names"].get(ticker) or {}
-    last = (n.get("last_good") or {}).get("decision_time_utc")
+    packed = n.get("news_packed") or {}
     t_dt = parse_utc(T)
     stored = ((read_json(mon.state_dir / f"gather_{int(entry['cik'])}.json", None) or {}).get("news_rows") or {}).values()
     take = []
     for r in stored:
         at = _news_moment(r)
-        if not r.get("text") or at is None or at > t_dt:
+        if not r.get("text") or at is None or at > t_dt or "u:" + normalize_url(r.get("url") or "") in packed:
             continue
-        if (at > parse_utc(last)) if last else (at >= t_dt - timedelta(days=NEWS_PACKET_DAYS)):
+        if at >= t_dt - timedelta(days=NEWS_PACKET_DAYS):
             take.append((at, r))
     take.sort(key=lambda x: x[0], reverse=True)
     rows = []

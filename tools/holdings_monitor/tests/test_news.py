@@ -204,44 +204,55 @@ def test_the_gather_record_keeps_only_rows_with_text_and_prunes_them_with_the_se
     assert g3["news_rows"] == {} and g3["news_seen"] == {}
 
 
-def test_the_news_file_holds_the_rows_after_the_last_resolved_run_not_after_T_newest_first_at_most_eight(tmp_path):
+def test_the_news_file_holds_the_rows_of_the_seven_days_before_T_not_after_T_newest_first_at_most_eight(tmp_path):
     mon = M.Monitor(tmp_path / "m")
     e = entry(mon)
-    rows = [with_text(nrow(i, f"2026-10-{10 + i:02d}")) for i in range(1, 13)]                # 10-11 .. 10-22
+    rows = [with_text(nrow(i, f"2026-10-{18 + i:02d}")) for i in range(1, 13)]                # 10-19 .. 10-30
     rows.append(with_text(nrow(20, "2026-10-31")))                                           # after T
     rows.append(with_text(nrow(21, title="Alphatest undated"), date=None, first_seen="2026-10-30T09:30:00Z"))        # after T, by time
     rows.append(with_text(nrow(22, title="Alphatest undated early"), date=None, first_seen="2026-10-30T01:30:00Z"))
+    rows.append(with_text(nrow(24, title="Alphatest undated the day before"), date=None, first_seen="2026-10-29T05:00:00Z"))
     rows.append(dict(nrow(23, "2026-10-29"), key="t:no text"))                                                      # no text
     stored(mon, rows)
-    s = mon._load()
-    s["names"]["AAA"]["last_good"] = {"run_id": "R", "decision_time_utc": "2026-10-05T00:00:00Z"}
-    M.write_json_atomic(mon.core_path, s)
     T = "2026-10-30T02:00:00Z"
     path, n = M.news_file_for(mon, e, T)
-    assert path == mon.root / "news" / "AAA_20261030T020000Z.json" and n == 8
+    assert path == mon.root / "news" / "AAA_20261030T020000Z.json" and n == 8 == M.NEWS_PACKET_ROWS
     got = read(path)
     assert got["ticker"] == "AAA" and got["T"] == T
     assert [r["title"] for r in got["rows"]][:2] == ["Alphatest undated early", "Alphatest Corp story 12"]
+    # the window opens at 10-23T02:00, so 10-24 .. 10-30 are in (10-23 at 00:00 is out); nine rows qualify and the oldest, 10-24, is cut
     assert [r["date"] if "date" in r else r["first_seen"] for r in got["rows"]] == (
-        ["2026-10-30T01:30:00Z"] + [f"2026-10-{d}" for d in range(22, 15, -1)])
+        ["2026-10-30T01:30:00Z", "2026-10-30", "2026-10-29T05:00:00Z"] + [f"2026-10-{d}" for d in range(29, 24, -1)])
     assert set(got["rows"][1]) == {"title", "url", "publisher", "date", "found_by", "text", "text_sha256"}
     assert set(got["rows"][0]) == {"title", "url", "publisher", "first_seen", "found_by", "text", "text_sha256"}
     assert got["rows"][1]["publisher"] == "news.example.com" and got["rows"][1]["text_sha256"] == sha(TEXT) and got["rows"][1]["found_by"] == ["w_litigation"]
 
 
-def test_with_no_earlier_run_the_window_is_seven_days_before_T_and_with_one_it_starts_after_that_run(tmp_path):
+def test_a_row_an_earlier_resolved_run_read_is_not_handed_over_again_and_a_later_row_of_that_day_is(tmp_path):
     mon = M.Monitor(tmp_path / "m")
     e = entry(mon)
-    rows = [with_text(nrow(i, d)) for i, d in enumerate(["2026-10-22", "2026-10-23", "2026-10-25", "2026-10-29", "2026-10-30"], 1)]
+    rows = [with_text(nrow(i, d)) for i, d in enumerate(["2026-10-22", "2026-10-23", "2026-10-25", "2026-10-29", "2026-10-29", "2026-10-30"], 1)]
     stored(mon, rows)
     T = "2026-10-30T12:00:00Z"
     _, n = M.news_file_for(mon, e, T)
-    assert n == 3 and M.NEWS_PACKET_DAYS == 7                                  # from 10-23T12:00: 10-22 and 10-23 (00:00) are out
+    assert n == 4 and M.NEWS_PACKET_DAYS == 7                                  # from 10-23T12:00: 10-22 and 10-23 (00:00) are out
     s = mon._load()
-    s["names"]["AAA"]["last_good"] = {"run_id": "R", "decision_time_utc": "2026-10-25T06:00:00Z"}
+    s["names"]["AAA"]["last_good"] = {"run_id": "R", "decision_time_utc": "2026-10-29T21:00:00Z"}          # a run on 10-29 read story 4 only
+    s["names"]["AAA"]["news_packed"] = {"u:" + M.normalize_url("https://news.example.com/4"): "2026-10-29T21:10:00Z"}
     M.write_json_atomic(mon.core_path, s)
     path, n = M.news_file_for(mon, e, T)
-    assert [r["date"] for r in read(path)["rows"]] == ["2026-10-30", "2026-10-29"] and n == 2             # 10-25 00:00 is not after 10-25 06:00
+    # story 5 carries the same date as that run and was not in its packet: it is still handed over; story 3 (10-25) was never read either
+    assert [r["url"].rsplit("/", 1)[1] for r in read(path)["rows"]] == ["6", "5", "3"] and n == 3
+
+
+def test_a_resolved_run_records_the_press_reports_it_read_and_a_failed_one_does_not(tmp_path):
+    mon, line = resolved_line(tmp_path / "a", [FILING, NEWS_ITEM], [])
+    assert line["kind"] == "resolved"
+    assert list(mon._load()["names"]["AAA"]["news_packed"]) == ["u:" + M.normalize_url("https://news.example.com/1")]
+    mon, line = resolved_line(tmp_path / "b", [FILING, NEWS_ITEM], [], status="incomplete")
+    assert line["kind"] == "failed" and "news_packed" not in mon._load()["names"]["AAA"]
+    mon, line = resolved_line(tmp_path / "c", [FILING], [])
+    assert "news_packed" not in mon._load()["names"]["AAA"]
 
 
 def test_an_entry_with_no_news_rows_builds_the_packet_as_before_and_one_with_rows_passes_the_file(tmp_path):
@@ -336,6 +347,31 @@ def test_news_claims_that_do_not_make_a_news_event():
     assert q["verdict"] == "none" and [c["acts_as_news_event"] for c in q["news_claims"]] == [False]    # a non-Q1 event type is not listed
     q = M.q1_verdict(analysis(claim(fact_ids=("F1", "N1")), claim(event_type="going_concern_doubt", occurred_on="Aug 14, 2026", fact_ids=("N1",))), pk, T)
     assert q["verdict"] == "event_found" and len(q["claims"]) == 1 and len(q["news_claims"]) == 1       # Q1's own finding wins; the news claim is kept apart
+
+
+NEWS_OLD = {"fact_id": "N2", "kind": "news", "name": "news", "source": {"url": "https://news.example.com/2"},
+            "text": "Press: Alphatest Corp, which was served a delisting notice on March 3, 2024, opened a new plant."}
+
+
+def test_a_press_report_that_retells_an_old_event_is_not_a_news_event_and_an_undated_one_is():
+    T = datetime(2026, 10, 30).date()
+    pk = {"evidence": [FILING, NEWS_ITEM, NEWS_OLD]}
+    q = M.q1_verdict(analysis(claim(occurred_on="March 3, 2024", fact_ids=("N2",))), pk, T)
+    assert q["verdict"] == "none" and q["news_claims"][0]["q1_reason"] == "occurred_outside_window" and q["news_claims"][0]["acts_as_news_event"] is False
+    q = M.q1_verdict(analysis(claim(occurred_on="not stated", fact_ids=("N1",))), pk, T)
+    assert q["verdict"] == "news_event" and q["news_claims"][0]["q1_reason"] == "undated" and q["escalations"] == []
+    q = M.q1_verdict(analysis(claim(status="announced_pending", occurred_on="not stated", fact_ids=("N1",))), pk, T)
+    assert q["verdict"] == "news_event" and q["news_claims"][0]["q1_reason"] == "announced_pending"
+    assert M.NEWS_STALE_REASONS == {"occurred_outside_window", "occurred_on_after_T", "unknown_status"}
+
+
+def test_a_claim_that_cites_nothing_in_the_packet_stays_with_q1_when_the_packet_has_news():
+    T = datetime(2026, 10, 30).date()
+    pk = {"evidence": [FILING, NEWS_ITEM]}
+    for ids in ((), ("Z9",)):
+        a = analysis(claim(fact_ids=ids))
+        got = M.q1_verdict(copy.deepcopy(a), pk, T)
+        assert got["news_claims"] == [] and {k: got[k] for k in ("verdict", "claims", "escalations")} == old_q1_verdict(a, pk, T)
 
 
 def resolved_line(tmp_path, evidence, me_claims, tc_claims=None, **kw):
