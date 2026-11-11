@@ -95,6 +95,12 @@ MISSING_LINE = "The earlier {task} task did not finish, so no points come from i
 
 RETRY_LINE = "Your last reply was not valid JSON for this shape; reply again."
 
+# 2026-11-11 (WO_HM2b): a packet that holds news items (qwen_c/news_packet.py) gets this one sentence at the end of the instruction of
+# material_events and thesis_change. A packet without a news item is rendered as before, byte for byte. PROMPT_VERSION is not moved (see RR_HM2b).
+NEWS_TASKS = ("material_events", "thesis_change")
+NEWS_SENTENCE = ("Items of kind news are press reports, not company filings. An event or change they report may be claimed: cite the "
+                 "news item, quote it exactly, and say in confidence_basis that the source is a press report.")
+
 
 # ---------------------------------------------------------------- the packet as the user message
 
@@ -105,6 +111,8 @@ def _v(x):
 def _source(src):
     if not isinstance(src, dict):
         return "not stated"
+    if src.get("label") == "secondary":                      # a news item (kind news); no filing or screener source has a label
+        return f"press report (secondary): {_v(src.get('publisher'))}, {_v(src.get('url'))}"
     if src.get("accession") or src.get("url"):
         return f"SEC accession {_v(src.get('accession'))}, {_v(src.get('url'))}"
     if src.get("git_commit") or src.get("path"):
@@ -193,12 +201,20 @@ def thesis_change_instruction(packet, prior):
             .replace("{after_ids}", ", ".join(after) or "none").replace("{points}", points))
 
 
+def has_news(packet):
+    return any(e.get("kind") == "news" for e in packet.get("evidence") or [])
+
+
 def instruction(task, packet, prior=None):
     if task == "thesis_change":
         if prior is None:
             raise ValueError("thesis_change needs a prior run")
-        return thesis_change_instruction(packet, prior)
-    return INSTRUCTIONS[task]
+        text = thesis_change_instruction(packet, prior)
+    else:
+        text = INSTRUCTIONS[task]
+    if task in NEWS_TASKS and has_news(packet):
+        text += "\n" + NEWS_SENTENCE
+    return text
 
 
 def messages(task, packet, prior=None, retry=False):

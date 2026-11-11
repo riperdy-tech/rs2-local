@@ -126,6 +126,8 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
               "authority": "diagnostic_only", "temperature": temperature,       # None: the Modelfile's sampling
               "options": {k: opts[k] for k in ("num_ctx", "num_predict", "think")}}
     try:
+        if any(e.get("kind") == "news" for e in packet.get("evidence") or []):          # 2026-11-11 (WO_HM2b, SPEC_holdings_monitor_v2 s4): filings only
+            raise desk.DeskRefusal("news_items_not_valued", "the packet holds news items; the valuation reads filings only")
         f, b, bar, record, r, prov, fy_ends = prepare(packet, cik, sector, market_cap, online=online, root=root,
                                                       allow_after_T=allow_after_T, family=family)
     except desk.DeskRefusal as e:
