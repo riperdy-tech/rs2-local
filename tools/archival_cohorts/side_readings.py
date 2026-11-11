@@ -192,12 +192,23 @@ def with_returns(rows, prices, last_session, months=WINDOWS):
 
 
 # ------------------------------------------------------------------ one row per census name
+def _run_neutral(result):
+    """The record-neutral (code-only) value a stored seed result computed at run time."""
+    return ((((result.get("checks") or {}).get("diagnostics")) or {}).get("record_neutral") or {}).get("value")
+
+
+def _same(a, b):
+    if a is None or b is None:
+        return a is None and b is None
+    return abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
+
+
 def make_row(meta, results, cons):
     """`meta`: cohort, ticker, cik, sector, cap_tercile, close. `results`: {seed: stored result} or None (no packet). `cons`: {held,
     unheld: a consensus.combine result or None; held_error, unheld_error: text or None}. A name with no packet or no checked seed has
     a row with its reason and no values."""
     row = dict(meta, reason=None, seed_status={}, seed_base={}, record=None, code_only=None, unheld=None, annotations=[],
-               held_at_record=False, vp={k: None for k in KINDS})
+               held_at_record=False, one_seed_only=False, rebuild_matches_run=None, vp={k: None for k in KINDS})
     if results is None:
         return dict(row, reason="no_packet")
     row["seed_status"] = {str(s): r.get("status") for s, r in results.items()}
@@ -214,6 +225,9 @@ def make_row(meta, results, cons):
     row["code_only"] = (((res.get("diagnostics") or {}).get("record_neutral")) or {}).get("value")
     row["annotations"] = list(res.get("annotations") or [])
     row["held_at_record"] = any(a.startswith("held_at_record") for a in row["annotations"])
+    row["one_seed_only"] = any(a.startswith("one_seed_only") for a in row["annotations"])
+    at_run = [_run_neutral(r) for r in results.values() if ok(r.get("status"))]
+    row["rebuild_matches_run"] = all(_same(x, row["code_only"]) for x in at_run)   # the offline desk is the run's desk
     if cons.get("unheld_error"):
         row["unheld_error"] = cons["unheld_error"]
     elif cons.get("unheld") is not None and ok(cons["unheld"].get("status")):
@@ -513,23 +527,39 @@ def j2_annual(cohort_dir, pool_sha256):
 
 
 # ------------------------------------------------------------------ the driver
-def yahoo_fetch(tickers, start, end):
-    """(source, {ticker: {date: adjusted close}}). Writes nothing. The download parameters are forward_ledger.fetch_prices's."""
-    import yfinance as yf
-    tickers = sorted(tickers)
+def _download(yf, tickers, start, end):
     df = yf.download(tickers, start=start.isoformat(), end=(end + timedelta(days=1)).isoformat(), auto_adjust=True, actions=False,
                      progress=False, group_by="ticker", threads=False)
     prices = {}
     for t in tickers:
         try:
-            sub = df[t] if len(tickers) > 1 else df
+            sub = df[t]                                     # one ticker or many: yfinance may or may not key the columns by ticker
         except KeyError:
-            continue
+            if len(tickers) > 1:
+                continue
+            sub = df
         for idx, rec in sub.iterrows():
             o, c = rec.get("Open"), rec.get("Close")
             if o == o and c == c and o is not None and c is not None and idx.date() <= end:
                 prices.setdefault(t, {})[idx.date().isoformat()] = float(c)
-    return f"yfinance {yf.__version__} download auto_adjust=True", prices
+    return prices
+
+
+def yahoo_fetch(tickers, start, end, retries=2, pause=60):
+    """(source, {ticker: {date: adjusted close}}). Writes nothing. The download parameters are forward_ledger.fetch_prices's. A ticker
+    that comes back with no row is asked again, `retries` times after `pause` seconds (the pool builds lost names to Yahoo's rate
+    limit; the output is written once, so a name lost here could not be fetched later)."""
+    import time
+    import yfinance as yf
+    tickers = sorted(tickers)
+    prices = _download(yf, tickers, start, end)
+    for _ in range(retries):
+        missing = [t for t in tickers if t not in prices]
+        if not missing:
+            break
+        time.sleep(pause)
+        prices.update(_download(yf, missing, start, end))
+    return f"yfinance {yf.__version__} download auto_adjust=True, empty tickers retried {retries}x", prices
 
 
 def _read_result(T, t, seed, slot, missing_ok=False):
@@ -635,7 +665,11 @@ def run(value, today, *, consensus_of, fetch, s5, last_session):
            "windows": wins, "survivor_gap": gap,
            "S2": s2(rows, wins), "S3": s3(rows, wins), "S6": s6(rows, wins), "E1": e1(rows), "E2": e2(rows),
            "E3": e3(pool_names, rows), "E4": e4(rows), "E5": e5(rows), "E6": medium, "run_health": health,
-           "rows_by_reason": {T: dict(Counter(r["reason"] or "value_of_record" for r in rows if r["cohort"] == T)) for T in COHORTS}}
+           "rows_by_reason": {T: dict(Counter(r["reason"] or "value_of_record" for r in rows if r["cohort"] == T)) for T in COHORTS},
+           # the offline consensus is trusted only where its code-only value equals the one each seed computed at run time
+           "rebuild_check": {T: dict(Counter({True: "matches_run", False: "DIFFERS_FROM_RUN"}[r["rebuild_matches_run"]]
+                                             for r in rows if r["cohort"] == T and r["record"] is not None)) for T in COHORTS},
+           "value_of_record_from_one_seed": {T: sum(1 for r in rows if r["cohort"] == T and r["one_seed_only"]) for T in COHORTS}}
     for k in ("S2", "S3", "S6", "E1", "E2", "E3", "E4", "E5", "E6", "run_health", "survivor_gap"):
         doc[k] = dict(doc[k], decides="nothing")
     doc["S5"] = {"decides": "nothing", **{T: s5(cohort_dirs[T], pool_sha[T]) for T in COHORTS[:2]}}    # last: it writes its own score.json

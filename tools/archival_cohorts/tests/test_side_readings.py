@@ -154,6 +154,20 @@ def test_one_checked_seed_still_has_a_value_of_record_and_no_second_seed_base():
     assert r["record"]["base"] == 100.0 and r["seed_base"] == {"1200": 100.0, "3200": None}
 
 
+def test_the_row_says_whether_the_offline_desk_is_the_runs_desk_and_whether_one_seed_gave_the_value():
+    def seed(code):
+        return {"status": "ok", "values": {"base": 100.0}, "checks": {"diagnostics": {"record_neutral": {"value": code}}}}
+    r = S.make_row(META, {1200: seed(90.0), 3200: seed(90.0)}, cons(code=90.0))
+    assert r["rebuild_matches_run"] is True and r["one_seed_only"] is False
+    r = S.make_row(META, {1200: seed(90.0), 3200: seed(90.5)}, cons(code=90.0))
+    assert r["rebuild_matches_run"] is False                      # one seed's run-time code-only value is not the rebuilt one
+    r = S.make_row(META, {1200: seed(None), 3200: sr("reply_invalid")}, cons(code=None, ann=["one_seed_only: ['1200']"]))
+    assert r["rebuild_matches_run"] is True and r["one_seed_only"] is True
+    r = S.make_row(META, {1200: seed(0.0), 3200: seed(0.0)}, cons(code=0.0))
+    assert r["rebuild_matches_run"] is True                       # 0.0 is a value
+    assert S.make_row(META, None, None)["rebuild_matches_run"] is None
+
+
 def test_zero_is_a_value_and_a_consensus_failure_is_a_reason():
     r = S.make_row(META, {1200: sr(base=0.0), 3200: sr(base=0.0)}, cons(base=0.0, bear=0.0, bull=0.0, code=0.0, unheld=0.0))
     assert r["record"]["base"] == 0.0 and r["vp"]["record"] == 0.0 and r["vp"]["code_only"] == 0.0 and r["code_only"] == 0.0
