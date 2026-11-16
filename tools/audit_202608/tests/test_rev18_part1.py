@@ -646,7 +646,7 @@ def test_a_financial_company_has_no_cash_term_and_excess_cash_is_zero(screener_d
     assert "- excess_cash: 0.000000 | " in str(fin)
 
 
-def test_the_desk_on_the_packs_printed_facts_equals_the_reference_with_the_cash_to_the_cent(screener_data_stub, monkeypatch):
+def test_the_desk_on_the_packs_printed_facts_equals_the_reference_with_the_cash_to_the_cent(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     calls = []
     real = cr.build
     monkeypatch.setattr(cr, "build", lambda *a, **k: (calls.append(real(*a, **k)), calls[-1])[1])
@@ -654,8 +654,9 @@ def test_the_desk_on_the_packs_printed_facts_equals_the_reference_with_the_cash_
     ref = calls[-1]
     c_l = 8.0 * B * 1.03 ** 11 * 0.10
     assert ref["cash"] == pytest.approx(c_l) and ref["interest_removed"] == pytest.approx(c_l * 0.04 * 0.75)
-    text = str(pack)
-    parsed = pack_facts.from_text(text)
+    # the facts hold the DEFAULTS at the printed precision; since revision 24 the text no longer prints the long-run defaults or the reference, nor the
+    # unprinted long_run members the desk's working capital reads, so the desk's context is the pack's facts, not a read of its text
+    parsed = pack.facts
     lv, base = ref["levels"], ref["base_cf"] / B
     ctx = {"price": 1e6, "shares_default_b": parsed["shares_default"] / B, "coe_anchor": parsed["coe_anchor"],
            "terminal_g_default": parsed["terminal_g_default"], "terminal_g_anchor": parsed["terminal_g_anchor"],
