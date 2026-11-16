@@ -10,6 +10,7 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "tools"))
 import reference_ledger as rl  # noqa: E402
+import state_lock  # noqa: E402
 import sync_state  # noqa: E402
 from test_sync_state import _make_repos  # noqa: E402
 
@@ -25,6 +26,7 @@ def test_the_ledger_is_backed_up_byte_for_byte_and_each_sync_carries_the_appende
     cache.mkdir()
     ledger = cache / "reference_ledger.jsonl"
     monkeypatch.setattr(sync_state, "CACHE", cache)
+    monkeypatch.setattr(state_lock, "LOCK", tmp_path / "rs2_state.lock")   # never the live cache/rs2_state.lock
     rl.append_rows(ledger, [_row("ZQA", "2027-01-04"), _row("ZQB", "2027-01-04")])
     assert "synced" in sync_state.main(repo_dir=clone)
     backup = clone / "cache" / "reference_ledger.jsonl"
@@ -43,5 +45,6 @@ def test_a_missing_ledger_is_not_an_error_for_the_sync(tmp_path, monkeypatch):
     cache.mkdir()
     (cache / "depth_state.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(sync_state, "CACHE", cache)
+    monkeypatch.setattr(state_lock, "LOCK", tmp_path / "rs2_state.lock")   # never the live cache/rs2_state.lock
     assert "synced" in sync_state.main(repo_dir=clone)
     assert not (clone / "cache" / "reference_ledger.jsonl").exists()
