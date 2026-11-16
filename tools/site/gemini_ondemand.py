@@ -25,8 +25,12 @@ the name's age (operator 2026-11-16: the analysis is the cloud models' job).
 List: research_now then watchlist by rank, operator-excluded names left out, a name re-analysed when its newest Gemini
 analysis is older than REFRESH_DAYS (30: the backstop when nothing happened; operator 2026-11-16).
 
-The verdict (verdict()) is a label from the three values and the price, with no constant: BUY below the bear value, WATCH
-from the bear to the base value, AVOID above the base value, NO_CALL when the name is not valued. Paper only.
+The verdict (verdict()) is the rule the operator ruled for Claude's valuation (stocks-workspace baselines/opus SPEC 4 and
+5), applied to this valuation's own numbers: the expected value is the three values weighted by the valuation's own
+probabilities, the expected return over 3 years is compared with the name's own required return, BUY needs 4 points a year
+or more and both seeds reaching it, WATCH is above zero, AVOID is zero or less, NO_CALL when the name is not valued. (The
+first rule, 2026-11-16 18:00, read BUY below the bear value and WATCH from bear to base; the bear value sits only 0 to
+15% under the base, so WATCH never occurred in the first 28 names.) Paper only.
 """
 import argparse
 import json
@@ -281,20 +285,55 @@ def _write_report(rep):
     (ONDEMAND / f"{rep['ticker']}.json").write_text(json.dumps(rep, indent=1, sort_keys=True), encoding="utf-8")
 
 
-def verdict(row):
-    """(verdict, reason) from the three values and the price in the quoted unit; no constant. A label, paper only."""
+# The verdict rule's two numbers are the Claude valuation arm's (baselines/opus calc.py H and BUY_ALPHA_PTS, SPEC 4 and 5,
+# ruled by the operator); they are repeated here because nothing imports across repositories.
+H_YEARS = 3
+BUY_ALPHA_PTS = 4.0
+
+
+def alpha_pts(value, price, ke):
+    """Expected return a year over H_YEARS less the required return, in points: ((V x (1+ke)^H / P)^(1/H) - 1 - ke) x 100."""
+    if value <= 0:
+        return -100.0
+    return ((value * (1 + ke) ** H_YEARS / price) ** (1 / H_YEARS) - 1 - ke) * 100
+
+
+def value_meta(rep):
+    """(required return, {bear, base, bull: probability}) from the name's stored valuation result, or (None, None)."""
+    stem = f"{rep['ticker']}_{runner.t_compact(rep['date'])}_"
+    for root in sorted((ROOT / "cache").glob("m3q*")):
+        for d in sorted((root / "runs").glob(stem + "*")):
+            f = d / "result.json"
+            if f.exists():
+                r = json.loads(f.read_text(encoding="utf-8"))
+                prob = (r.get("checks") or {}).get("prob")
+                if str(r.get("status", "")).startswith("ok") and r.get("cost_of_equity") is not None and prob:
+                    return r["cost_of_equity"], prob
+    return None, None
+
+
+def verdict(row, ke, prob):
+    """(verdict, reason, alpha in points or None) in the quoted unit. A label, paper only."""
     if not row.get("valued"):
-        return "NO_CALL", row.get("no_value_reason") or "not valued"
-    bear, base, price = row.get("value_bear"), row.get("value_base"), row.get("price_at_publish")
-    if bear is None or base is None or price is None:
-        return "NO_CALL", "no quoted price or market cap to compare the value with"
-    if not bear <= base:
-        return "NO_CALL", "the bear value is above the base value"
-    if price < bear:
-        return "BUY", "price below the bear value"
-    if price <= base:
-        return "WATCH", "price between the bear and the base value"
-    return "AVOID", "price above the base value"
+        return "NO_CALL", row.get("no_value_reason") or "not valued", None
+    price = row.get("price_at_publish")
+    vals = {k: row.get(f"value_{k}") for k in ("bear", "base", "bull")}
+    if price is None or price <= 0 or any(v is None for v in vals.values()):
+        return "NO_CALL", "no quoted price or market cap to compare the value with", None
+    if ke is None or not prob:
+        return "NO_CALL", "the valuation's required return or probabilities are not on record", None
+    a = alpha_pts(sum(prob[k] * vals[k] for k in vals), price, ke)
+    why = f"expected return {a:+.1f} points a year against the required return over {H_YEARS} years"
+    if a <= 0:
+        return "AVOID", why, a
+    if a < BUY_ALPHA_PTS:
+        return "WATCH", why + f" (BUY needs {BUY_ALPHA_PTS:g} or more)", a
+    filed = (row.get("value_per_filed_share") or {}).get("base")
+    k = vals["base"] / filed if filed else None                      # filed share -> quoted share, as quote_units scaled it
+    seeds = [v for v in (row.get("seed_base") or {}).values() if v is not None]
+    if k is None or len(seeds) < 2 or any(alpha_pts(v * k, price, ke) < BUY_ALPHA_PTS for v in seeds):
+        return "WATCH", why + "; the two runs do not both reach BUY", a
+    return "BUY", why, a
 
 
 def build():
@@ -306,9 +345,10 @@ def build():
     s = s if isinstance(s, list) else s.get("stocks", s)
     qwen_site.quote_units(rows, {r["symbol"]: r for r in s if isinstance(r, dict) and r.get("symbol")})
     for row, rep in rows.values():
-        v, why = verdict(row)
+        ke, prob = value_meta(rep) if row.get("valued") else (None, None)
+        v, why, a = verdict(row, ke, prob)
         for d in (row, rep):
-            d.update(verdict=v, verdict_reason=why)
+            d.update(verdict=v, verdict_reason=why, alpha_pts=a, ke=ke)
     if REPORTS.exists():
         shutil.rmtree(REPORTS)
     REPORTS.mkdir(parents=True)
@@ -317,8 +357,9 @@ def build():
     counts = {k: sum(r["verdict"] == k for r, _ in rows.values()) for k in ("BUY", "WATCH", "AVOID", "NO_CALL")}
     ov = {"schema": SCHEMA, "generated_at": Q.now_z(), "model": GEM_MODEL, "effort": EFFORT, "count": len(rows),
           "valued_count": sum(bool(r["valued"]) for r, _ in rows.values()), "verdict_counts": counts,
-          "verdict_rule": "BUY: price below the bear value. WATCH: from the bear to the base value. AVOID: above the base value. "
-                          "NO_CALL: not valued.",
+          "verdict_rule": f"Expected value = the bear, base and bull values weighted by the valuation's probabilities. BUY: its "
+                          f"return over {H_YEARS} years is {BUY_ALPHA_PTS:g} points a year or more above the required return, in "
+                          "both runs. WATCH: above zero. AVOID: zero or less. NO_CALL: not valued.",
           "note": "Gemini reading of SEC filings in the place of the local model; values per share from code using Gemini's "
                   "choices, where both seeds agree. Paper only, not investment advice.",
           "tickers": {t: r for t, (r, _) in sorted(rows.items())}}
