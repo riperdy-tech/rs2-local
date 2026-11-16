@@ -90,12 +90,13 @@ def test_a_name_with_no_marker_gets_no_reference_and_the_defaults_lines_say_why(
     assert pack_facts.parity(f, pack_facts.from_text(text)) == []               # the printed lines still read back as the facts
 
 
-def test_a_name_with_no_marker_keeps_stub_months_and_the_desk_still_rolls_the_value_forward(screener_data_stub, monkeypatch):
+def test_a_name_with_no_marker_keeps_stub_months_and_the_desk_still_rolls_the_value_forward(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     """Revision 18 follow-up, finding 17: stub_months (the base fiscal year's age) is not part of the record. Dropping it with the record made
     the desk skip the roll-forward to today without a stamp (financial_model_tool: roll = 1 without a stub)."""
     import financial_model_tool as fmt
-    marker = _synthetic_pack(monkeypatch)
-    nomarker = _synthetic_pack(monkeypatch, no_marker=True)
+    # the rev22 arm: the revision-24 pack prints no terminal_g default, which the desk below is run on, read back from the text
+    marker = _synthetic_pack(monkeypatch, pilot_arm="rev22")
+    nomarker = _synthetic_pack(monkeypatch, no_marker=True, pilot_arm="rev22")
     stub = marker.facts["long_run"]["stub_months"]
     assert stub is not None and nomarker.facts["long_run"]["stub_months"] == stub
     parsed = pack_facts.from_text(str(nomarker))
@@ -111,14 +112,14 @@ def test_a_name_with_no_marker_keeps_stub_months_and_the_desk_still_rolls_the_va
     assert desk(dict(parsed, long_run={}))["roll_forward_factor"] == 1.0           # what the desk did before the stub was kept
 
 
-def test_a_marker_of_nothing_untagged_and_a_partial_marker_still_give_a_reference(screener_data_stub, monkeypatch):
+def test_a_marker_of_nothing_untagged_and_a_partial_marker_still_give_a_reference(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     for untagged in ((), ("goodwill",), ("goodwill", "intangibles_ex_goodwill"), ("amortization_intangibles",)):
         pack = _synthetic_pack(monkeypatch, untagged=untagged)
         f, text = pack.facts, str(pack)
         assert f["reference_status"] == "used" and f["consensus_implied_value"] is not None, untagged
         assert REASON not in text, untagged
         assert f["terminal_ronic"] is not None and f["long_run"] and f["working_capital"] is not None, untagged
-        assert "CONSENSUS-IMPLIED VALUE (reference, not a forecast)" in text
+        assert "CONSENSUS-IMPLIED VALUE (reference, not a forecast)" in f["reference_line"]      # revision 24: the line is kept in the facts, not printed
 
 
 def test_the_marker_changes_nothing_for_a_name_that_carries_one(screener_data_stub, monkeypatch):
