@@ -139,7 +139,7 @@ def test_run_day_end_to_end(root, fixture_json, fixture_text):
     assert q["AAA"]["priority"] == 0 and q["BBB"]["priority"] == 1          # held: P0; newest book, not held: P1 (same triggers)
     assert sorted(q["AAA"]["triggers"]) == ["sec:0000000001-26-000006", "sec:0000000001-26-000007", "sec:0000000001-26-000008", "sec:0000000001-26-000009"]
     assert q["AAA"]["triggers"]["sec:0000000001-26-000009"]["hits"][0]["class"] == "C1"
-    assert q["AAA"]["trigger_time"] == "2026-10-27T17:00:00Z"              # the NT 10-K, the earliest P0 trigger (13:00 read as Eastern wall clock: the later reading)
+    assert q["AAA"]["trigger_time"] == "2026-10-28T13:30:00Z"              # the NT 10-K, the earliest P0 trigger: accepted 13:00 Eastern on the 27th, effective at the next open (B1, 2026-11-16)
     # a second day finds nothing new and writes no new lines
     n_lines = len(mon.journal_lines())
     day2 = mon.run_day({"F": ["AAA", "OPXA"]}, ["BBB"], {}, tickers, src, NOW + timedelta(hours=1))
@@ -165,7 +165,7 @@ def test_journal_lines_name_the_prior_run_and_the_dated_evidence(root, tmp_path)
         assert {"event_id", "t", "ticker", "cik", "prior_run", "evidence"} <= set(l)
     disc, queued, analysed, resolved = mon.journal_lines()
     assert disc["evidence"][0]["accession"] == "0000000001-26-000112" and disc["evidence"][0]["accepted_raw"] == "2026-10-28T20:00:00.000Z"
-    assert disc["trigger"]["id"] == "sec:0000000001-26-000112" and disc["times"]["trigger_time"] == "2026-10-29T00:00:00Z"
+    assert disc["trigger"]["id"] == "sec:0000000001-26-000112" and disc["times"]["trigger_time"] == "2026-10-30T13:30:00Z"   # accepted 20:00 Eastern on the 28th: effective two opens later
     assert queued["priority"] == 0 and analysed["run_id"] == "AAA_1" and len(analysed["manifest_sha256"]) == 64
     assert resolved["compared_with_run"]["run_id"] == "PRIOR_RUN" and resolved["name_state"] == "thesis_intact"
     assert {e["accession"] for e in resolved["evidence"]} == {"0000000001-26-000002"}          # the cited, dated item
