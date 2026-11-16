@@ -30,7 +30,7 @@ def _slice(pack, header, next_prefix="## "):
     return pack[i:j if j != -1 else len(pack)]
 
 
-def test_section_8_consensus_estimates_table_and_trend_revisions(screener_data_stub, monkeypatch):
+def test_section_8_consensus_estimates_table_and_trend_revisions(screener_data_stub, monkeypatch, clock_of_the_frozen_day):
     en_data = {
         "_ticker": "AMD",
         "_fetched_at": "2026-09-24T12:00:00",
@@ -83,7 +83,7 @@ def test_section_8_consensus_estimates_missing_enrich(screener_data_stub, monkey
     assert "- CONSENSUS ESTIMATES: not available \u2014 enrich record missing" in sec8
 
 
-def test_section_8_consensus_estimates_missing_estimates(screener_data_stub, monkeypatch):
+def test_section_8_consensus_estimates_missing_estimates(screener_data_stub, monkeypatch, clock_of_the_frozen_day):
     en_data = {
         "_ticker": "AMD",
         "_fetched_at": "2026-09-24T12:00:00",

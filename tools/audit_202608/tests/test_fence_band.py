@@ -286,7 +286,7 @@ def test_sibling_record_scaled_and_source_named(monkeypatch):
 # 3. Pack: Sibling Line & Facts Parity
 # ================================================================================================
 
-def test_pack_sibling_line_and_facts_parity(screener_data_stub, monkeypatch):
+def test_pack_sibling_line_and_facts_parity(screener_data_stub, monkeypatch, clock_of_the_frozen_day):
     # Base enrich record with missing own targets but usable sibling targets
     now_iso = "2026-09-27T12:00:00"
     en = {

@@ -100,3 +100,27 @@ def anchors_of_the_frozen_day(tmp_path, monkeypatch):
     monkeypatch.setitem(rs2_data.CONFIG, "anchors_dir", str(d))
     monkeypatch.setattr(rs2_data, "_ANCHOR_CACHE", None)
     yield d
+
+
+@pytest.fixture
+def clock_of_the_frozen_day(monkeypatch):
+    """The pack's clock frozen at 2026-09-27 12:00, the day the committed September fixtures (a consensus record fetched 2026-09-24, a price
+    target dated the same week) were current. The 45-day staleness rules read `datetime.now()` in these modules, so a fixture that is only
+    "fresh" on its own date goes stale on the real clock and the line it feeds is suppressed. The same patch, on the same modules, as
+    test_pack_facts.py's `frozen_env` and test_review_b1_b4.py's `_FixedNow` (those two stay local to their files)."""
+    from datetime import datetime as _real_datetime
+    import capability_test as cap
+    import catalyst_research
+    import rs2_data
+    import valuation_backbone
+
+    fixed = _real_datetime(2026, 9, 27, 12, 0, 0)
+
+    class _Frozen(_real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz) if tz is not None else fixed
+
+    for mod in (cap, rs2_data, catalyst_research, valuation_backbone):
+        monkeypatch.setattr(mod, "datetime", _Frozen, raising=False)
+    return fixed

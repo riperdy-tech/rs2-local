@@ -211,7 +211,7 @@ def test_the_split_is_a_no_op_on_a_pack_without_estimates_and_the_block_is_verba
             assert ln in block
 
 
-def test_a_real_pack_of_arm_c_splits_and_the_facts_sidecar_is_whole(screener_data_stub, monkeypatch):
+def test_a_real_pack_of_arm_c_splits_and_the_facts_sidecar_is_whole(screener_data_stub, monkeypatch, clock_of_the_frozen_day, anchors_of_the_frozen_day):
     import rs2_data
     from test_consensus_reference import AMD_EST
     orig = rs2_data.load_json

@@ -2,7 +2,7 @@
 import capability_test as cap
 
 
-def test_zero_analyst_period_is_absent(screener_data_stub, monkeypatch):
+def test_zero_analyst_period_is_absent(screener_data_stub, monkeypatch, clock_of_the_frozen_day):
     real_load = cap.rs2_data.load_json
 
     def fake_load(path):
