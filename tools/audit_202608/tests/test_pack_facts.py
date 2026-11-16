@@ -70,8 +70,12 @@ def frozen_env(monkeypatch):
 
 # ---- Case 1: GEV fixture ----------------------------------------------------
 
-def test_gev_fixture_parity_and_literal_values(screener_data_stub, frozen_env):
-    pack = cap.build_pack("GEV", include_research=False)
+def test_gev_fixture_parity_and_literal_values(screener_data_stub, frozen_env, anchors_of_the_frozen_day):
+    # revision 24 prints neither the reference nor the long-run defaults (the facts keep them), so the key-by-key read-back below runs on the
+    # rev22 arm, the pack that still prints every line; the current pack's parity (which leaves the withheld keys out) is asserted first
+    current = cap.build_pack("GEV", include_research=False)
+    assert pack_facts.parity(current.facts, pack_facts.from_text(str(current))) == []
+    pack = cap.build_pack("GEV", include_research=False, pilot_arm="rev22")
     assert hasattr(pack, "facts"), "PackText must have .facts attribute"
 
     from_text = pack_facts.from_text(str(pack))
@@ -89,7 +93,8 @@ def test_gev_fixture_parity_and_literal_values(screener_data_stub, frozen_env):
             # revision 18: the test suite's bill rate is "not available" (conftest), so the cash term is stamped
             assert got["stamps_full"] == ["amortization_gap:2022/2023/2024/2025", "tangible_equity_partial:2022/2023/2024/2025",
                                           "margin_record_not_available", "cash_term_not_available_no_bill_rate"]
-            got = {m: v for m, v in got.items() if m != "stamps_full"}
+            # later revisions added more long_run members the block never prints (pack_facts.LONG_RUN_UNPRINTED: x_L, rev_L, ...)
+            got = {m: v for m, v in got.items() if m not in pack_facts.LONG_RUN_UNPRINTED}
         assert got == from_text[k], f"Mismatch for key {k}: {pack.facts[k]} != {from_text[k]}"
 
     # Literal expected values for at least shares_outstanding, coe_anchor, terminal_g_default, owner_earnings_source
@@ -279,13 +284,13 @@ def test_build_pack_branch_owner_earnings_fallback_token(screener_data_stub, fro
     assert pack_facts.parity(pack.facts, from_text) == []
 
 
-def test_build_pack_branch_reference_outside_fence(screener_data_stub, frozen_env, monkeypatch):
+def test_build_pack_branch_reference_outside_fence(screener_data_stub, frozen_env, monkeypatch, anchors_of_the_frozen_day):
     """Revision 18 (brief 1.5): a reference outside the street-target fence prints its number, the fence and "a level check
     only", and the facts keep the value with the status flag. The synthetic history gives a valued reference; the fence is
     forced."""
     from test_throughcycle_reference import _synthetic_pack
     monkeypatch.setattr(cap, "_reference_outside_fence", lambda v, b: ("above", (50.0, 150.0)))
-    pack = _synthetic_pack(monkeypatch)
+    pack = _synthetic_pack(monkeypatch, pilot_arm="rev22")       # revision 24 prints no reference line; the rev22 arm still does
     f = pack.facts
     assert f["reference_status"] == "outside_fence_above"
     assert isinstance(f["consensus_implied_value"], float) and f["consensus_implied_value"] > 0

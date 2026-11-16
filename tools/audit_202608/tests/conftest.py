@@ -76,26 +76,27 @@ def screener_data_stub(tmp_path, monkeypatch):
 
 @pytest.fixture
 def anchors_of_the_frozen_day(tmp_path, monkeypatch):
-    """The MRI capital-market anchors, dated to the day the tests freeze the clock (2026-09-27).
+    """The MRI capital-market anchors as they stood on the day these tests freeze the clock (2026-09-27), written to a folder of their own.
 
-    Tests that freeze `datetime` at 2026-09-27 still read the anchors from the live MRI outputs folder. Once MRI republished with
-    an `asof` after the frozen day, the anchor's age came out negative and `rs2_data.usable_anchor` (0 to anchor_max_age_days)
-    rejected it, so the reference silently became "not_available". This fixture gives the test its own anchor folder: a copy of
-    whatever anchors exist, each `asof` set to 2026-09-26 (one day old on the frozen clock). `rs2_data.CONFIG["anchors_dir"]` is the
-    seam the code reads (`anchors_dir()`), and the per-process anchor cache is reset so the copy is read."""
+    Tests that freeze `datetime` at 2026-09-27 used to read the anchors from the live MRI outputs folder. Once MRI republished with an
+    `asof` after the frozen day, the anchor's age came out negative and `rs2_data.usable_anchor` (0 to anchor_max_age_days) rejected it, so
+    the reference silently became "not_available"; and the literal rates the tests pin (the 8.98% cost of equity) are September's, not today's.
+    The legs below are the ones the committed golden pack (fixture_data/golden_pack_GEV_rev22.md, "Rates:" and "COE ANCHOR" lines) printed:
+    rf 5.01%, real 10y 2.68%, breakeven 2.34%, market premium 4.35%, market cost of equity 9.36%, the industrials loading 0.868, the growth
+    anchor 3.75%. `nominal_gdp_trend` 4.46% is the value test_rev19_text.py uses. The sector bands are left out (the bands accessor then
+    returns {}, the pack's own "not available" reading). `rs2_data.CONFIG["anchors_dir"]` is the seam the code reads (`anchors_dir()`);
+    the per-process anchor cache is reset so this folder is read."""
     import rs2_data
 
-    live = rs2_data.anchors_dir()
     d = tmp_path / "anchors_frozen_day"
     d.mkdir()
-    for fname in rs2_data.ANCHOR_FILES.values():
-        src = live / fname
-        if not src.is_file():
-            continue
-        doc = json.loads(src.read_text(encoding="utf-8"))
-        if isinstance(doc, dict) and doc.get("asof"):
-            doc["asof"] = "2026-09-26"
-        (d / fname).write_text(json.dumps(doc), encoding="utf-8")
+    cost = {"anchor_id": "cost_of_capital", "asof": "2026-09-26", "degraded": False, "erp_basis": "universe",
+            "risk_free": {"nominal_10y": 0.0501, "real_10y": 0.0268, "breakeven_10y": 0.0234},
+            "implied_erp": 0.0435, "implied_cost_of_equity": 0.0936, "sector_loadings": {"industrials": 0.868}}
+    growth = {"anchor_id": "long_run_growth", "asof": "2026-09-23", "degraded": False,
+              "terminal_g_suggestion": 0.0375, "nominal_gdp_trend": 0.0446}
+    (d / rs2_data.ANCHOR_FILES["cost_of_capital"]).write_text(json.dumps(cost), encoding="utf-8")
+    (d / rs2_data.ANCHOR_FILES["long_run_growth"]).write_text(json.dumps(growth), encoding="utf-8")
     monkeypatch.setitem(rs2_data.CONFIG, "anchors_dir", str(d))
     monkeypatch.setattr(rs2_data, "_ANCHOR_CACHE", None)
     yield d
