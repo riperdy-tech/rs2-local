@@ -166,6 +166,16 @@ def latest_formation():
     return maps[-1]
 
 
+WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+def site_stem(t):
+    """The published report's file name for a ticker. A ticker that is a Windows device name (CON, PRN, AUX, NUL, COMn, LPTn)
+    cannot be added by git on Windows, so it is published with a trailing underscore; the site applies the same rule
+    (lib/data-service.ts reportStem). Found 2026-11-16: one such name on the list stopped every publish, unnoticed."""
+    return f"{t}_" if t.upper() in WINDOWS_RESERVED else t
+
+
 def build():
     T = latest_formation()
     rows = formation_rows(T)
@@ -182,7 +192,7 @@ def build():
         shutil.rmtree(rep_dir)
     rep_dir.mkdir(parents=True)
     for t, (_, rep) in rows.items():
-        (rep_dir / f"{t}.json").write_text(json.dumps(rep, indent=1, sort_keys=True), encoding="utf-8")
+        (rep_dir / f"{site_stem(t)}.json").write_text(json.dumps(rep, indent=1, sort_keys=True), encoding="utf-8")
     ov = {"schema": SCHEMA, "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "formation": T,
           "count": len(rows), "valued_count": sum(r["valued"] for r, _ in rows.values()),
           "note": "Qwen (local model) reading of SEC filings; values per share from code using Qwen's choices, where both seeds agree. "
@@ -232,7 +242,9 @@ def publish():
         shutil.copytree(OUT / "qwen_reports", data / "qwen_reports")
         for f in [data / "qwen_overlay.json", data / "m3o_books.json", *sorted((data / "qwen_reports").glob("*.json"))]:
             json.loads(f.read_text(encoding="utf-8"))
-        g("add", "-A", "public/data/qwen_overlay.json", "public/data/m3o_books.json", "public/data/qwen_reports")
+        a = g("add", "-A", "public/data/qwen_overlay.json", "public/data/m3o_books.json", "public/data/qwen_reports")
+        if a.returncode:                                   # a failed add stages nothing and would read as "unchanged"
+            sys.exit(f"ABORT: git add failed: {(a.stderr or a.stdout).strip()[:300]}")
         if g("diff", "--cached", "--check").returncode:
             sys.exit("ABORT: conflict markers in staged content")
         if g("diff", "--cached", "--quiet").returncode == 0:
