@@ -83,7 +83,7 @@ def anchors_of_the_frozen_day(tmp_path, monkeypatch):
     the reference silently became "not_available"; and the literal rates the tests pin (the 8.98% cost of equity) are September's, not today's.
     The legs below are the ones the committed golden pack (fixture_data/golden_pack_GEV_rev22.md, "Rates:" and "COE ANCHOR" lines) printed:
     rf 5.01%, real 10y 2.68%, breakeven 2.34%, market premium 4.35%, market cost of equity 9.36%, the industrials loading 0.868, the growth
-    anchor 3.75%. `nominal_gdp_trend` 4.46% is the value test_rev19_text.py uses. The sector bands are left out (the bands accessor then
+    anchor 3.75%, and the inflation trend (CPI 3.35%, PCE 3.70%, the golden pack's SECTION 1.6 line). `nominal_gdp_trend` 4.46% is the value test_rev19_text.py uses. The sector bands are left out (the bands accessor then
     returns {}, the pack's own "not available" reading). `rs2_data.CONFIG["anchors_dir"]` is the seam the code reads (`anchors_dir()`);
     the per-process anchor cache is reset so this folder is read."""
     import rs2_data
@@ -92,7 +92,8 @@ def anchors_of_the_frozen_day(tmp_path, monkeypatch):
     d.mkdir()
     cost = {"anchor_id": "cost_of_capital", "asof": "2026-09-26", "degraded": False, "erp_basis": "universe",
             "risk_free": {"nominal_10y": 0.0501, "real_10y": 0.0268, "breakeven_10y": 0.0234},
-            "implied_erp": 0.0435, "implied_cost_of_equity": 0.0936, "sector_loadings": {"industrials": 0.868}}
+            "implied_erp": 0.0435, "implied_cost_of_equity": 0.0936, "sector_loadings": {"industrials": 0.868},
+            "inflation": {"cpi_yoy": 0.0335, "pce_yoy": 0.0370}}
     growth = {"anchor_id": "long_run_growth", "asof": "2026-09-23", "degraded": False,
               "terminal_g_suggestion": 0.0375, "nominal_gdp_trend": 0.0446}
     (d / rs2_data.ANCHOR_FILES["cost_of_capital"]).write_text(json.dumps(cost), encoding="utf-8")

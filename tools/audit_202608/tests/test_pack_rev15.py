@@ -241,8 +241,16 @@ def _slice(pack, header, next_prefix="## "):
     return pack[i:j if j != -1 else len(pack)]
 
 
-def test_section_1_6_has_no_duplicate_lines(screener_data_stub, monkeypatch):
+def test_section_1_6_has_no_duplicate_lines(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     _stub_and_freeze(monkeypatch)
+    # the MRI shock register is read live off disk (an active shock prints "ACTIVE SHOCK:" lines, not the "Active shocks" line this test reads):
+    # the register of the committed golden pack (fixture_data/golden_pack_GEV_rev22.md, SECTION 1.6) stands in, and the inflation trend comes from
+    # the anchor fixture
+    register = {"asof": "2026-09-22", "shocks": [],
+                "risk_flags": [{"id": "elevated_volatility_ahead", "active": False,
+                                "meaning": "Expect higher market turbulence over the next 3 months. No evidence of lower returns or deeper drawdowns."}]}
+    real_load = rs2_data.load_json
+    monkeypatch.setattr(rs2_data, "load_json", lambda p: register if str(p).endswith("shock_register.json") else real_load(p))
     pack = str(cap.build_pack("GEV", include_research=False))
     sec16 = _slice(pack, "DATA 1.6")
     assert "MRI regime probability vector" not in sec16
