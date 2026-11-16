@@ -134,9 +134,9 @@ def test_the_rates_line_labels_the_mri_cost_of_equity_as_context_in_live_packs()
     assert src.count('" | implied cost of equity "') == 1            # the point-in-time pack keeps its own label and figure
 
 
-def test_the_pack_line_in_a_built_pack_carries_the_sentence_and_the_closure_date(screener_data_stub, monkeypatch):
-    text = str(_synthetic_pack(monkeypatch))
-    line = next(l for l in text.splitlines() if "CONSENSUS-IMPLIED VALUE (reference" in l)
+def test_the_pack_line_in_a_built_pack_carries_the_sentence_and_the_closure_date(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
+    line = _synthetic_pack(monkeypatch).facts["reference_line"]          # revision 24 does not print the line; the facts keep it
+    assert line.startswith("- [Arithmetic] CONSENSUS-IMPLIED VALUE (reference")
     assert ROLE in line and "(rs2 closure, as of 2026-09-20)" in line and "median return on tangible capital" in line
     assert "plus excess cash" in line or "no excess-cash term" in line
 

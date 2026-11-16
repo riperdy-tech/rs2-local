@@ -212,10 +212,11 @@ def test_the_rest_of_the_facts_pass_through_without_an_or_default():
 
 # ---- D3, D4 in a built pack ---------------------------------------------------------------------------------------------------------------
 
-def test_a_built_pack_prints_the_defaults_price_implied_and_its_facts_equal_the_text(screener_data_stub, monkeypatch):
-    pack = _pack_with_bill_rate(monkeypatch, 0.04)
+def test_a_built_pack_prints_the_defaults_price_implied_and_its_facts_equal_the_text(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
+    # the rev22 arm: revision 24 prints no price_implied line (it is solved at defaults the long-run inputs no longer have)
+    pack = _pack_with_bill_rate(monkeypatch, 0.04, pilot_arm="rev22")
     f = pack.facts
-    assert f["version"] == 9 == pack_facts.FACTS_VERSION
+    assert f["version"] == 11 == pack_facts.FACTS_VERSION          # 9 until pack revision 24 (facts versions 10 and 11)
     block = f["price_implied_defaults"]
     assert set(block) == set(pi_text.INPUTS) and f["price_implied_price"] > 0 and len(f["reference_path"]) == 5
     assert f["rf_eff"] is not None and f["nominal_gdp_trend"] == rs2_data.anchor_nominal_gdp_trend()[0]

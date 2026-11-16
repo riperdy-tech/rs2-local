@@ -604,11 +604,11 @@ def test_bill_rate_mean_is_the_dtb3_mean_over_the_window_as_a_fraction(tmp_path,
 
 # ---- the pack: the cash term reaches the facts, the reference and the desk ---------------------------------------------------------
 
-def _pack_with_bill_rate(monkeypatch, rate, sector="Industrials"):
+def _pack_with_bill_rate(monkeypatch, rate, sector="Industrials", pilot_arm=None):
     monkeypatch.setattr(rs2_data, "bill_rate_mean", lambda start, end: (rate, "stub") if rate is not None else (None, "stub: none"))
     real_lookup = rs2_data.sector_lookup
     monkeypatch.setattr(rs2_data, "sector_lookup", lambda t: (sector, real_lookup(t)[1]))
-    pack = _synthetic_pack(monkeypatch)
+    pack = _synthetic_pack(monkeypatch, pilot_arm=pilot_arm)
     return pack
 
 
