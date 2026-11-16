@@ -1910,8 +1910,29 @@ def news_file_for(mon, entry, T):
     return path, len(rows)
 
 
+FOREIGN_VRAM_MIB = 2000                                               # as the site worker's (tools/site/qwen_ondemand.py)
+
+
+def gpu_free():
+    """(True, None) or (False, why): no other job holds the card. More than FOREIGN_VRAM_MIB in use while Ollama has no model loaded is
+    another program's memory (cross-check 2026-11-16, S7); a model Ollama has loaded is the runner's own test (gpu_busy)."""
+    try:
+        used = int(subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"], capture_output=True,
+                                  text=True, timeout=20).stdout.split()[0])
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return False, "nvidia-smi unreadable"
+    if used <= FOREIGN_VRAM_MIB:
+        return True, None
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/ps", timeout=10) as r:
+            loaded = json.loads(r.read().decode("utf-8", "replace")).get("models") or []
+    except Exception as e:  # noqa: BLE001  Ollama unreadable with the card in use: not ours to take
+        return False, f"{used} MiB in use and Ollama unreadable ({type(e).__name__})"
+    return (True, None) if loaded else (False, f"{used} MiB in use with no Ollama model loaded (another job holds the card)")
+
+
 def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SCREENER_REPO, limit=None, dry_run=False, build=None,
-             runner=None, versions=None, clock=None, seed_base=SEED_BASE, crash_scan=True, waiting=None, max_minutes=None):
+             runner=None, versions=None, clock=None, seed_base=SEED_BASE, crash_scan=True, waiting=None, max_minutes=None, gpu=None):
     """One executor pass (WO_P3b1): the queue's entries in order (priority, then trigger time), at most `limit`, each at most once.
 
     For an entry: T = its packet_T; the newest verified commit at or before T (none: `failed`, no_verified_commit_at_T); the packet through
@@ -1939,6 +1960,7 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
     if waiting is None:                                # the formation runner's own test of "a formation has Q1 work left" (its owner)
         import formation_run
         waiting = formation_run.formation_waiting
+    gpu = gpu or gpu_free
     lock = mon.state_dir / "executor.lock"
     take_lock(lock)
     try:
@@ -1967,6 +1989,11 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
             if waiting():                          # a formation has names left to read: its fill has a deadline, a monitor read does
                 rep["stopped"] = "formation_waiting"                   # not (cross-check 2026-11-16, B2). The pass ends; nothing is
                 row["outcome"] = "stopped:formation_waiting"           # counted against the entry.
+                break
+            ok, why = gpu()
+            if not ok:                             # another job has the card: the pass ends, nothing is counted
+                rep["stopped"] = "gpu_foreign: " + str(why)
+                row["outcome"] = "stopped:gpu_foreign"
                 break
             c = verified_commit(checks_dir, T)
             if c is None:

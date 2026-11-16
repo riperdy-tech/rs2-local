@@ -89,7 +89,7 @@ class Rig:
 
     def go(self, **kw):
         kw = {"worktree": self.wt, "checks_dir": self.checks, "screener_repo": "screener", "build": self.build, "runner": self.runner,
-              "versions": lambda wt: (PROMPT, CONTRACT), "clock": lambda: AFTER, "waiting": lambda: False, **kw}
+              "versions": lambda wt: (PROMPT, CONTRACT), "clock": lambda: AFTER, "waiting": lambda: False, "gpu": lambda: (True, None), **kw}
         return M.run_pass(self.root, **kw)
 
     def kinds(self, ticker=None):
@@ -524,3 +524,10 @@ def test_a_pass_starts_no_new_entry_after_its_time_budget(rig):
     rep = rig.go(clock=clock, max_minutes=30, crash_scan=False)
     assert [r[0] for r in rig.run_calls] == ["AAA"] and rep["stopped"].startswith("max_minutes")
     assert "BBB" in rig.state()["queue"] and not rig.state()["queue"]["BBB"].get("attempts")
+
+
+def test_the_pass_does_not_start_while_another_job_holds_the_card(rig):
+    rig.queue(AAA, "a", 0, EARLY)
+    rep = rig.go(gpu=lambda: (False, "9000 MiB in use with no Ollama model loaded"))      # cross-check 2026-11-16, S7
+    assert rep["stopped"].startswith("gpu_foreign") and rig.run_calls == [] and rig.build_calls == []
+    assert not rig.state()["queue"]["AAA"].get("attempts") and "failed" not in rig.kinds()
