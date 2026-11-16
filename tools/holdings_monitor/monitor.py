@@ -710,6 +710,18 @@ def gather_name(info, gstate, src, now, peers=None, first_since=None):
     return res, g
 
 
+def filing_effective(accepted_utc):
+    """The time from which the packet builder admits a filing accepted at `accepted_utc`: qwen_c.packet.effective_at, the single
+    owner of that rule (the open of the first full NYSE session after the acceptance's Eastern date; one more at or after 17:30 ET).
+    A filing trigger carries THIS time, not its acceptance: a packet built at the acceptance time excludes the very filing that
+    queued it (cross-check 2026-11-16, B1: on the first real read the newest trigger filing sat in the packet's `excluded` and its
+    trigger was still retired as covered)."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from qwen_c import packet
+    return iso(packet.effective_at(parse_utc(accepted_utc)))
+
+
 def build_triggers(info, res, held, now):
     """The triggers one gather produced (SPEC 3): filings by level, the price move (P3), and news (P3, SPEC v2 2.1): at most one `news`
     trigger per gather, when a new row was found by a category query (CATEGORY_KEYS) AND its article text was read. News without text
@@ -717,7 +729,8 @@ def build_triggers(info, res, held, now):
     out = []
     for f in res["filings"]:
         out.append({"id": f"sec:{f['accession']}", "kind": "sec_filing", "priority": priority_for(f["level"], held),
-                    "time": f["accepted_utc"] or iso(now), "reasons": f["level_reasons"], "form": f["form"], "items": f["items"],
+                    "time": filing_effective(f["accepted_utc"]) if f["accepted_utc"] else iso(now), "reasons": f["level_reasons"],
+                    "form": f["form"], "items": f["items"],
                     "accession": f["accession"], "accepted_raw": f["accepted_raw"], "filing_date": f["filing_date"],
                     "primary_document": f["primary_document"], "hits": f["hits"], "annotations": f["annotations"]})
     cat = [r for r in res["news"] if CATEGORY_KEYS & set(r.get("found_by") or []) and r.get("text")]
@@ -1898,7 +1911,7 @@ def news_file_for(mon, entry, T):
 
 
 def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SCREENER_REPO, limit=None, dry_run=False, build=None,
-             runner=None, versions=None, clock=None, seed_base=SEED_BASE, crash_scan=True):
+             runner=None, versions=None, clock=None, seed_base=SEED_BASE, crash_scan=True, waiting=None, max_minutes=None):
     """One executor pass (WO_P3b1): the queue's entries in order (priority, then trigger time), at most `limit`, each at most once.
 
     For an entry: T = its packet_T; the newest verified commit at or before T (none: `failed`, no_verified_commit_at_T); the packet through
@@ -1923,6 +1936,9 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
                                    "check_file": c["check_file"] if c else None, "tasks": task_set(e["priority"]) or "all"})
         return rep
     build, runner, versions = build or qwen_build_packet, runner or qwen_run, versions or qwen_versions
+    if waiting is None:                                # the formation runner's own test of "a formation has Q1 work left" (its owner)
+        import formation_run
+        waiting = formation_run.formation_waiting
     lock = mon.state_dir / "executor.lock"
     take_lock(lock)
     try:
@@ -1932,16 +1948,26 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
             # Under the executor lock no qwen_c run of ours is in progress, so a `running` run with no finished_at is dead: record it now
             # (min age 0) rather than after the gather's 6 hours, or a later scan would mark a name pending_review over a newer good run.
             rep["crash_scan"] = mon.crash_scan(run_root, clock(), min_age_hours=0)
-        visited = []
+        visited, began = [], utc(clock())
         while limit is None or len(visited) < int(limit):
             e = next((x for x in mon.ordered() if x["ticker"] not in visited), None)
             if e is None:
                 break
+            if max_minutes is not None and (utc(clock()) - began).total_seconds() >= float(max_minutes) * 60:
+                rep["stopped"] = f"max_minutes: {max_minutes:g} reached, {len(mon.ordered()) - len(visited)} entries wait"
+                break                              # the pass's time budget: no new entry is started; what is left stays queued
             t = e["ticker"]
             visited.append(t)
             T, tasks, now = entry_T(e), task_set(e["priority"]), clock()
             row = {"ticker": t, "priority": e["priority"], "T": T, "tasks": tasks or "all", "outcome": None}
             rep["entries"].append(row)
+            if parse_utc(T) > utc(now):            # its newest trigger is not effective yet (a filing waits for the next open): the
+                row["outcome"] = "waiting:not_effective_before_T"      # entry stays queued and no attempt is counted
+                continue
+            if waiting():                          # a formation has names left to read: its fill has a deadline, a monitor read does
+                rep["stopped"] = "formation_waiting"                   # not (cross-check 2026-11-16, B2). The pass ends; nothing is
+                row["outcome"] = "stopped:formation_waiting"           # counted against the entry.
+                break
             c = verified_commit(checks_dir, T)
             if c is None:
                 mon.fail_entry(t, T, "no_verified_commit_at_T", "no check_*.json row is PASS with pair PASS and run_updated_at <= T", now)
@@ -2024,6 +2050,7 @@ def main(argv=None):
     r = sub.add_parser("report", help="print coverage and queue age")
     x = sub.add_parser("run", help="run the queue's entries in priority order: packet, qwen_c, resolve (needs the GPU)")
     x.add_argument("--limit", type=int, help="take at most N entries from the queue in this pass")
+    x.add_argument("--max-minutes", type=float, help="start no new entry once the pass has run this long (the entries left stay queued)")
     x.add_argument("--dry-run", action="store_true", help="print what would run (ticker, priority, T, commit, tasks) and change nothing")
     x.add_argument("--worktree", default=str(WORKTREE), help="the qwen_c run worktree (default: this repository's root)")
     x.add_argument("--checks-dir", default=str(CHECKS_DIR), help="the folder of check_*.json verifier records")
@@ -2034,7 +2061,7 @@ def main(argv=None):
     now = datetime.now(timezone.utc)
     if a.cmd == "run":
         try:
-            rep = run_pass(a.root, worktree=a.worktree, checks_dir=a.checks_dir, screener_repo=a.screener_repo, limit=a.limit, dry_run=a.dry_run)
+            rep = run_pass(a.root, worktree=a.worktree, checks_dir=a.checks_dir, screener_repo=a.screener_repo, limit=a.limit, dry_run=a.dry_run, max_minutes=a.max_minutes)
         except LockHeld as e:
             print(f"stopped: {e}", file=sys.stderr)
             return 3

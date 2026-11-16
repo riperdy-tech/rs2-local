@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -89,7 +89,7 @@ class Rig:
 
     def go(self, **kw):
         kw = {"worktree": self.wt, "checks_dir": self.checks, "screener_repo": "screener", "build": self.build, "runner": self.runner,
-              "versions": lambda wt: (PROMPT, CONTRACT), "clock": lambda: AFTER, **kw}
+              "versions": lambda wt: (PROMPT, CONTRACT), "clock": lambda: AFTER, "waiting": lambda: False, **kw}
         return M.run_pass(self.root, **kw)
 
     def kinds(self, ticker=None):
@@ -475,3 +475,52 @@ def test_cli_run_uses_the_defaults_of_the_module_and_maps_the_exit_codes(rig, ca
 
 def test_the_default_worktree_is_the_repository_root():
     assert M.WORKTREE == M.ROOT == Path(__file__).resolve().parents[3] and M.SEED_BASE == 1000
+
+
+# ---------------------------------------------------------------- a filing trigger and its effective time (cross-check 2026-11-16, B1)
+
+def test_a_filing_trigger_carries_the_time_the_builder_admits_the_filing():
+    # accepted Friday 2026-11-13 21:05:56 ET (02:05:56Z on the 14th), after 17:30 ET: effective at Tuesday's open, as qwen_c.packet says
+    from qwen_c import packet
+    acc = "2026-11-14T02:05:56Z"
+    assert M.filing_effective(acc) == "2026-11-17T14:30:00Z" == M.iso(packet.effective_at(M.parse_utc(acc)))
+    res = {"filings": [{"accession": "0000000001-26-000001", "accepted_utc": acc, "accepted_raw": "2026-11-13T21:05:56.000Z", "level": 0,
+                        "level_reasons": ["x"], "form": "8-K", "items": "1.01", "filing_date": "2026-11-13", "primary_document": "a.htm",
+                        "hits": [], "annotations": []}], "news": [], "price": None}
+    (t,) = M.build_triggers(AAA, res, True, NOW)
+    assert t["time"] == "2026-11-17T14:30:00Z" and t["accepted_raw"] == "2026-11-13T21:05:56.000Z"
+
+
+def test_an_entry_whose_trigger_is_not_effective_yet_waits_and_counts_no_attempt(rig):
+    later = "2026-10-30T13:30:00Z"                                        # after the pass's clock (AFTER, 03:00Z)
+    rig.queue(AAA, "a", 0, later)
+    rig.queue(BBB, "b", 3, EARLY)
+    rep = rig.go()
+    assert [r[0] for r in rig.run_calls] == ["BBB"] and rig.build_calls[0][0] == "BBB"
+    assert {e["ticker"]: e["outcome"] for e in rep["entries"]}["AAA"] == "waiting:not_effective_before_T"
+    q = rig.state()["queue"]
+    assert "AAA" in q and not q["AAA"].get("attempts") and "failed" not in rig.kinds("AAA")
+    rig.go(clock=lambda: datetime(2026, 10, 30, 14, 0, tzinfo=timezone.utc))      # after its time: it runs, at its own T
+    assert [r[0] for r in rig.run_calls] == ["BBB", "AAA"] and rig.build_calls[-1][1] == later
+
+
+def test_the_pass_yields_to_a_formation_and_counts_no_attempt(rig):
+    rig.queue(AAA, "a", 0, EARLY)
+    rig.queue(BBB, "b", 3, EARLY)
+    rep = rig.go(waiting=lambda: True)                                    # cross-check 2026-11-16, B2
+    assert rep["stopped"] == "formation_waiting" and rig.run_calls == [] and rig.build_calls == []
+    assert [e["outcome"] for e in rep["entries"]] == ["stopped:formation_waiting"]
+    q = rig.state()["queue"]
+    assert set(q) == {"AAA", "BBB"} and not q["AAA"].get("attempts") and "failed" not in rig.kinds()
+    rig.go()                                                              # the formation is done: both run
+    assert [r[0] for r in rig.run_calls] == ["AAA", "BBB"]
+
+
+def test_a_pass_starts_no_new_entry_after_its_time_budget(rig):
+    rig.queue(AAA, "a", 0, EARLY)
+    rig.queue(BBB, "b", 3, EARLY)
+    def clock():                                                          # 31 minutes pass while the first entry runs
+        return AFTER + timedelta(minutes=31 if rig.run_calls else 0)
+    rep = rig.go(clock=clock, max_minutes=30, crash_scan=False)
+    assert [r[0] for r in rig.run_calls] == ["AAA"] and rep["stopped"].startswith("max_minutes")
+    assert "BBB" in rig.state()["queue"] and not rig.state()["queue"]["BBB"].get("attempts")
