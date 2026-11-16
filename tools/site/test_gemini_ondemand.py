@@ -74,3 +74,8 @@ def test_a_request_comes_before_the_list_and_is_taken_once(tmp_path, monkeypatch
     monkeypatch.setattr(G.Q, "list_names", lambda: ["A"])
     assert G.next_name() == ("ASKED", "web", True)      # even though it is not on the list and has no age
     assert G.next_name() == ("A", "list", False)        # the other arm does not take the same request
+
+
+def test_a_ticker_that_is_a_windows_device_name_gets_a_safe_file_name():
+    assert G.site_stem("CON") == "CON_" and G.site_stem("nul") == "nul_" and G.site_stem("LPT1") == "LPT1_"
+    assert G.site_stem("CONE") == "CONE" and G.site_stem("A") == "A"

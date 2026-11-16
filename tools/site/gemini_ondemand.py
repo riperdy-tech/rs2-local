@@ -336,6 +336,16 @@ def verdict(row, ke, prob):
     return "BUY", why, a
 
 
+WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+def site_stem(t):
+    """The published report's file name for a ticker. A ticker that is a Windows device name (CON, PRN, AUX, NUL, COMn, LPTn)
+    cannot be added by git on Windows, so it is published with a trailing underscore; the site applies the same rule
+    (lib/data-service.ts reportStem). Found 2026-11-16: one such name stopped every publish for three hours, unnoticed."""
+    return f"{t}_" if t.upper() in WINDOWS_RESERVED else t
+
+
 def build():
     rows = {}
     for p in sorted(ONDEMAND.glob("*.json")) if ONDEMAND.exists() else []:
@@ -353,7 +363,7 @@ def build():
         shutil.rmtree(REPORTS)
     REPORTS.mkdir(parents=True)
     for t, (_, rep) in rows.items():
-        (REPORTS / f"{t}.json").write_text(json.dumps(rep, indent=1, sort_keys=True), encoding="utf-8")
+        (REPORTS / f"{site_stem(t)}.json").write_text(json.dumps(rep, indent=1, sort_keys=True), encoding="utf-8")
     counts = {k: sum(r["verdict"] == k for r, _ in rows.values()) for k in ("BUY", "WATCH", "AVOID", "NO_CALL")}
     ov = {"schema": SCHEMA, "generated_at": Q.now_z(), "model": GEM_MODEL, "effort": EFFORT, "count": len(rows),
           "valued_count": sum(bool(r["valued"]) for r, _ in rows.values()), "verdict_counts": counts,
@@ -401,7 +411,8 @@ def publish():
         shutil.copytree(REPORTS, data / "gemini_c_reports")
         for f in [data / "gemini_c_overlay.json", *sorted((data / "gemini_c_reports").glob("*.json"))]:
             json.loads(f.read_text(encoding="utf-8"))
-        g("add", "-A", *SITE_FILES)
+        if (a := g("add", "-A", *SITE_FILES)).returncode:      # a failed add stages nothing and would read as "unchanged"
+            sys.exit(f"ABORT: git add failed: {(a.stderr or a.stdout).strip()[:300]}")
         if g("diff", "--cached", "--check").returncode:
             sys.exit("ABORT: conflict markers in staged content")
         if g("diff", "--cached", "--quiet").returncode == 0:
