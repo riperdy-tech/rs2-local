@@ -32,16 +32,29 @@ def test_refusal_is_retried_next_day(tmp_path, monkeypatch):
     for t, h, an in (("DONE", 25, "complete"), ("REFUSED", 25, "not run"), ("FRESHREF", 2, "not run")):
         (tmp_path / f"{t}.json").write_text(json.dumps({"ticker": t, "date": iso(h), "analysis": an}), encoding="utf-8")
     monkeypatch.setattr(G, "CLAIMS", tmp_path / "claims")
+    monkeypatch.setattr(G, "queue_file", lambda: tmp_path / "no_queue.jsonl")
     monkeypatch.setattr(G.Q, "list_names", lambda: ["DONE", "FRESHREF", "REFUSED", "NEW"])
-    assert G.next_name() == "REFUSED"
+    assert G.next_name() == ("REFUSED", "list", False)
 
 
 def test_two_arms_never_take_the_same_name(tmp_path, monkeypatch):
     monkeypatch.setattr(G, "ONDEMAND", tmp_path)
     monkeypatch.setattr(G, "CLAIMS", tmp_path / "claims")
+    monkeypatch.setattr(G, "queue_file", lambda: tmp_path / "no_queue.jsonl")
     monkeypatch.setattr(G.Q, "list_names", lambda: ["A", "B", "C"])
     monkeypatch.setattr(G, "ARM", "gemini")
-    assert G.next_name() == "A"                      # gemini: from the top
+    assert G.next_name()[0] == "A"                      # gemini: from the top
     monkeypatch.setattr(G, "ARM", "opus")
-    assert [G.next_name(), G.next_name()] == ["C", "B"]   # opus: from the bottom, and never the claimed A
+    assert [G.next_name()[0], G.next_name()[0]] == ["C", "B"]   # opus: from the bottom, and never the claimed A
     assert G.next_name() is None
+
+
+def test_a_request_comes_before_the_list_and_is_taken_once(tmp_path, monkeypatch):
+    q = tmp_path / "queue.jsonl"
+    q.write_text(json.dumps({"ticker": "ASKED", "source": "web", "requested_at": "2026-11-16T00:00:00Z"}) + "\n", encoding="utf-8")
+    monkeypatch.setattr(G, "ONDEMAND", tmp_path)
+    monkeypatch.setattr(G, "CLAIMS", tmp_path / "claims")
+    monkeypatch.setattr(G, "queue_file", lambda: q)
+    monkeypatch.setattr(G.Q, "list_names", lambda: ["A"])
+    assert G.next_name() == ("ASKED", "web", True)      # even though it is not on the list and has no age
+    assert G.next_name() == ("A", "list", False)        # the other arm does not take the same request

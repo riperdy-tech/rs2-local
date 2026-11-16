@@ -18,6 +18,10 @@ Code command line on the Claude subscription, from the bottom). Both run at high
 claimed before it is started so the two never analyse the same one; each report records its model. Each arm paces itself
 on its own account's meter. The opus arm leaves a small margin for the coordinating session on the same subscription.
 
+Requests come first: the site's Analyze button and Telegram /analyze write qwen_ondemand's queue (cache/site/queue.jsonl of
+the repository's main working tree); while the Qwen site worker is on hold these workers take them, oldest first, whatever
+the name's age (operator 2026-11-16: the analysis is the cloud models' job).
+
 List: research_now then watchlist by rank, operator-excluded names left out, a name re-analysed when its newest Gemini
 analysis is older than REFRESH_DAYS (30: the backstop when nothing happened; operator 2026-11-16).
 
@@ -409,14 +413,23 @@ def claim(t):
     return True
 
 
+def queue_file():
+    """qwen_ondemand's request queue, in the repository's main working tree (where the site and the Telegram bot write it)."""
+    return _main_checkout() / "cache" / "site" / "queue.jsonl"
+
+
 def next_name():
-    """The next due name, claimed for this arm: gemini from the top of the list, any other arm from the bottom."""
+    """(ticker, source, from_queue) claimed for this arm, or None: a queued request first (oldest first), then the next due list
+    name: gemini from the top of the list, any other arm from the bottom."""
+    for q in Q._jsonl(queue_file()):
+        if claim(q["ticker"]):
+            return q["ticker"], q.get("source") or "web", True
     cutoff = (datetime.now(timezone.utc) - timedelta(days=REFRESH_DAYS)).isoformat()
     seen = last_analysed()
     names = Q.list_names()
     for t in names if ARM == "gemini" else reversed(names):
         if seen.get(t, "") < cutoff and claim(t):
-            return t
+            return t, "list", False
     return None
 
 
@@ -441,16 +454,20 @@ def work(max_names, do_publish):
         swap()
         done = 0
         while max_names is None or done < max_names:
-            t = next_name()
-            if t is None:
+            nxt = next_name()
+            if nxt is None:
                 log("nothing to analyse")
                 break
+            t, source, queued = nxt
             before = wait_for_quota()
-            log(f"{t} start | left: " + ", ".join(f"{k} {before[k][0]:.1%}" for k in FLOORS))
+            log(f"{t} start ({source}) | left: " + ", ".join(f"{k} {before[k][0]:.1%}" for k in FLOORS))
             try:
-                st = analyze(t, "list")
+                st = analyze(t, source)
             except Exception as e:  # noqa: BLE001  one name's failure is logged and the worker moves on
-                st = refusal(t, "list", Q.now_z(), f"pipeline error: {type(e).__name__}: {str(e)[:160]}")
+                st = refusal(t, source, Q.now_z(), f"pipeline error: {type(e).__name__}: {str(e)[:160]}")
+            if queued:
+                Q.QUEUE = queue_file()
+                Q.pop(t)
             (CLAIMS / f"{t}.json").unlink(missing_ok=True)
             done += 1
             log(f"{t} {st}")
