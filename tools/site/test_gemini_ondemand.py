@@ -79,3 +79,13 @@ def test_a_request_comes_before_the_list_and_is_taken_once(tmp_path, monkeypatch
 def test_a_ticker_that_is_a_windows_device_name_gets_a_safe_file_name():
     assert G.site_stem("CON") == "CON_" and G.site_stem("nul") == "nul_" and G.site_stem("LPT1") == "LPT1_"
     assert G.site_stem("CONE") == "CONE" and G.site_stem("A") == "A"
+
+
+def test_a_claim_of_a_process_that_is_gone_is_taken_over(tmp_path, monkeypatch):
+    import formation_run as FR
+    monkeypatch.setattr(G, "CLAIMS", tmp_path)
+    (tmp_path / "X.json").write_text(json.dumps({"arm": "gemini", "pid": 999999, "at": "2026-11-16T00:00:00Z"}), encoding="utf-8")
+    monkeypatch.setattr(FR, "pid_alive", lambda pid: True)
+    assert G.claim("X") is False                     # its worker is alive: not ours
+    monkeypatch.setattr(FR, "pid_alive", lambda pid: False)
+    assert G.claim("X") is True                      # its worker is gone: taken over at once, not after three hours

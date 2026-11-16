@@ -451,11 +451,18 @@ def last_analysed():
 
 
 def claim(t):
-    """True when this process now holds name t (an exclusive file; a claim older than CLAIM_STALE_HOURS is a dead worker's)."""
+    """True when this process now holds name t (an exclusive file; a claim whose process is gone, or older than
+    CLAIM_STALE_HOURS, is a dead worker's and is taken over)."""
     CLAIMS.mkdir(parents=True, exist_ok=True)
     p = CLAIMS / f"{t}.json"
-    if p.exists() and time.time() - p.stat().st_mtime > CLAIM_STALE_HOURS * 3600:
-        p.unlink(missing_ok=True)
+    if p.exists():
+        import formation_run as FR
+        try:
+            dead = not FR.pid_alive(int(json.loads(p.read_text(encoding="utf-8"))["pid"]))
+        except (ValueError, KeyError, OSError):
+            dead = False
+        if dead or time.time() - p.stat().st_mtime > CLAIM_STALE_HOURS * 3600:     # its worker is gone, or it is too old
+            p.unlink(missing_ok=True)
     try:
         fd = os.open(str(p), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
