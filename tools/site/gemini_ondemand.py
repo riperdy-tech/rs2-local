@@ -268,8 +268,10 @@ def publish():
     try:
         if g("fetch", "origin", "main").returncode:
             sys.exit("ABORT: fetch failed")
-        if g("status", "--porcelain").stdout.strip():
-            sys.exit("ABORT: the publish clone has local changes")
+        # qwen_site leaves its own files pending in the clone between its publishes; they are its to commit, not ours
+        if g("status", "--porcelain", "--", ":!public/data/qwen_overlay.json", ":!public/data/m3o_books.json",
+             ":!public/data/qwen_reports", *(f":!{p}" for p in SITE_FILES)).stdout.strip():
+            sys.exit("ABORT: the publish clone has unexpected local changes")
         if g("checkout", "-B", "main", "origin/main").returncode:
             sys.exit("ABORT: could not reset the publish clone to origin/main")
         data = repo / "public" / "data"
@@ -297,8 +299,9 @@ def publish():
                 return
             time.sleep(4)
         sys.exit("ABORT: push failed after 5 attempts")
-    finally:                                   # the clone is left as origin/main with none of these files pending, whatever happened
-        g("reset", "-q", "--hard", "origin/main")
+    finally:                                   # none of OUR files is left pending in the clone, whatever happened
+        g("reset", "-q", "--", *SITE_FILES)
+        g("checkout", "-q", "--", *SITE_FILES)
         g("clean", "-fdq", "--", *SITE_FILES)
         qwen_site.LOCK.unlink(missing_ok=True)
 
