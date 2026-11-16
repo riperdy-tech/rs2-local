@@ -241,7 +241,7 @@ def test_build_pack_branch_net_debt(screener_data_stub, frozen_env, monkeypatch)
     assert pack_facts.parity(pack.facts, from_text) == []
 
 
-def test_build_pack_branch_terminal_default_below_anchor(screener_data_stub, frozen_env, monkeypatch):
+def test_build_pack_branch_terminal_default_below_anchor(screener_data_stub, frozen_env, monkeypatch, anchors_of_the_frozen_day):
     """Monkeypatch terminal_default to return a value below the anchor."""
     import consensus_reference
     monkeypatch.setattr(

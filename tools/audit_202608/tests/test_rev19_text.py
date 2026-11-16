@@ -228,7 +228,7 @@ def test_a_built_pack_prints_the_defaults_price_implied_and_its_facts_equal_the_
         assert parsed[k] is None, k
 
 
-def test_the_defaults_run_in_a_built_pack_reproduces_the_price_or_is_not_reachable_with_its_bound(screener_data_stub, monkeypatch):
+def test_the_defaults_run_in_a_built_pack_reproduces_the_price_or_is_not_reachable_with_its_bound(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     calls = []
     real = cr.build
     monkeypatch.setattr(cr, "build", lambda *a, **k: (calls.append(real(*a, **k)), calls[-1])[1])

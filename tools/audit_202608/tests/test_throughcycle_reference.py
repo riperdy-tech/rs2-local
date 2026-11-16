@@ -536,7 +536,7 @@ def test_the_untagged_marker_decides_whether_a_missing_goodwill_series_is_none_h
     assert gap["terminal_ronic"] == untagged["terminal_ronic"]           # the record is the same: nothing is lost to the gap
 
 
-def test_the_packs_long_run_earnings_are_x_of_the_base_year(screener_data_stub, monkeypatch):
+def test_the_packs_long_run_earnings_are_x_of_the_base_year(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     """Brief B2 F1 through build_pack: the synthetic base year holds net income 1.2B and acquired-intangible
     amortization 0.05B at a 25% tax rate, so X is 1.2375B; a filer that never tags the amortization has X = net income."""
     tagged = _synthetic_pack(monkeypatch).facts["long_run"]

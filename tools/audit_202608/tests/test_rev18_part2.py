@@ -338,7 +338,7 @@ def test_the_pack_prints_the_closure_cost_of_equity_the_mri_premium_as_context_a
     assert "missing or stale (2026-07-01)" in str(_synthetic_pack(monkeypatch))
 
 
-def test_the_pack_reference_is_build_of_reference_inputs_on_an_independent_data_root_to_the_cent(screener_data_stub, monkeypatch):
+def test_the_pack_reference_is_build_of_reference_inputs_on_an_independent_data_root_to_the_cent(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     """The parity test of brief section 2: the pack's printed reference equals build(**reference_inputs(...)) - the inputs read
     again through a fresh DataRoot - and the facts the pack prints for the same inputs are reference_inputs' own."""
     calls = []

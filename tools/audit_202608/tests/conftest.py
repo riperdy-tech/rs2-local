@@ -72,3 +72,30 @@ def screener_data_stub(tmp_path, monkeypatch):
     # honest behaviour: the cache is keyed on a ticker, but the value depends on the directory.
     cap._SEC_CACHE.clear()
     return sd
+
+
+@pytest.fixture
+def anchors_of_the_frozen_day(tmp_path, monkeypatch):
+    """The MRI capital-market anchors, dated to the day the tests freeze the clock (2026-09-27).
+
+    Tests that freeze `datetime` at 2026-09-27 still read the anchors from the live MRI outputs folder. Once MRI republished with
+    an `asof` after the frozen day, the anchor's age came out negative and `rs2_data.usable_anchor` (0 to anchor_max_age_days)
+    rejected it, so the reference silently became "not_available". This fixture gives the test its own anchor folder: a copy of
+    whatever anchors exist, each `asof` set to 2026-09-26 (one day old on the frozen clock). `rs2_data.CONFIG["anchors_dir"]` is the
+    seam the code reads (`anchors_dir()`), and the per-process anchor cache is reset so the copy is read."""
+    import rs2_data
+
+    live = rs2_data.anchors_dir()
+    d = tmp_path / "anchors_frozen_day"
+    d.mkdir()
+    for fname in rs2_data.ANCHOR_FILES.values():
+        src = live / fname
+        if not src.is_file():
+            continue
+        doc = json.loads(src.read_text(encoding="utf-8"))
+        if isinstance(doc, dict) and doc.get("asof"):
+            doc["asof"] = "2026-09-26"
+        (d / fname).write_text(json.dumps(doc), encoding="utf-8")
+    monkeypatch.setitem(rs2_data.CONFIG, "anchors_dir", str(d))
+    monkeypatch.setattr(rs2_data, "_ANCHOR_CACHE", None)
+    yield d

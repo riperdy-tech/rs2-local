@@ -56,7 +56,7 @@ def test_a_production_snapshot_row_equals_the_packs_printed_reference_to_the_cen
     assert row["price"] is None or row["vp"] == pytest.approx(row["reference_value"] / row["price"])
 
 
-def test_the_snapshot_status_is_the_packs_shared_rule_fence_included(screener_data_stub, monkeypatch, tmp_path):
+def test_the_snapshot_status_is_the_packs_shared_rule_fence_included(screener_data_stub, monkeypatch, tmp_path, anchors_of_the_frozen_day):
     pack = _synthetic_pack(monkeypatch)
     assert rl.classify_status is not cr.classify_status
     assert [rl.classify_status(v, lambda: s) for v, s in ((None, "above"), (0.004, "above"), (5.0, None), (5.0, "above"), (5.0, "below"))] == [

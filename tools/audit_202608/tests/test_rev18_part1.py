@@ -259,7 +259,7 @@ def test_a_turnaround_is_valued_on_the_levels_method_not_on_its_cash_alone():
     assert growth["method"] == "cash_only"
 
 
-def test_a_levels_name_prints_its_year_1_owner_earnings_level_after_the_cash_term_as_reference_base_b(screener_data_stub, monkeypatch):
+def test_a_levels_name_prints_its_year_1_owner_earnings_level_after_the_cash_term_as_reference_base_b(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     import test_throughcycle_reference as ttr
     est = json.loads(json.dumps(ttr.EST))
     est["0y"]["eps"]["growth"] = 3.0                                   # unusable growth: the levels method values the name
@@ -612,7 +612,7 @@ def _pack_with_bill_rate(monkeypatch, rate, sector="Industrials"):
     return pack
 
 
-def test_the_pack_computes_excess_cash_prints_it_and_takes_the_interest_out_of_the_default_and_the_reference(screener_data_stub, monkeypatch):
+def test_the_pack_computes_excess_cash_prints_it_and_takes_the_interest_out_of_the_default_and_the_reference(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     without = _pack_with_bill_rate(monkeypatch, None)
     with_cash = _pack_with_bill_rate(monkeypatch, 0.04)
     f0, f1 = without.facts, with_cash.facts
