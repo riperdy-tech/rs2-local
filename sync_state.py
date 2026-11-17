@@ -194,13 +194,26 @@ def _sync(repo_dir: Path | None = None) -> str:
     clash = set(carry) & set(_git(repo, "diff", "--name-only", "HEAD", "@{u}", "--", CARRY_DIR).stdout.split())
     if clash:
         return f"error: uncommitted {CARRY_DIR} files also changed upstream, not reset: {sorted(clash)[:5]}"
-    kept = {c: (repo / c).read_bytes() for c in carry}
-    reset = _git(repo, "reset", "--hard", "@{u}")
+    # The carried files are never rewritten by the sync (2026-11-17, cross-check S6). Reading them, resetting hard and writing them
+    # back left a window in which a writer's newer bytes (the holdings monitor appends its journal and replaces its state for hours
+    # every day) were reverted by the reset and then overwritten with the older copy. So: move HEAD and the index to upstream without
+    # touching the working tree, then restore from the index every changed file that is NOT carried, and delete the files upstream
+    # deleted. The result equals a hard reset everywhere except the carried files, which stay exactly as their writers left them.
+    keep = set(carry)
+    gone = [g for g in _git(repo, "diff", "--name-only", "--diff-filter=D", "-z", "HEAD", "@{u}").stdout.split("\0") if g]
+    # a file a killed run staged but never committed is in neither commit: a hard reset removed it, so this does too
+    gone += [g for g in _git(repo, "diff", "--cached", "--name-only", "--diff-filter=A", "-z", "HEAD").stdout.split("\0") if g]
+    reset = _git(repo, "reset", "-q", "@{u}")
     if reset.returncode != 0:
         return "error: reset failed: " + (reset.stderr or reset.stdout).strip()[:300]
-    for c, b in kept.items():
-        (repo / c).parent.mkdir(parents=True, exist_ok=True)
-        (repo / c).write_bytes(b)
+    restore = sorted({c for c in _git(repo, "ls-files", "-m", "-d", "-z").stdout.split("\0") if c and c not in keep})
+    for i in range(0, len(restore), 100):
+        co = _git(repo, "checkout", "-q", "--", *restore[i:i + 100])
+        if co.returncode != 0:
+            return "error: restore after reset failed: " + (co.stderr or co.stdout).strip()[:300]
+    for g in gone:
+        if g not in keep and not g.startswith(CARRY_DIR + "/"):           # nothing under the carried folder is ever deleted here
+            (repo / g).unlink(missing_ok=True)
 
     imported = _import_cloud_delta(repo)
     imported_mem = _import_cloud_membership(repo)
