@@ -139,7 +139,7 @@ ITEM_SUBSTITUTES = {
                ("us-gaap", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "USD", "includes_nci")],
     "capex": [("ifrs-full", "PurchaseOfMiningAssets", "USD", None), ("us-gaap", "PropertyPlantAndEquipmentAdditions", "USD", None),
               ("us-gaap", "PaymentsForProceedsFromProductiveAssets", "USD", "net")],      # net of disposals: only while a net outflow in every year read
-    "da": [("us-gaap", "ResultsOfOperationsDepreciationDepletionAmortizationAndAccretion", "USD", None)],
+    "da": [("us-gaap", "ResultsOfOperationsDepreciationDepletionAmortizationAndAccretion", "USD", "producing_activities_only")],      # the oil and gas producing-activities disclosure: no corporate depreciation, with accretion
     "assets_current": [("ifrs-full", "CurrentAssetsOtherThanAssetsOrDisposalGroupsClassifiedAsHeldForSaleOrAsHeldForDistributionToOwners", "USD",
                         "excludes_held_for_sale")],
     "liabilities_current": [("ifrs-full", "CurrentLiabilitiesOtherThanLiabilitiesIncludedInDisposalGroupsClassifiedAsHeldForSale", "USD",

@@ -132,7 +132,7 @@ def test_exact_capex_wins_and_the_substitute_clears_a_stale_exact_series():
 def test_combined_results_of_operations_tag_stands_in_for_da():
     tag = "ResultsOfOperationsDepreciationDepletionAmortizationAndAccretion"
     out = run(doc(REV, put("us-gaap", tag, [4, 4, 5, 5, 6])))
-    assert out["da"]["tags"] == [tag] and stamps(out, "da") == {f"substitute:da:us-gaap:{tag}"}
+    assert out["da"]["tags"] == [tag] and stamps(out, "da") == {f"substitute:da:us-gaap:{tag};substitute_scope:da:producing_activities_only"}
 
 
 def test_amortization_alone_and_depletion_alone_are_not_da():
