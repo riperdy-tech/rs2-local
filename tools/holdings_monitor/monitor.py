@@ -1789,8 +1789,14 @@ def verified_commit(checks_dir, T):
     """The newest screener commit that `check_*.json` rows mark verdict PASS and pair PASS with run_updated_at <= T (the row's GitHub clock;
     a row without one cannot be placed before T and is not eligible), with its check file: {"commit", "check_file", "run_updated_at",
     "run_id"} or None. Newest = the latest run_updated_at; a tie goes to the later check file name."""
+    rows = verified_commits(checks_dir, T)
+    return rows[0] if rows else None
+
+
+def verified_commits(checks_dir, T):
+    """Every verified screener commit at or before T, newest first (the rule of verified_commit; one row per commit)."""
     T = parse_utc(T)
-    best = None
+    found = {}
     for p in sorted(Path(checks_dir).glob("check_*.json")):
         try:
             rows = json.loads(p.read_text(encoding="utf-8"))
@@ -1806,9 +1812,37 @@ def verified_commit(checks_dir, T):
                 u = parse_utc(upd)
             except (ValueError, TypeError):
                 continue
-            if u <= T and (best is None or (u, p.name) > best[0]):
-                best = ((u, p.name), {"commit": commit, "check_file": str(p), "run_updated_at": iso(u), "run_id": r.get("run_id")})
-    return best[1] if best else None
+            if u <= T and (commit not in found or (u, p.name) > found[commit][0]):
+                found[commit] = ((u, p.name), {"commit": commit, "check_file": str(p), "run_updated_at": iso(u), "run_id": r.get("run_id")})
+    return [v for _, v in sorted(found.values(), key=lambda x: x[0], reverse=True)]
+
+
+NO_PROFILE = "ticker_not_in_factor_profiles"
+PROFILE_LOOKBACK = 90                                                 # verified commits looked through for a name's last profile
+
+
+def commit_with_profile(checks_dir, T, ticker, repo, git_show=None, cache=None):
+    """The newest verified commit at or before T whose screener file still holds a profile of `ticker`, or None.
+
+    A held name can leave the screener's scored list after its formation; the packet builder then refuses it at the newest commit
+    (ticker_not_in_factor_profiles) and, counted as attempts, two days of that dropped its queued filings: the monitor stopped
+    watching exactly the names that had fallen out (first live morning, 2026-11-17: three of the book's names). The read is then built
+    at the last commit that knew the name; the row and the packet say which. `cache` {commit: set of tickers} is shared by one pass."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from qwen_c import packet
+    show = git_show or default_git_show
+    cache = cache if cache is not None else {}
+    for c in verified_commits(checks_dir, T)[:PROFILE_LOOKBACK]:
+        if c["commit"] not in cache:
+            try:
+                prof = (json.loads(show(repo, c["commit"], packet.FACTOR_PATH)) or {}).get("profiles")
+            except (MonitorError, ValueError):
+                prof = None
+            cache[c["commit"]] = set(prof) if isinstance(prof, dict) else set()
+        if ticker in cache[c["commit"]]:
+            return c
+    return None
 
 
 def qwen_versions(worktree):
@@ -1965,7 +1999,7 @@ def gpu_free():
 
 
 def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SCREENER_REPO, limit=None, dry_run=False, build=None,
-             runner=None, versions=None, clock=None, seed_base=SEED_BASE, crash_scan=True, waiting=None, max_minutes=None, gpu=None):
+             runner=None, versions=None, clock=None, seed_base=SEED_BASE, crash_scan=True, waiting=None, max_minutes=None, gpu=None, git_show=None):
     """One executor pass (WO_P3b1): the queue's entries in order (priority, then trigger time), at most `limit`, each at most once.
 
     For an entry: T = its packet_T; the newest verified commit at or before T (none: `failed`, no_verified_commit_at_T); the packet through
@@ -2003,7 +2037,7 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
             # Under the executor lock no qwen_c run of ours is in progress, so a `running` run with no finished_at is dead: record it now
             # (min age 0) rather than after the gather's 6 hours, or a later scan would mark a name pending_review over a newer good run.
             rep["crash_scan"] = mon.crash_scan(run_root, clock(), min_age_hours=0)
-        visited, began, transport = [], utc(clock()), 0
+        visited, began, transport, profiles = [], utc(clock()), 0, {}
         while limit is None or len(visited) < int(limit):
             e = next((x for x in mon.ordered() if x["ticker"] not in visited), None)
             if e is None:
@@ -2035,18 +2069,31 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
                 continue
             row.update(commit=c["commit"], check_file=c["check_file"])
             news_path, row["news_rows"] = news_file_for(mon, e, T)
+            err = None                             # (a name bound by `except ... as` is unbound when its block ends)
             try:
                 pk = build(t, T, c["commit"], c["check_file"], screener_repo, worktree,
                            **({"news_file": str(news_path)} if row["news_rows"] else {}))
             except PacketRefused as ex:
-                if any(k in str(ex) for k in TRANSPORT_MARKS):            # the network, not the name (cross-check 2026-11-16, S3): the
+                err = ex
+            if err is not None and NO_PROFILE in str(err):         # the name left the scored list: build at its last known profile
+                older = commit_with_profile(checks_dir, T, t, screener_repo, git_show, profiles)
+                if older is not None and older["commit"] != c["commit"]:
+                    try:
+                        pk = build(t, T, older["commit"], older["check_file"], screener_repo, worktree,
+                                   **({"news_file": str(news_path)} if row["news_rows"] else {}))
+                        row.update(commit=older["commit"], check_file=older["check_file"], profile_commit_fallback=c["commit"])
+                        err = None
+                    except PacketRefused as ex:
+                        err = ex
+            if err is not None:
+                if any(k in str(err) for k in TRANSPORT_MARKS):           # the network, not the name (cross-check 2026-11-16, S3): the
                     row["outcome"] = "waiting:packet_transport"            # entry stays queued and no attempt is counted; three in a
                     transport += 1                                         # row and the pass ends (the network is down)
                     if transport >= 3:
-                        rep["stopped"] = "packet_transport: " + str(ex)[-200:]
+                        rep["stopped"] = "packet_transport: " + str(err)[-200:]
                         break
                     continue
-                mon.fail_entry(t, T, "packet_refused", str(ex), now)
+                mon.fail_entry(t, T, "packet_refused", str(err), now)
                 row["outcome"] = "failed:packet_refused"
                 continue
             transport = 0
