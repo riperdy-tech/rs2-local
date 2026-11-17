@@ -557,3 +557,46 @@ def test_three_network_failures_in_a_row_end_the_pass(rig):
     rep = rig.go()
     assert rep["stopped"].startswith("packet_transport") and len(rep["entries"]) == 3 and rig.run_calls == []
     assert all(not e.get("attempts") for e in rig.state()["queue"].values())
+
+
+# ---------------------------------------------------------------- a held name that left the screener's scored list (2026-11-17)
+
+def test_a_name_with_no_profile_at_the_newest_commit_is_read_at_its_last_known_profile(rig, tmp_path):
+    checks = write_checks(tmp_path / "ck2", {"check_20261028T000000Z.json": [
+        check_row("old1", "2026-10-20T00:00:00Z"), check_row("old2", "2026-10-24T00:00:00Z"), check_row("new1", "2026-10-28T00:00:00Z")]})
+    have = {"old1": ["AAA", "BBB"], "old2": ["AAA", "BBB"], "new1": ["BBB"]}        # AAA left the scored list after old2
+    shown = []
+
+    def git_show(repo, commit, path):
+        shown.append(commit)
+        return json.dumps({"profiles": {t: {} for t in have[commit]}}).encode()
+    real = rig.build
+
+    def build(ticker, T, commit, record, repo, cwd, news_file=None):
+        if ticker not in have[commit]:
+            raise M.PacketRefused(f"ticker_not_in_factor_profiles: {ticker} has no profile in f.json at {commit}")
+        return real(ticker, T, commit, record, repo, cwd, news_file)
+    rig.queue(AAA, "a", 0, EARLY)
+    rig.queue(BBB, "b", 3, EARLY)
+    rep = rig.go(checks_dir=checks, build=build, git_show=git_show)
+    rows = {e["ticker"]: e for e in rep["entries"]}
+    assert rows["AAA"]["outcome"] == "resolved" and rows["AAA"]["commit"] == "old2" and rows["AAA"]["profile_commit_fallback"] == "new1"
+    assert rows["BBB"]["commit"] == "new1" and "profile_commit_fallback" not in rows["BBB"]
+    assert shown == ["new1", "old2"]                                      # newest first, stopped at the first that knows the name
+    assert not rig.state()["queue"] and "failed" not in rig.kinds()
+
+
+def test_a_name_no_verified_commit_knows_still_fails_as_before(rig):
+    rig.queue(AAA, "a", 0, EARLY)
+    rig.refuse["AAA"] = "ticker_not_in_factor_profiles: AAA has no profile in f.json at c0ffee"
+    rep = rig.go(git_show=lambda repo, commit, path: json.dumps({"profiles": {}}).encode())
+    assert rep["entries"][0]["outcome"] == "failed:packet_refused" and rig.state()["queue"]["AAA"]["attempts"] == 1
+
+
+def test_verified_commits_are_newest_first_and_one_row_per_commit(tmp_path):
+    ck = write_checks(tmp_path / "ck3", {
+        "check_20261020T000000Z.json": [check_row("aaa", "2026-10-20T10:00:00Z"), check_row("bbb", "2026-10-25T10:00:00Z")],
+        "check_20261026T000000Z.json": [check_row("bbb", "2026-10-25T10:00:00Z"), check_row("ccc", "2026-10-26T10:00:00Z", pair="FAIL")]})
+    rows = M.verified_commits(ck, "2026-10-27T00:00:00Z")
+    assert [r["commit"] for r in rows] == ["bbb", "aaa"] and rows[0]["check_file"].endswith("check_20261026T000000Z.json")
+    assert M.verified_commit(ck, "2026-10-27T00:00:00Z")["commit"] == "bbb" and M.verified_commits(ck, "2026-10-19T00:00:00Z") == []
