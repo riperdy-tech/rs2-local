@@ -531,12 +531,12 @@ def work(max_names, do_publish):
         swap()
         done = 0
         while max_names is None or done < max_names:
+            before = wait_for_quota()       # before the name is claimed: a claim held through a long quota wait is taken over by another arm, and the name was then read twice (2026-11-18)
             nxt = next_name()
             if nxt is None:
                 log("nothing to analyse")
                 break
             t, source, queued = nxt
-            before = wait_for_quota()
             log(f"{t} start ({source}) | left: " + ", ".join(f"{k} {before[k][0]:.1%}" for k in FLOORS))
             try:
                 st = analyze(t, source)
