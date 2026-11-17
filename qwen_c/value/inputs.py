@@ -19,9 +19,10 @@ from datetime import date, timedelta
 
 from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
-from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION, PRETAX_FROM_NI, SUBSTITUTE_PREFIX, has_stamp, taxonomy_of
+from qwen_c.value.facts import (DA_EXCLUDES_AMORTIZATION, ITEM_SUBSTITUTES, PRETAX_FROM_NI, SUBSTITUTE_PREFIX, SUBSTITUTE_SCOPE_PREFIX, has_stamp,
+                                  taxonomy_of)
 
-INPUTS_VERSION = "m3q.inputs.v12"   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v13"   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -184,8 +185,9 @@ def base(f, *, market_cap, bill_rate):
         raise DeskRefusal("facts_stale", f"concepts end before the latest revenue year {e0}: {stale}")
     if f.get("_latest_annual_period") and f["_latest_annual_period"] > e0:
         raise DeskRefusal("base_year_not_latest_annual", f"the newest eligible annual report is for {f['_latest_annual_period']}, the facts end {e0}")
-    stamps = ["rou_depreciation_not_separated", "leases_not_modeled"]
-    substitutes = sorted({x for v in f["revenue"]["values"] for x in (v.get("stamp") or "").split(";") if x.startswith(SUBSTITUTE_PREFIX)})
+    marks = {x for c in ("revenue", *ITEM_SUBSTITUTES) for v in (f.get(c) or {}).get("values", []) for x in (v.get("stamp") or "").split(";")}
+    stamps = ["rou_depreciation_not_separated", "leases_not_modeled"] + sorted(x for x in marks if x.startswith(SUBSTITUTE_SCOPE_PREFIX))     # WO_NC2
+    substitutes = sorted(x for x in marks if x.startswith(SUBSTITUTE_PREFIX))
     if any((v.get("form") or "").startswith(("20-F", "40-F")) for v in f["revenue"]["values"]):
         stamps.append("per_share_basis_unverified")                         # ruling 18: no ADS ratio is applied
     else:

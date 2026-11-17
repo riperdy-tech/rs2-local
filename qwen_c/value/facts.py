@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
 
-FACTS_VERSION = "m3q.facts.v9"   # v9 2026-11-17 WO_NC1: labelled fact substitutes (revenue: the largest narrower revenue line; aux period-end share counts and interest paid), consulted only where the exact concept is absent   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v10"   # v10 2026-11-18 WO_NC2: labelled substitutes for equity, capex, D&A, current items and pretax income (ITEM_SUBSTITUTES), consulted only where the exact concept lacks a needed year, one tag for every year   # v9 2026-11-17 WO_NC1: labelled fact substitutes (revenue: the largest narrower revenue line; aux period-end share counts and interest paid), consulted only where the exact concept is absent   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -130,6 +130,25 @@ REVENUE_SUBSTITUTES = [("ifrs-full", "RevenueFromRenderingOfServices", "USD"), (
                        ("ifrs-full", "RevenueFromSaleOfGoods", "USD"), ("ifrs-full", "RevenueFromSaleOfGold", "USD"),
                        ("us-gaap", "SalesRevenueServicesNet", "USD"), ("us-gaap", "SalesRevenueGoodsNet", "USD")]
 SUBSTITUTE_PREFIX = "substitute:"
+SUBSTITUTE_SCOPE_PREFIX = "substitute_scope:"
+# WO_NC2: concept -> [(taxonomy, tag or (tag, tag) summed, unit, scope or None)] in priority order; consulted only where the exact concept lacks a
+# year the valuation reads (_item_substitutes). Left out on purpose, so the refusal stands: AmortizationOfIntangibleAssets (only part of D&A) and
+# the depletion tags (no depreciation), and every tag not listed
+ITEM_SUBSTITUTES = {
+    "equity": [("us-gaap", "PartnersCapital", "USD", None),
+               ("us-gaap", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "USD", "includes_nci")],
+    "capex": [("ifrs-full", "PurchaseOfMiningAssets", "USD", None), ("us-gaap", "PropertyPlantAndEquipmentAdditions", "USD", None),
+              ("us-gaap", "PaymentsForProceedsFromProductiveAssets", "USD", "net")],      # net of disposals: only while a net outflow in every year read
+    "da": [("us-gaap", "ResultsOfOperationsDepreciationDepletionAmortizationAndAccretion", "USD", None)],
+    "assets_current": [("ifrs-full", "CurrentAssetsOtherThanAssetsOrDisposalGroupsClassifiedAsHeldForSaleOrAsHeldForDistributionToOwners", "USD",
+                        "excludes_held_for_sale")],
+    "liabilities_current": [("ifrs-full", "CurrentLiabilitiesOtherThanLiabilitiesIncludedInDisposalGroupsClassifiedAsHeldForSale", "USD",
+                             "excludes_held_for_sale")],
+    "pretax_income": [("us-gaap", ("IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign"),
+                       "USD", None)],      # both parts must be filed for a year
+}
+NET_SCOPE = "net"
+SUBSTITUTE_WINDOW, SUBSTITUTE_MIN_POOL = 5, 3     # inputs.POOL_YEARS and MIN_POOL_YEARS: the years capex and D&A are pooled over
 AUX_CONCEPTS = {"income_continuing", "income_discontinued", "profit_loss_consolidated", "basic_shares_ifrs", "dilutive_effect_ifrs",
                 "equity_incl_nci", "nci_equity", "cost_excl_da", "lease_interest_ifrs16", "lease_liabilities_ifrs16", "lease_liabilities_current_ifrs16",
                 "financing_interest",
@@ -209,13 +228,14 @@ def _series(rows, kind, eligible, known, T):
     return {e: v[1] for e, v in by_end.items()}
 
 
-def annual_facts(cf, subs, T, years=8, substitute_revenue=False):
+def annual_facts(cf, subs, T, years=8, substitute_revenue=False, substitute_items=False):
     """{concept: {"tags", "values": [{end, start, value, tag, accn, form, filed, stamp}] oldest first (at most `years`)}} plus
     {"_absent": {concept: reason}} and {"_stale": {concept: its latest end}} for a concept ending before the latest revenue year.
     Net income from ProfitLoss (consolidated) takes the basis, as filed or less the noncontrolling interest, that reconciles with
     diluted EPS x diluted shares within 1% (stamped); neither: left as filed, stamped `profitloss_basis_unverified`. Then the F6 derived
     series (_derive). substitute_revenue (WO_NC1, the operating route only): where no total-revenue tag resolves for any year, the single
     largest narrower revenue line (REVENUE_SUBSTITUTES), one tag for every year, each value stamped `substitute:revenue:<taxonomy>:<tag>`.
+    substitute_items (WO_NC2, the operating route only): the ITEM_SUBSTITUTES, after the derived series.
     cf, subs: the parsed companyfacts and submissions JSON; T: aware."""
     eligible = eligible_accessions(subs, T)
     known = {r["accession"] for r in packet._filing_rows(subs)}
@@ -269,6 +289,8 @@ def annual_facts(cf, subs, T, years=8, substitute_revenue=False):
         else:
             v["stamp"] = "profitloss_basis_unverified"
     _derive(out, absent, cf, eligible, known, T, years)
+    if substitute_items:
+        _item_substitutes(out, absent, facts, eligible, known, T, years)
     latest = max((v["end"] for v in out.get("revenue", {}).get("values", [])), default=None)
     stale = {c: d["values"][-1]["end"] for c, d in out.items()
              if latest and d["values"][-1]["end"] < latest and c != "nci_income" and c not in AUX_CONCEPTS}
@@ -302,6 +324,46 @@ def _revenue_substitute(facts, eligible, known, T, years):
     vals = [{"end": e, "start": f.get("start"), "value": float(f["val"]), "tag": tag, "accn": f.get("accn"), "form": f.get("form"),
              "filed": f.get("filed"), "stamp": _stamp(f.get("stamp"), stamp)} for e, f in sorted(series[top][1].items())][-years:]
     return {"tags": [tag], "values": vals}
+
+
+def _item_series(facts, tax, tag, unit, kind, eligible, known, T):
+    """{end: fact} of one substitute: the annual series of its tag, or, for a pair of tags, the sum over the years both are filed."""
+    tags = (tag,) if isinstance(tag, str) else tag
+    parts = [_series((((facts.get(tax) or {}).get(t) or {}).get("units") or {}).get(unit) or [], kind, eligible, known, T) for t in tags]
+    out = {}
+    for e in set.intersection(*(set(p) for p in parts)):
+        fs = [p[e] for p in parts]
+        out[e] = dict(max(fs, key=lambda f: (f.get("filed") or "", f.get("accn") or "")), val=sum(float(f["val"]) for f in fs))
+    return out
+
+
+def _item_substitutes(out, absent, facts, eligible, known, T, years):
+    """WO_NC2: for each concept of ITEM_SUBSTITUTES whose exact series lacks a year the valuation reads (the base year; equity also the year
+    before; capex and D&A at least SUBSTITUTE_MIN_POOL of the last SUBSTITUTE_WINDOW fiscal years), the first listed tag that covers those years
+    replaces the series WHOLE (one tag for every year, never a mix with the exact tag). No tag qualifies: nothing changes. A filed 0 is a value,
+    so a year with an exact 0 is not missing. Each value is stamped substitute:<concept>:<taxonomy>:<tag(s)> and, where the tag differs in kind
+    from the concept, substitute_scope:<concept>:<scope>. A net tag (scope `net`) counts only while positive (a net outflow) in every year read."""
+    ends = sorted(v["end"] for v in (out.get("revenue") or {}).get("values", []))[-SUBSTITUTE_WINDOW:]
+    if not ends:
+        return
+    for concept, cands in ITEM_SUBSTITUTES.items():
+        need = {ends[-1], ends[-2]} if concept == "equity" and len(ends) > 1 else {ends[-1]}
+        min_years = SUBSTITUTE_MIN_POOL if concept in ("capex", "da") else 1
+        if need <= {v["end"] for v in (out.get(concept) or {}).get("values", [])}:
+            continue
+        for tax, tag, unit, scope in cands:
+            got = _item_series(facts, tax, tag, unit, CONCEPTS[concept][0], eligible, known, T)
+            if not need <= set(got) or len(set(got) & set(ends)) < min_years:
+                continue
+            if scope == NET_SCOPE and any(not got[e]["val"] > 0 for e in ends if e in got):
+                continue
+            name = tag if isinstance(tag, str) else "+".join(tag)
+            marks = [f"{SUBSTITUTE_PREFIX}{concept}:{tax}:{name}"] + ([f"{SUBSTITUTE_SCOPE_PREFIX}{concept}:{scope}"] if scope else [])
+            vals = [{"end": e, "start": f.get("start"), "value": float(f["val"]), "tag": name, "accn": f.get("accn"), "form": f.get("form"),
+                     "filed": f.get("filed"), "stamp": _stamp(f.get("stamp"), *marks)} for e, f in sorted(got.items())][-years:]
+            out[concept] = {"tags": [name], "values": vals}
+            absent.pop(concept, None)
+            break
 
 
 # F11 (F_SPEC_valuation_menu v1.3): year 1's year-to-date pair. A 10-Q's year-to-date period starts on the first day of its fiscal year; its
@@ -507,8 +569,8 @@ def fetch(cik, T, *, online, root=None):
     return docs["companyfacts"], docs["submissions"], prov
 
 
-def build(cik, T, *, online, root=None, years=8, substitute_revenue=False):
+def build(cik, T, *, online, root=None, years=8, substitute_revenue=False, substitute_items=False):
     cf, subs, prov = fetch(cik, T, online=online, root=root)
-    out = annual_facts(cf, subs, T, years=years, substitute_revenue=substitute_revenue)
+    out = annual_facts(cf, subs, T, years=years, substitute_revenue=substitute_revenue, substitute_items=substitute_items)
     out["_provenance"] = dict(prov, facts_version=FACTS_VERSION, T=T.astimezone(timezone.utc).isoformat())
     return out
