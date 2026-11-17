@@ -123,9 +123,10 @@ def test_failed_run_keeps_the_last_good_analysis_and_marks_pending_review(root, 
     mon.resolve(make_run(tmp_path, run_no=1, tc_claims=[tc("p1", "changed")]), now=AFTER)
     good = mon._load()["names"]["AAA"]["last_good"]
     queued(mon, "2026-10-31T10:00:00Z")
-    line = mon.resolve(make_run(tmp_path, run_no=2, T="2026-11-01T00:00:00Z", status="analysis_incomplete", finished="2026-11-01T01:00:00Z"),
+    # a run that did not answer at all (since S2 of 2026-11-16 an incomplete run whose event task is answered is read, not failed)
+    line = mon.resolve(make_run(tmp_path, run_no=2, T="2026-11-01T00:00:00Z", status="failed", finished="2026-11-01T01:00:00Z"),
                        now=AFTER + timedelta(days=2))
-    assert line["kind"] == "failed" and line["cause"] == "run_status_analysis_incomplete" and line["kept_last_good_run"] == "AAA_1"
+    assert line["kind"] == "failed" and line["cause"] == "run_status_failed" and line["kept_last_good_run"] == "AAA_1"
     n = mon._load()["names"]["AAA"]
     assert n["last_good"] == good and n["state"] == "thesis_changed" and n["pending_review"] is True and n["stale_analysis"] is False
     assert n["consecutive_unusable"] == 1
@@ -226,3 +227,30 @@ def test_a_warning_says_whether_its_event_is_new_to_this_name(root, tmp_path):
     assert first["warning_kind"] == "event_found" and first["warning_new_events"] == 1 and first["warning_cites_trigger"] is None
     again = q1(mon, tmp_path, 2, [claim()])                               # the same event at a later read: still a warning, marked as not new
     assert again["warning_kind"] == "event_found" and again["warning_new_events"] == 0
+
+
+def test_an_incomplete_run_with_the_event_task_answered_is_read(root, tmp_path):
+    mon = M.Monitor(root)                                                 # cross-check 2026-11-16, S2: helpers' incomplete task is `risks`
+    line = mon.resolve(make_run(tmp_path, run_no=1, status="analysis_incomplete", me_claims=[claim()]), now=AFTER)
+    assert line["kind"] == "resolved" and line["warning_kind"] == "event_found" and line["status"] == "analysis_incomplete"
+
+
+def test_an_incomplete_thesis_change_is_unresolved_never_intact(root, tmp_path):
+    import json
+    d = make_run(tmp_path, run_no=1, status="analysis_incomplete", tc_claims=[tc("p1", "unchanged"), tc("p2", "unchanged")])
+    man = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+    man["incomplete_tasks"] = {"thesis_change": "malformed"}
+    (d / "manifest.json").write_text(json.dumps(man), encoding="utf-8")
+    line = M.Monitor(root).resolve(d, now=AFTER)
+    assert line["kind"] == "resolved" and line["thesis_compare"] == "unresolved" and "thesis_unresolved" in line["pending_reasons"]
+    assert line["pending_review"] is True
+
+
+def test_an_incomplete_run_without_the_event_task_still_fails(root, tmp_path):
+    import json
+    d = make_run(tmp_path, run_no=1, status="analysis_incomplete")
+    man = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+    man["incomplete_tasks"] = {"material_events": "malformed"}
+    (d / "manifest.json").write_text(json.dumps(man), encoding="utf-8")
+    line = M.Monitor(root).resolve(d, now=AFTER)
+    assert line["kind"] == "failed" and line["cause"] == "run_status_analysis_incomplete"

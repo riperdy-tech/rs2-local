@@ -710,6 +710,13 @@ def gather_name(info, gstate, src, now, peers=None, first_since=None):
     return res, g
 
 
+def usable_incomplete(man):
+    """A run that ended `analysis_incomplete` with material_events answered is read, as the formation runner reads it
+    (formation_run.py: me_ok): the event question is the monitor's first question, and a retry replays the same packet and seeds
+    (cross-check 2026-11-16, S2). A thesis_change left incomplete is then `unresolved`, never `intact` (see _resolved)."""
+    return man.get("status") == "analysis_incomplete" and "material_events" not in (man.get("incomplete_tasks") or {})
+
+
 def filing_effective(accepted_utc):
     """The time from which the packet builder admits a filing accepted at `accepted_utc`: qwen_c.packet.effective_at, the single
     owner of that rule (the open of the first full NYSE session after the acceptance's Eastern date; one more at or after 17:30 ET).
@@ -1256,7 +1263,7 @@ class Monitor:
             cause, refused, analysis, packet = None, False, None, None
             if not man.get("finished_at"):
                 cause = "crashed_no_finished_at"
-            elif man.get("status") != "complete":
+            elif man.get("status") != "complete" and not usable_incomplete(man):
                 cause = f"run_status_{man.get('status')}"
             else:
                 try:
@@ -1345,6 +1352,8 @@ class Monitor:
             compare = "not_applicable"
         else:
             compare = "not_run"
+        if "thesis_change" in (man.get("incomplete_tasks") or {}):      # asked and not answered: the recorded thesis is neither confirmed nor changed
+            compare = "unresolved"
         if q1["verdict"] == "event_found":
             state = "event_found"
         elif q1["verdict"] == "news_event":
@@ -1764,6 +1773,11 @@ INFRA_REFUSALS = ("gpu_busy", "gpu_state_unreadable", "model_show_failed")   # t
 PACKET_TIMEOUT_S = 1800
 
 
+# A packet build that failed on the network: the SEC store's fetch error, a timeout, a connection error. On the first live night
+# seven list analyses were refused on SEC 503 answers; counted as attempts, two such days would drop a queued trigger.
+TRANSPORT_MARKS = ("FetchFailed", "timed out", "URLError", "ConnectionError", "ConnectionResetError", "TimeoutError")
+
+
 class PacketRefused(MonitorError):
     """The packet builder refused (or failed to build) a packet; the text is the refusal."""
 
@@ -1986,7 +2000,7 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
             # Under the executor lock no qwen_c run of ours is in progress, so a `running` run with no finished_at is dead: record it now
             # (min age 0) rather than after the gather's 6 hours, or a later scan would mark a name pending_review over a newer good run.
             rep["crash_scan"] = mon.crash_scan(run_root, clock(), min_age_hours=0)
-        visited, began = [], utc(clock())
+        visited, began, transport = [], utc(clock()), 0
         while limit is None or len(visited) < int(limit):
             e = next((x for x in mon.ordered() if x["ticker"] not in visited), None)
             if e is None:
@@ -2022,9 +2036,17 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
                 pk = build(t, T, c["commit"], c["check_file"], screener_repo, worktree,
                            **({"news_file": str(news_path)} if row["news_rows"] else {}))
             except PacketRefused as ex:
+                if any(k in str(ex) for k in TRANSPORT_MARKS):            # the network, not the name (cross-check 2026-11-16, S3): the
+                    row["outcome"] = "waiting:packet_transport"            # entry stays queued and no attempt is counted; three in a
+                    transport += 1                                         # row and the pass ends (the network is down)
+                    if transport >= 3:
+                        rep["stopped"] = "packet_transport: " + str(ex)[-200:]
+                        break
+                    continue
                 mon.fail_entry(t, T, "packet_refused", str(ex), now)
                 row["outcome"] = "failed:packet_refused"
                 continue
+            transport = 0
             key = run_key(e["cik"], pk["packet_sha256"], prompt, contract, pk["builder_version"])
             row["run_key"] = key
             if mon.already_ran(key):

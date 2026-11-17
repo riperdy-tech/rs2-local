@@ -534,3 +534,26 @@ def test_the_pass_does_not_start_while_another_job_holds_the_card(rig):
     rep = rig.go(gpu=lambda: (False, "9000 MiB in use with no Ollama model loaded"))      # cross-check 2026-11-16, S7
     assert rep["stopped"].startswith("gpu_foreign") and rig.run_calls == [] and rig.build_calls == []
     assert not rig.state()["queue"]["AAA"].get("attempts") and "failed" not in rig.kinds()
+
+
+def test_a_packet_build_that_failed_on_the_network_counts_no_attempt_and_the_pass_goes_on(rig):
+    rig.queue(AAA, "a", 0, EARLY)
+    rig.queue(BBB, "b", 3, EARLY)
+    rig.refuse["AAA"] = "qwen_c.sec_store.FetchFailed: fetch failed: status=503 https://example.invalid/x"     # cross-check 2026-11-16, S3
+    rep = rig.go()
+    assert {e["ticker"]: e["outcome"] for e in rep["entries"]}["AAA"] == "waiting:packet_transport" and rep["stopped"] is None
+    assert [r[0] for r in rig.run_calls] == ["BBB"]
+    q = rig.state()["queue"]
+    assert "AAA" in q and not q["AAA"].get("attempts") and "failed" not in rig.kinds("AAA")
+    rig.refuse["AAA"] = "packet has no evidence items"                    # a refusal that is the name's own still counts
+    rig.go()
+    assert rig.state()["queue"]["AAA"]["attempts"] == 1
+
+
+def test_three_network_failures_in_a_row_end_the_pass(rig):
+    for info, tid in ((AAA, "a"), (BBB, "b"), (CCC, "g"), (DDD, "d")):
+        rig.queue(info, tid, 0, EARLY)
+        rig.refuse[info["ticker"]] = "packet build timed out after 900 s"
+    rep = rig.go()
+    assert rep["stopped"].startswith("packet_transport") and len(rep["entries"]) == 3 and rig.run_calls == []
+    assert all(not e.get("attempts") for e in rig.state()["queue"].values())
