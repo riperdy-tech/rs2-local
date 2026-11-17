@@ -59,7 +59,11 @@ EFFORT = "high"                       # operator 2026-11-16: thinking effort is 
 # reserve needed). opus: the operator is not using Claude Code until the first fill is done (2026-11-16), so only what the
 # coordinating session needs to keep supervising is left.
 ARMS = {"gemini": {"model": "gemini-4-hydrogen-high", "floors": {"gemini-5h": 0.08, "gemini-weekly": 0.025}},
-        "opus": {"model": "claude-opus-5-5", "floors": {"claude-5h": 0.10, "claude-weekly": 0.05}}}
+        "opus": {"model": "claude-opus-5-5", "floors": {"claude-5h": 0.10, "claude-weekly": 0.05}},
+        # sonnet: the same route as opus with the smaller model, at the same effort (operator 2026-11-17: test whether it gets close
+        # at less quota). Not scheduled; an arm only so a test runs the worker's own code.
+        "sonnet": {"model": "claude-sonnet-5-5", "floors": {"claude-5h": 0.10, "claude-weekly": 0.05}}}
+CLAUDE_ARMS = ("opus", "sonnet")      # answered through the Claude Code command line, paced on the Claude subscription's meter
 ARM = "gemini"
 GEM_MODEL = ARMS[ARM]["model"]
 SITE = ROOT / "cache" / "gemini_site"
@@ -130,7 +134,7 @@ def meter_claude():
 
 def meter():
     """{bucket id: (fraction of the allowance left, reset time ISO or None)} from the account's own usage report (no tokens)."""
-    if ARM == "opus":
+    if ARM in CLAUDE_ARMS:
         return meter_claude()
     out = _agy(["-p", "/usage", "--output-format", "json"], timeout=180).stdout
     d = json.loads(out[out.index("{"):])
@@ -206,7 +210,7 @@ def gemini_call(body, url, timeout):
         t0 = time.time()
         res = None
         try:
-            res, detail = (_ask_claude if ARM == "opus" else _ask_gemini)(line, timeout)
+            res, detail = (_ask_claude if ARM in CLAUDE_ARMS else _ask_gemini)(line, timeout)
         except subprocess.TimeoutExpired:
             detail = f"{ARM} call timed out"
         u = (res or {}).get("usage") or {}
@@ -227,7 +231,7 @@ def swap():
     """Gemini in Qwen's place, in this process only."""
     runner.call = gemini_call
     runner.gpu_preflight = lambda url: []
-    via = "the Claude Code command line" if ARM == "opus" else "agy"
+    via = "the Claude Code command line" if ARM in CLAUDE_ARMS else "agy"
     runner.model_show = lambda url: {"swapped_for": f"{GEM_MODEL} via {via}, effort {EFFORT}"}
     runner.ollama_raw.ollama_version = lambda base: f"not used ({ARM})"
     runner.MODEL = f"{GEM_MODEL} via {via}"
