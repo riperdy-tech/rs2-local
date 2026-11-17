@@ -46,7 +46,7 @@ def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow
     if family not in ROUTED + FINANCIAL:
         raise desk.DeskRefusal("family_not_routed", f"family {family!r}: only {ROUTED + FINANCIAL} are valued by this runner")
     T = runner._parse_t(packet["decision_time_utc"])
-    f = facts.build(cik, T, online=online, root=root)
+    f = facts.build(cik, T, online=online, root=root, substitute_revenue=family not in FINANCIAL)     # WO_NC1: the operating route only
     if family in FINANCIAL:
         return _prepare_financial(f, T, sector, allow_after_T)
     fy0 = max(v["end"] for v in (f.get("revenue") or {}).get("values", [])) if f.get("revenue") else None
