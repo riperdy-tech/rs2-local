@@ -581,14 +581,16 @@ def _pack_and_reference(monkeypatch, op_margins):
         calls.append(out)
         return out
     monkeypatch.setattr(cr, "build", recording)
-    pack = _synthetic_pack(monkeypatch, op_margins=op_margins)
+    pack = _synthetic_pack(monkeypatch, op_margins=op_margins, pilot_arm="rev22")      # revision 24 prints neither the reference line nor the defaults
     return pack, calls[-1]
 
 
-def _desk_value(text, ref):
+def _desk_value(facts, ref):
     """The desk's Base value on the reference's own inputs: its fiscal-year base and growth path at full precision, and the
-    facts as the DEFAULTS block prints them (the precision the desk receives)."""
-    parsed = pack_facts.from_text(text)
+    facts as the DEFAULTS block prints them (the precision the desk receives). Since revision 24 step 2c the desk deducts working capital on
+    the consensus revenue path and owner earnings the facts' long_run keeps unprinted (revenue_path, oe_path, oe_base), which a read of the
+    pack's text no longer carries; so the pack's own facts are the desk's context here (the text's parity with them is asserted by the caller)."""
+    parsed = facts
     lv = ref["levels"]
     base = ref["base_cf"] / B
     ctx = {"price": 1e6, "shares_default_b": parsed["shares_default"] / B, "coe_anchor": parsed["coe_anchor"],
@@ -622,7 +624,7 @@ LOSS_RECORD = {2018: -0.05, 2019: -0.04, 2020: -0.06, 2021: -0.03, 2022: -0.05, 
     (LOSS_RECORD, "down"),
 ], ids=["peak-swing", "trough-trend", "loss-record"])
 def test_the_desk_run_on_the_references_own_inputs_equals_the_reference_to_half_a_cent(screener_data_stub, monkeypatch,
-                                                                                    op_margins, direction):
+                                                                                    op_margins, direction, anchors_of_the_frozen_day):
     pack, ref = _pack_and_reference(monkeypatch, op_margins)
     f = pack.facts
     assert f["reference_status"] == "used", f["reference_status"]
@@ -633,7 +635,7 @@ def test_the_desk_run_on_the_references_own_inputs_equals_the_reference_to_half_
     assert lr["om_trend"] is not None and lr["r_tc"] is not None and "r_blend" not in lr
     assert f["reference_base_b"] == pack_facts.q_b(ref["base_cf"] / B)
     assert pack_facts.parity(f, pack_facts.from_text(str(pack))) == []
-    dcf, _ = _desk_value(str(pack), ref)
+    dcf, _ = _desk_value(f, ref)
     assert "working_capital_deducted" in dcf["stamps"]
     assert dcf["long_run"]["margin_ratio"] == pytest.approx(ref["margin_ratio"], abs=1e-4)
     assert abs(dcf["per_share_iv"] - ref["value"]) <= 0.0051, (dcf["per_share_iv"], ref["value"])
@@ -646,7 +648,7 @@ def test_the_desk_run_on_the_references_own_inputs_equals_the_reference_to_half_
 # ---- F5: a zero or negative value is never a reference ---------------------------------------------------------------------
 
 @pytest.mark.parametrize("forced", [-12.34, 0.0, 0.004, -0.004])
-def test_a_value_of_zero_or_less_prints_no_number_has_status_not_meaningful_and_is_not_fenced(screener_data_stub, monkeypatch, forced):
+def test_a_value_of_zero_or_less_prints_no_number_has_status_not_meaningful_and_is_not_fenced(screener_data_stub, monkeypatch, forced, anchors_of_the_frozen_day):
     real = cr.build
 
     def negative(*a, **k):
@@ -655,7 +657,7 @@ def test_a_value_of_zero_or_less_prints_no_number_has_status_not_meaningful_and_
     monkeypatch.setattr(cr, "build", negative)
     fenced = []
     monkeypatch.setattr(cap, "_reference_outside_fence", lambda value, band: (fenced.append(value), (None, None))[1])
-    pack = _synthetic_pack(monkeypatch)
+    pack = _synthetic_pack(monkeypatch, pilot_arm="rev22")        # revision 24 prints no reference line; the rev22 arm still does
     f, text = pack.facts, str(pack)
     assert f["reference_status"] == "not_meaningful" and f["consensus_implied_value"] is None
     assert fenced == [], "the fence is not evaluated for a value that is not meaningful"
@@ -675,8 +677,8 @@ def test_a_value_of_zero_or_less_prints_no_number_has_status_not_meaningful_and_
     assert stamps["consensus_reference_status"] == "not_meaningful"
 
 
-def test_a_positive_value_still_prints_and_is_used(screener_data_stub, monkeypatch):
-    pack = _synthetic_pack(monkeypatch)
+def test_a_positive_value_still_prints_and_is_used(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
+    pack = _synthetic_pack(monkeypatch, pilot_arm="rev22")        # revision 24 prints no reference line; the rev22 arm still does
     assert pack.facts["reference_status"] == "used" and pack.facts["consensus_implied_value"] > 0
     # brief F2.3: the reference_status explanation now names the status, so the words occur once, there, and the printed
     # not-meaningful line does not

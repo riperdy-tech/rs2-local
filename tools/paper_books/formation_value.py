@@ -27,7 +27,10 @@ outcome (timeout, infra_retry, infra_fatal) is moved aside and the pass stops (e
 The index <books>/m3o/value/formation_<T>.json records per slot: status, reason, result path, result sha256, seconds (tmp + replace
 writes; resumable: a filled slot is never re-run). One instance at a time (value.lock beside formation_run's runner.lock).
 When every slot is filled, formation_consensus.main writes consensus_<T>.json (design revision 2, rule (a): the value of record from
-the two seeds, no model call), then value_finished_<T>.flag is written.
+the two seeds, no model call), then value_finished_<T>.flag is written, then formation_fv.main writes fv_<T>.json (PREREG_m3o_bookV; once,
+later passes find it). The names valued are the map's names plus its "fv_held" entries that have a packet (their index entry carries
+"role": "fv_held"; a ticker in both lists stops). A failure of formation_fv is printed and the pass exits 8: the valuations and the flag
+stand, FV has no snapshot for the formation until a human looks.
 """
 import argparse
 import hashlib
@@ -46,6 +49,11 @@ sys.path.insert(0, str(HERE))
 import book_paths  # noqa: E402
 import formation_run as FR  # noqa: E402
 import formation_consensus as FC  # noqa: E402
+try:                                       # FV's snapshot is secondary: a failure there never stops the valuations of record
+    import formation_fv  # noqa: E402
+    FV_IMPORT_ERROR = None
+except (Exception, SystemExit) as _e:      # noqa: BLE001
+    formation_fv, FV_IMPORT_ERROR = None, f"{type(_e).__name__}: {_e}"
 import paths  # noqa: E402
 
 ROOT = HERE.parents[1]                                                    # the rs2-local repo root: qwen_c runs from here
@@ -300,13 +308,20 @@ def one_pass():
     if idx.get("closure", {"sha256": csha})["sha256"] != csha:
         sys.exit("STOP: the pinned closure differs from the one the index was filled with")
     idx["closure"] = {"path": str(cpath), "sha256": csha}
-    todo = sorted(t for t, n in m["names"].items() if n.get("packet") and n.get("state") != "operator_excluded" and t not in EXCLUDED)
+    held = {e["ticker"]: e for e in m.get("fv_held") or []}               # PREREG_m3o_bookV: names FV holds outside the book are valued too
+    both = sorted(set(held) & set(m["names"]))
+    if both:
+        sys.exit(f"STOP: {both} are in the book and in fv_held of {mpath.name}")
+    entries = {**m["names"], **held}
+    todo = sorted(t for t, n in entries.items() if n.get("packet") and n.get("state") != "operator_excluded" and t not in EXCLUDED)
     stocks = None
     for t in todo:
         if t not in idx["names"]:
             stocks = stocks if stocks is not None else stocks_rows(m["output_commit"])
             try:
-                idx["names"][t] = fields(m["names"][t], stocks, T)
+                idx["names"][t] = fields(entries[t], stocks, T)
+                if t in held:
+                    idx["names"][t]["role"] = "fv_held"
             except Exception as e:  # noqa: BLE001  SEC unreachable or similar: nothing is recorded, the next pass measures again
                 print(t, f"family not measured ({type(e).__name__}: {str(e)[:200]}): stopping", flush=True)
                 return 6
@@ -383,6 +398,13 @@ def one_pass():
     if not a.ticker and a.limit is None and all(str(s) in idx["names"][t]["slots"] for t in todo for s in SEEDS):
         FC.main(a.formation_T)                # design revision 2, rule (a): the value of record from the two seeds, before the flag
         (STATE / f"value_finished_{a.formation_T}.flag").write_text("done")
+        try:                                  # PREREG_m3o_bookV: FV's snapshot, written once (later passes of the task find it: "unchanged")
+            if formation_fv is None:
+                raise RuntimeError(f"formation_fv could not be imported: {FV_IMPORT_ERROR}")
+            formation_fv.main(a.formation_T)
+        except (Exception, SystemExit) as e:  # noqa: BLE001  the valuations and their flag are done; FV has no snapshot until a human looks
+            print(f"FV SNAPSHOT NOT WRITTEN for {a.formation_T}: {type(e).__name__}: {e}", flush=True)
+            return 8
     return 0
 
 

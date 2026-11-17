@@ -34,7 +34,7 @@ def test_the_task_states_the_direction_band_the_takeover_rule_and_null_reasons()
     assert "anchor Bull and Bear to the top and bottom of the company's own guidance range" in cap.TASK
 
 
-def test_the_base_year_check_and_eps_analyst_count(screener_data_stub, monkeypatch):
+def test_the_base_year_check_and_eps_analyst_count(screener_data_stub, monkeypatch, clock_of_the_frozen_day):
     import rs2_data
     en = {"_ticker": "GEV", "_fetched_at": "2026-09-24T12:00:00",
           "estimates": {"0y": {"eps": {"avg": 20.0, "low": 18.0, "high": 22.0, "analysts": 25, "growth": 0.13,

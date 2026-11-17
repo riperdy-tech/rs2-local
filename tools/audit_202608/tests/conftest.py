@@ -72,3 +72,56 @@ def screener_data_stub(tmp_path, monkeypatch):
     # honest behaviour: the cache is keyed on a ticker, but the value depends on the directory.
     cap._SEC_CACHE.clear()
     return sd
+
+
+@pytest.fixture
+def anchors_of_the_frozen_day(tmp_path, monkeypatch):
+    """The MRI capital-market anchors as they stood on the day these tests freeze the clock (2026-09-27), written to a folder of their own.
+
+    Tests that freeze `datetime` at 2026-09-27 used to read the anchors from the live MRI outputs folder. Once MRI republished with an
+    `asof` after the frozen day, the anchor's age came out negative and `rs2_data.usable_anchor` (0 to anchor_max_age_days) rejected it, so
+    the reference silently became "not_available"; and the literal rates the tests pin (the 8.98% cost of equity) are September's, not today's.
+    The legs below are the ones the committed golden pack (fixture_data/golden_pack_GEV_rev22.md, "Rates:" and "COE ANCHOR" lines) printed:
+    rf 5.01%, real 10y 2.68%, breakeven 2.34%, market premium 4.35%, market cost of equity 9.36%, the industrials loading 0.868, the growth
+    anchor 3.75%, and the inflation trend (CPI 3.35%, PCE 3.70%, the golden pack's SECTION 1.6 line). `nominal_gdp_trend` 4.46% is the value test_rev19_text.py uses. The sector bands are left out (the bands accessor then
+    returns {}, the pack's own "not available" reading). `rs2_data.CONFIG["anchors_dir"]` is the seam the code reads (`anchors_dir()`);
+    the per-process anchor cache is reset so this folder is read."""
+    import rs2_data
+
+    d = tmp_path / "anchors_frozen_day"
+    d.mkdir()
+    cost = {"anchor_id": "cost_of_capital", "asof": "2026-09-26", "degraded": False, "erp_basis": "universe",
+            "risk_free": {"nominal_10y": 0.0501, "real_10y": 0.0268, "breakeven_10y": 0.0234},
+            "implied_erp": 0.0435, "implied_cost_of_equity": 0.0936, "sector_loadings": {"industrials": 0.868},
+            "inflation": {"cpi_yoy": 0.0335, "pce_yoy": 0.0370}}
+    growth = {"anchor_id": "long_run_growth", "asof": "2026-09-23", "degraded": False,
+              "terminal_g_suggestion": 0.0375, "nominal_gdp_trend": 0.0446}
+    (d / rs2_data.ANCHOR_FILES["cost_of_capital"]).write_text(json.dumps(cost), encoding="utf-8")
+    (d / rs2_data.ANCHOR_FILES["long_run_growth"]).write_text(json.dumps(growth), encoding="utf-8")
+    monkeypatch.setitem(rs2_data.CONFIG, "anchors_dir", str(d))
+    monkeypatch.setattr(rs2_data, "_ANCHOR_CACHE", None)
+    yield d
+
+
+@pytest.fixture
+def clock_of_the_frozen_day(monkeypatch):
+    """The pack's clock frozen at 2026-09-27 12:00, the day the committed September fixtures (a consensus record fetched 2026-09-24, a price
+    target dated the same week) were current. The 45-day staleness rules read `datetime.now()` in these modules, so a fixture that is only
+    "fresh" on its own date goes stale on the real clock and the line it feeds is suppressed. The same patch, on the same modules, as
+    test_pack_facts.py's `frozen_env` and test_review_b1_b4.py's `_FixedNow` (those two stay local to their files)."""
+    from datetime import datetime as _real_datetime
+    import capability_test as cap
+    import catalyst_research
+    import rs2_data
+    import valuation_backbone
+
+    fixed = _real_datetime(2026, 9, 27, 12, 0, 0)
+
+    class _Frozen(_real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz) if tz is not None else fixed
+
+    for mod in (cap, rs2_data, catalyst_research, valuation_backbone):
+        monkeypatch.setattr(mod, "datetime", _Frozen, raising=False)
+    return fixed

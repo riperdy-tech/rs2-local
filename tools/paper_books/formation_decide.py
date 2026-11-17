@@ -7,6 +7,10 @@ Run check_new_runs.py first (it archives and verifies the new runs). The verifie
 overwritten: the same decision prints "unchanged"; a different decision run stops (WO_O2 step 5 re-queues by hand, with a record).
 From PREREG_m3o_bookD's series_start the map also holds "candidates" (paper book FD): the decision run's watchlist names, not in the book and
 not operator-excluded, by fct_rank then ticker, the first `count` of them; formation_packets.py builds their packets.
+From PREREG_m3o_bookV's series_start the map also holds "fv_held" (paper book FV): the names FV holds now that are not in the new book and not
+operator-excluded, from m3o_engine.run on the standard folders (the recomputation, not the stored ledger); formation_packets.py builds their
+packets and formation_value.py values them. FV never blocks the formation: if the engine stops or raises, "fv_held" is null and
+"fv_held_error" says why, and the map is written as it would be without FV.
 """
 import json
 import subprocess
@@ -18,9 +22,15 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import book_paths  # noqa: E402
 import forward_ledger as FL  # noqa: E402
+try:                                       # FV must never block the formation: an engine that cannot even be imported leaves fv_held null
+    import m3o_engine as E  # noqa: E402
+    E_ERROR = None
+except (Exception, SystemExit) as _e:      # noqa: BLE001
+    E, E_ERROR = None, f"m3o_engine could not be imported: {type(_e).__name__}: {_e}"
 
 INPUTS = book_paths.books() / "m3o" / "inputs"
 CHECKS = book_paths.books() / "m3l_verifier" / "out"
+VALUE = book_paths.books() / "m3o" / "value"
 EXCLUDED = FL.OPERATOR_EXCLUDED
 BOOKD = json.loads(book_paths.prereg("PREREG_m3o_bookD.json").read_text(encoding="utf-8"))
 
@@ -35,6 +45,15 @@ def candidates(output_commit, book):
     if unranked:
         sys.exit(f"STOP: watchlist names without fct_rank: {sorted(unranked)[:10]}")
     return [{"ticker": t, "fct_rank": r, "packet": None, "state": "to_build"} for r, t in sorted(pool)[:BOOKD["candidates"]["count"]]]
+
+
+def fv_held(book):
+    """FV's held names outside the new book: [{ticker, packet, state}] from the engine's recomputation, or (None, the error) when it cannot run."""
+    try:
+        L, _ = E.run(FL.HERE, INPUTS, book_paths.books() / "m3o" / "ledger", value_dir=VALUE)
+        return [{"ticker": t, "packet": None, "state": "to_build"} for t in E.fv_held_now(L) if t not in book and t not in EXCLUDED], None
+    except Exception as e:  # noqa: BLE001  FV must never block the formation
+        return None, f"{type(e).__name__}: {e}"
 
 
 def check_file(output_commit):
@@ -68,6 +87,11 @@ def main():
             print("unchanged:", path)
             return 0
         sys.exit(f"STOP: the decision changed from run {old['run_id']} to {rec['run_id']}; re-queue by hand (WO_O2 step 5)")
+    if E is None or T.isoformat() >= E.FV_START:
+        rec["fv_held"], err = fv_held(names) if E is not None else (None, E_ERROR)
+        if err:
+            rec["fv_held_error"] = err
+            print(f"fv_held: the engine could not run, FV's held names are not carried: {err}")
     INPUTS.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rec, indent=1, sort_keys=True), encoding="utf-8")
     print(f"wrote {path}: run {rec['run_id']} T {rec['decision_time_utc']} book {len(names)} fill {rec['fill_open_utc']}")

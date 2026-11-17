@@ -39,6 +39,9 @@ import rs2_data  # noqa: E402
 from test_throughcycle_reference import EST, _cycle_history  # noqa: E402
 
 B = 1e9
+
+# every build here freezes the clock at 2026-09-27 (`_stubs`), so the MRI anchors must be dated to that day too (conftest)
+pytestmark = pytest.mark.usefixtures("anchors_of_the_frozen_day")
 RULE = isc.break_rule()
 
 
@@ -108,8 +111,9 @@ def _pack(monkeypatch, doc, **kw):
     return pack, (calls[-1] if calls else None)
 
 
-def _ref_line(text):
-    return next(l for l in text.splitlines() if "CONSENSUS-IMPLIED VALUE (reference" in l)
+def _ref_line(pack):
+    """The reference line of a built pack. Revision 24 no longer prints it: the pack keeps the same text in facts["reference_line"]."""
+    return pack.facts["reference_line"]
 
 
 def _ri(est=EST):
@@ -188,7 +192,7 @@ def test_1b1_an_unmeasured_share_is_printed_as_an_upper_bound_stamped_and_gated(
     f, text = pack.facts, str(pack)
     assert f["nci_attribution"]["pi"] == 1.0 and f["nci_attribution"]["basis"] == "unmeasured"
     assert isc.NCI_UNMEASURED in f["nci_attribution"]["stamps"]
-    line = _ref_line(text)
+    line = _ref_line(pack)
     assert ("noncontrolling interests are filed but the common shareholders' share cannot be measured (neither the net-income nor the equity "
             "split is filed): this value includes their share of every level except net income, an upper bound") in line
     assert f["reference_status"] == "used" and f["consensus_implied_value"] is not None                 # printed and counted, never withheld
@@ -204,7 +208,7 @@ def test_1b1_a_base_year_with_an_unknown_net_income_scope_is_unmeasured(screener
     pack, call = _pack(monkeypatch, doc)
     f = pack.facts
     assert f["ni_scope"] == "nci_unknown" and f["nci_attribution"]["basis"] == "nci_unknown" and f["nci_attribution"]["pi"] == 1.0
-    assert "net income included, an upper bound" in _ref_line(str(pack))
+    assert "net income included, an upper bound" in _ref_line(pack)
     assert isc.NCI_UNMEASURED in isc.gate_stamps(f)
 
 
@@ -400,15 +404,17 @@ def test_1b5_the_window_the_cash_bound_and_the_defaults_use_pi_and_the_desk_equa
     assert seen and seen[-1][0] == pytest.approx(call["kwargs"]["base_cf"])
     # the reference line and the DEFAULTS say so
     text = str(nci)
-    assert "consolidated business attributed to the common shares at π = 80.0%" in _ref_line(text)
+    assert "consolidated business attributed to the common shares at π = 80.0%" in _ref_line(nci)
     assert ("- NONCONTROLLING INTERESTS: FY2025 net income attributable to the company $1.200B of consolidated $1.500B (π = 80.0%, net-income "
             "split); the reference values the consolidated business and attributes π of it to the common shares") in text
     assert "- nci_attribution: π = 80.0% (net-income split, FY2025) | the defaults are the common shares' share" in text
     parsed = pack_facts.from_text(text)
     assert pack_facts.parity(f, parsed) == [] and parsed["nci_attribution"] is None                    # display-only, sidecar-only
-    # AT1a: the desk on the printed facts equals the reference to $0.005
+    # AT1a: the desk on the facts the DEFAULTS block prints (the facts hold them at the printed precision; since revision 24 the text no longer
+    # prints the block, so `parsed` no longer carries them) equals the reference to $0.005. The reference's own long-run margin is
+    # applied (`reference_margin=True`, as revision 22's DEFAULTS run did): the reference is valued with it, and the parity is with the reference.
     ref = call["out"]
-    args, why = cr.defaults_desk_args(ref, parsed)
+    args, why = cr.defaults_desk_args(ref, f, reference_margin=True)
     assert why is None
     real_round = getattr(fmt, "round", None)
     fmt.round = lambda x, nd=None: x
@@ -458,7 +464,7 @@ def test_1c1_an_unverified_basis_is_printed_with_both_figures_kept_in_the_facts_
     figures = ("FY2025 net income / filed diluted shares = $2.40 against the filed diluted EPS $2.00 (+20.00%, beyond the reporting precision "
                "of ±0.75%)")
     assert f"- PER-SHARE CHECK: {figures}: the per-share basis of the filed figures is not verified (per_share_basis_unverified)" in text
-    assert f"per-share basis not verified: {figures}" in _ref_line(text)
+    assert f"per-share basis not verified: {figures}" in _ref_line(pack)
     assert f["reference_status"] == "used"                                                       # still printed
     _gate(isc.gate_stamps(f), "per_share_basis_unverified")
     verified, _ = _pack(monkeypatch, _doc(base_updates={"eps_diluted": 2.40, **NO_NCI}))
@@ -481,7 +487,7 @@ def test_2b1_the_annotations_change_no_number_and_say_what_the_cash_excludes(scr
     assert cm["assets_b"] == 0.1 and cm["liabilities_b"] == 0.3 and cm["gap_b"] == pytest.approx(0.18)
     assert cm["stamps"] == [isc.MONEY_EXCLUDED, isc.LIABILITIES_EXCEED, isc.INSURANCE_FLOAT]
     assert ann.facts["cash_restricted_b"] == 0.02 and ann.facts["insurance_reserves_b"] == 0.05
-    line = _ref_line(str(ann))
+    line = _ref_line(ann)
     assert ("; the excess cash is the unrestricted cash line: excludes restricted cash $0.020B, customer money held $0.100B, customer "
             "liabilities $0.300B (customer_money_excluded); customer liabilities exceed the separate customer assets and restricted cash by "
             "$0.180B: the unrestricted line may be funding customer obligations (customer_liabilities_exceed_separate_assets); insurance "
@@ -491,14 +497,14 @@ def test_2b1_the_annotations_change_no_number_and_say_what_the_cash_excludes(scr
     assert isc.INSURANCE_FLOAT not in isc.customer_money(money, financial=True)["stamps"]
     # the scope is printed when it is not the unrestricted line
     scoped, _ = _pack(monkeypatch, _doc(prov_extra={"cash_scope": {"GEV": {"2025": "total_no_restricted_filed"}}}))
-    assert scoped.facts["cash_scope"] == "total_no_restricted_filed" and "cash_scope total_no_restricted_filed" in _ref_line(str(scoped))
+    assert scoped.facts["cash_scope"] == "total_no_restricted_filed" and "cash_scope total_no_restricted_filed" in _ref_line(scoped)
     # the follow-up's null cell (only CashAndSecurities...Segregated filed beside the cash-flow total): the cash term is not available and both
     # lines say why
     seg, call_seg = _pack(monkeypatch, _doc(base_updates={"cash": None},
                                             prov_extra={"cash_scope": {"GEV": {"2025": "cash_unresolved_securities_segregated"}}}))
     assert call_seg["kwargs"]["cash"]["applies"] is False and seg.facts["excess_cash"] is None
     assert ("no excess-cash term (not available: cash_term_not_available); cash_scope cash_unresolved_securities_segregated"
-            in _ref_line(str(seg)))
+            in _ref_line(seg))
     # nothing filed: no annotation
     assert isc.customer_money({}, financial=False) == {"cash_restricted": None, "assets": None, "liabilities": None, "insurance_reserves": None,
                                                        "gap": None, "stamps": []}
@@ -562,7 +568,7 @@ def test_3_1_on_a_break_build_gets_the_estimates_without_the_next_fy_revenue(scr
     f, text = pack.facts, str(pack)
     assert f["vendor_revenue_basis"]["status"] == "break_up" and f["vendor_revenue_basis"]["s"] == pytest.approx(math.log(1.9))
     assert ("(years 1-2 consensus EPS growth; years 3-5 fade from the base-rate median: the vendor's next-FY revenue step (+90.0%) is not "
-            "carried by its EPS step (+11.1%), a change of level, not a growth rate)") in _ref_line(text)
+            "carried by its EPS step (+11.1%), a change of level, not a growth rate)") in _ref_line(pack)
     assert "| next FY | $20.520B |" in text                                                       # DATA 8 prints the vendor's figures as they are
     # the terminal-growth default reads the vendor's figures as they are (the record's own trend first)
     assert f["long_run"]["terminal_g_basis"] == "revenue_trend"
@@ -575,7 +581,7 @@ def test_3_1_an_untested_step_outside_the_band_is_one_clause(screener_data_stub,
     pack, call = _pack(monkeypatch, _doc(), est=est)
     assert pack.facts["vendor_revenue_basis"]["status"] == "untested" and call["kwargs"]["estimates"]["+1y"]["revenue"]["avg"] == 10.8 * B * 1.9
     assert ("the vendor's next-FY revenue step (+90.0%) could not be tested against its EPS step (consensus EPS growth is not usable here)"
-            in _ref_line(str(pack)))
+            in _ref_line(pack))
 
 
 def test_3_1_the_threshold_file_is_checked_on_load_and_a_mismatch_refuses(tmp_path):
@@ -658,7 +664,7 @@ def test_r4_a_filed_zero_of_restricted_cash_prints_no_excluded_clause(screener_d
     assert zero.facts["cash_restricted_b"] == 0.0                                               # the value stays in the facts
     assert call_zero["out"]["value"] == call_plain["out"]["value"] and call_zero["kwargs"]["cash"] == call_plain["kwargs"]["cash"]
     text = str(zero)
-    assert "excludes" not in _ref_line(text).split("the excess cash is", 1)[-1] and "restricted cash" not in _ref_line(text)
+    assert "excludes" not in _ref_line(zero).split("the excess cash is", 1)[-1] and "restricted cash" not in _ref_line(zero)
     assert "restricted cash" not in text.split("DATA 6 -", 1)[1].split("DATA 6A", 1)[0]
     assert isc.cash_note("unrestricted_line", isc.customer_money({"cash_restricted": 0.0}, False), str) is None
     # with customer money filed beside the zero, only what is excluded is named

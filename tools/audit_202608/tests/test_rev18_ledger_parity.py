@@ -40,7 +40,7 @@ def _snapshot(tmp_path, monkeypatch, name="GEV", fence=None):
 @pytest.mark.parametrize("variant", [dict(), dict(untagged=["goodwill"], drop_goodwill=True), dict(untagged=["amortization_intangibles"]),
                                      dict(separate_borrowings=True, debt_tag="LongTermDebtCurrent")],
                          ids=["plain", "no-goodwill", "no-amortization", "borrowings"])
-def test_a_production_snapshot_row_equals_the_packs_printed_reference_to_the_cent(screener_data_stub, monkeypatch, tmp_path, variant):
+def test_a_production_snapshot_row_equals_the_packs_printed_reference_to_the_cent(screener_data_stub, monkeypatch, tmp_path, variant, anchors_of_the_frozen_day):
     pack = _synthetic_pack(monkeypatch, **variant)
     f = pack.facts
     assert f["reference_status"] == "used"
@@ -50,13 +50,13 @@ def test_a_production_snapshot_row_equals_the_packs_printed_reference_to_the_cen
     assert row["reference_status"] == f["reference_status"] == "used"
     assert round(row["reference_value"], 2) == f["consensus_implied_value"]
     assert row["coe"] == f["coe_anchor"]
-    assert row["revision"] == cap.PACK_REVISION == 21
+    assert row["revision"] == cap.PACK_REVISION == 24         # the ledger row carries the current pack revision (21 until revision 24, 2026-10-16)
     erp, asof, _ = rs2_data.reference_closure()
     assert row["closure_erp"] == erp and row["closure_asof"] == asof
     assert row["price"] is None or row["vp"] == pytest.approx(row["reference_value"] / row["price"])
 
 
-def test_the_snapshot_status_is_the_packs_shared_rule_fence_included(screener_data_stub, monkeypatch, tmp_path):
+def test_the_snapshot_status_is_the_packs_shared_rule_fence_included(screener_data_stub, monkeypatch, tmp_path, anchors_of_the_frozen_day):
     pack = _synthetic_pack(monkeypatch)
     assert rl.classify_status is not cr.classify_status
     assert [rl.classify_status(v, lambda: s) for v, s in ((None, "above"), (0.004, "above"), (5.0, None), (5.0, "above"), (5.0, "below"))] == [

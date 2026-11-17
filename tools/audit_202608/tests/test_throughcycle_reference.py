@@ -471,11 +471,11 @@ def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None
     return cap.build_pack("GEV", include_research=False, pilot_arm=pilot_arm)
 
 
-def test_the_pack_builds_the_record_the_facts_and_the_lines_and_the_desk_follows_them(screener_data_stub, monkeypatch):
+def test_the_pack_builds_the_record_the_facts_and_the_lines_and_the_desk_follows_them(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     """The synthetic history, estimates and the pack's own build_pack: the facts that come out (record, working
     capital, terminal growth default, long run) round-trip through the DEFAULTS block and drive the desk to the pack's
     CONSENSUS-IMPLIED VALUE."""
-    pack = _synthetic_pack(monkeypatch)
+    pack = _synthetic_pack(monkeypatch, pilot_arm="rev22")       # revision 24 prints neither the reference line nor the defaults; the rev22 arm does
     f = pack.facts
     assert pack_facts.parity(f, pack_facts.from_text(str(pack))) == []
     lr = f["long_run"]
@@ -494,12 +494,17 @@ def test_the_pack_builds_the_record_the_facts_and_the_lines_and_the_desk_follows
     assert "working capital deducted in years 1-5" in ref_line
     lv = f["levels"]
     g35 = cr._years35(f["next_fy_revenue_growth"], 0.05)
-    base = f["owner_earnings_default_b"]
+    # revision 24 step 2c: the desk deducts working capital on each scenario's own path, scaled by the scenario's owner earnings over the consensus
+    # owner earnings the facts' long_run keeps (grown from the reference's base, `reference_base_b`); a Base started from the TTM default
+    # (`owner_earnings_default_b`, a different figure on this fixture) would be scaled by the wrong ratio. The chain is therefore run from the
+    # reference's own base, as `consensus_reference.defaults_desk_args` builds the DEFAULTS run.
+    base = f["reference_base_b"]
     ctx = {"price": 300.0, "shares_default_b": f["shares_default"] / B, "coe_anchor": f["coe_anchor"],
            "terminal_g_default": f["terminal_g_default"], "terminal_g_anchor": f["terminal_g_anchor"],
-           "owner_earnings_default_b": base, "levels": lv, "terminal_ronic": f["terminal_ronic"], "long_run": lr,
+           "owner_earnings_default_b": f["owner_earnings_default_b"], "reference_base_b": base, "levels": lv,
+           "terminal_ronic": f["terminal_ronic"], "long_run": lr,
            "working_capital": f["working_capital"], "cash_basis_b": f["cash_basis_b"]}
-    # the Base as the DEFAULTS describe it: the default base, years 1-2 that reach the levels, years 3-5 from
+    # the Base as the DEFAULTS describe it: the reference's base, years 1-2 that reach the levels, years 3-5 from
     # next-FY revenue growth (the desk holds years 1-2 at the levels whatever base is given)
     g1, g2 = lv["year1"] / base - 1, lv["year2"] / lv["year1"] - 1
     sc = lambda name, prob: {"name": name, "prob": prob, "base_cf": base, "explicit_growth": [g1, g2] + g35,
@@ -536,7 +541,7 @@ def test_the_untagged_marker_decides_whether_a_missing_goodwill_series_is_none_h
     assert gap["terminal_ronic"] == untagged["terminal_ronic"]           # the record is the same: nothing is lost to the gap
 
 
-def test_the_packs_long_run_earnings_are_x_of_the_base_year(screener_data_stub, monkeypatch):
+def test_the_packs_long_run_earnings_are_x_of_the_base_year(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     """Brief B2 F1 through build_pack: the synthetic base year holds net income 1.2B and acquired-intangible
     amortization 0.05B at a 25% tax rate, so X is 1.2375B; a filer that never tags the amortization has X = net income."""
     tagged = _synthetic_pack(monkeypatch).facts["long_run"]

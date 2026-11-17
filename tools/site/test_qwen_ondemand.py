@@ -34,3 +34,9 @@ def test_nothing_due(tmp_path, monkeypatch):
     _report(tmp_path, "NEWREF", _iso(2), ran=False)
     monkeypatch.setattr(Q, "list_names", lambda: ["NEWREF"])
     assert Q.next_name() is None
+
+
+def test_a_ticker_that_is_a_windows_device_name_gets_a_safe_file_name():
+    import qwen_site
+    assert qwen_site.site_stem("CON") == "CON_" and qwen_site.site_stem("aux") == "aux_" and qwen_site.site_stem("COM1") == "COM1_"
+    assert qwen_site.site_stem("CONE") == "CONE" and qwen_site.site_stem("A") == "A"

@@ -193,7 +193,7 @@ def test_a_terminal_ronic_below_r_is_valued_as_stated_and_stamped_in_the_desk_ou
 
 # ---- 3. ruling 5: the margin rule's benchmark stamps are logged, never printed ------------------------------------------------------
 
-def test_the_benchmark_stamps_reach_the_facts_stamps_full_and_never_the_pack(screener_data_stub, monkeypatch):
+def test_the_benchmark_stamps_reach_the_facts_stamps_full_and_never_the_pack(screener_data_stub, monkeypatch, clock_of_the_frozen_day, anchors_of_the_frozen_day):
     """The committed GEV slice builds no reference (its base-rate table is missing), so the pack is built with the LITE-like reference of the
     audit (test_rev24_desk_arithmetic.lite_like: an implied OM_5 of 346% and a long-run margin clamped to 0, both stamped by the margin rule) in
     place of the one the slice cannot build."""

@@ -316,8 +316,11 @@ def test_there_is_no_fallback_a_missing_premium_loading_or_rate_leaves_no_cost_o
         assert out["value"] is None and out["reason"].startswith("cost-of-equity anchor")
 
 
-def test_the_pack_prints_the_closure_cost_of_equity_the_mri_premium_as_context_and_says_when_there_is_no_premium(screener_data_stub, monkeypatch):
-    pack = _synthetic_pack(monkeypatch)
+def test_the_pack_prints_the_closure_cost_of_equity_the_mri_premium_as_context_and_says_when_there_is_no_premium(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
+    # revision 24 prints neither the reference nor its "not available" line: the lines below are read on the rev22 arm, which still prints them
+    current = _synthetic_pack(monkeypatch)
+    assert "MRI universe premium (context; not used in the COE ANCHOR)" in next(l for l in str(current).splitlines() if l.startswith("- Rates:"))
+    pack = _synthetic_pack(monkeypatch, pilot_arm="rev22")
     text = str(pack)
     rates = next(l for l in text.splitlines() if l.startswith("- Rates:"))
     assert "MRI universe premium (context; not used in the reference)" in rates and "implied ERP" not in rates
@@ -326,7 +329,7 @@ def test_the_pack_prints_the_closure_cost_of_equity_the_mri_premium_as_context_a
     assert pack.facts["coe_anchor"] is not None
     # no closure artifact: no cost of equity, no reference, and the pack says why - never MRI's premium in its place
     monkeypatch.setattr(rs2_data, "reference_closure", lambda path=None: (None, None, "no_reference_closure_artifact(reference_closure.json)"))
-    gone = _synthetic_pack(monkeypatch)
+    gone = _synthetic_pack(monkeypatch, pilot_arm="rev22")
     gtext = str(gone)
     assert gone.facts["coe_anchor"] is None and gone.facts["reference_status"] == "not_available"
     coe = next(l for l in gtext.splitlines() if l.startswith("- COE ANCHOR for this name:"))
@@ -338,7 +341,7 @@ def test_the_pack_prints_the_closure_cost_of_equity_the_mri_premium_as_context_a
     assert "missing or stale (2026-07-01)" in str(_synthetic_pack(monkeypatch))
 
 
-def test_the_pack_reference_is_build_of_reference_inputs_on_an_independent_data_root_to_the_cent(screener_data_stub, monkeypatch):
+def test_the_pack_reference_is_build_of_reference_inputs_on_an_independent_data_root_to_the_cent(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     """The parity test of brief section 2: the pack's printed reference equals build(**reference_inputs(...)) - the inputs read
     again through a fresh DataRoot - and the facts the pack prints for the same inputs are reference_inputs' own."""
     calls = []

@@ -37,9 +37,8 @@ def test_pack_section_1_5_missing_series_yields_not_available_and_macro_degraded
     assert "Use the verified 10-Year Treasury yield above" not in pack
 
 
-def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_stub, monkeypatch):
+def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_stub, monkeypatch, clock_of_the_frozen_day):
     import json
-    from datetime import datetime, timezone
     import rs2_data
 
     # 1. Anchors fixture
@@ -75,7 +74,7 @@ def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_s
     (screener_data_stub / "macro_state.json").write_text(json.dumps(macro_state), encoding="utf-8")
 
     # 3. current_regime.json fixture
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now_str = clock_of_the_frozen_day.strftime("%Y-%m-%d")      # "today" is the frozen day: the anchors and macro_state above are dated the week before
     current_regime = {
         "date": now_str,
         "season_headline": "goldilocks",

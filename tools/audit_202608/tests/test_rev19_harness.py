@@ -228,7 +228,7 @@ def _equal(a, b, path=""):
     return [] if (a == b and type(a) is type(b)) else [path]
 
 
-def test_the_replay_context_from_the_sidecar_equals_the_fresh_runs_for_a_built_pack(screener_data_stub, monkeypatch, tmp_path):
+def test_the_replay_context_from_the_sidecar_equals_the_fresh_runs_for_a_built_pack(screener_data_stub, monkeypatch, tmp_path, anchors_of_the_frozen_day):
     from test_rev18_part1 import _pack_with_bill_rate
     pack = _pack_with_bill_rate(monkeypatch, 0.04)
     fresh = cv.build_desk_context(pack.facts, 123.45, "GEV", "GE Vernova Inc.")

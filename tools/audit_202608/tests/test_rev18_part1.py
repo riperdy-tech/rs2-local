@@ -259,7 +259,7 @@ def test_a_turnaround_is_valued_on_the_levels_method_not_on_its_cash_alone():
     assert growth["method"] == "cash_only"
 
 
-def test_a_levels_name_prints_its_year_1_owner_earnings_level_after_the_cash_term_as_reference_base_b(screener_data_stub, monkeypatch):
+def test_a_levels_name_prints_its_year_1_owner_earnings_level_after_the_cash_term_as_reference_base_b(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     import test_throughcycle_reference as ttr
     est = json.loads(json.dumps(ttr.EST))
     est["0y"]["eps"]["growth"] = 3.0                                   # unusable growth: the levels method values the name
@@ -604,15 +604,15 @@ def test_bill_rate_mean_is_the_dtb3_mean_over_the_window_as_a_fraction(tmp_path,
 
 # ---- the pack: the cash term reaches the facts, the reference and the desk ---------------------------------------------------------
 
-def _pack_with_bill_rate(monkeypatch, rate, sector="Industrials"):
+def _pack_with_bill_rate(monkeypatch, rate, sector="Industrials", pilot_arm=None):
     monkeypatch.setattr(rs2_data, "bill_rate_mean", lambda start, end: (rate, "stub") if rate is not None else (None, "stub: none"))
     real_lookup = rs2_data.sector_lookup
     monkeypatch.setattr(rs2_data, "sector_lookup", lambda t: (sector, real_lookup(t)[1]))
-    pack = _synthetic_pack(monkeypatch)
+    pack = _synthetic_pack(monkeypatch, pilot_arm=pilot_arm)
     return pack
 
 
-def test_the_pack_computes_excess_cash_prints_it_and_takes_the_interest_out_of_the_default_and_the_reference(screener_data_stub, monkeypatch):
+def test_the_pack_computes_excess_cash_prints_it_and_takes_the_interest_out_of_the_default_and_the_reference(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     without = _pack_with_bill_rate(monkeypatch, None)
     with_cash = _pack_with_bill_rate(monkeypatch, 0.04)
     f0, f1 = without.facts, with_cash.facts
@@ -646,7 +646,7 @@ def test_a_financial_company_has_no_cash_term_and_excess_cash_is_zero(screener_d
     assert "- excess_cash: 0.000000 | " in str(fin)
 
 
-def test_the_desk_on_the_packs_printed_facts_equals_the_reference_with_the_cash_to_the_cent(screener_data_stub, monkeypatch):
+def test_the_desk_on_the_packs_printed_facts_equals_the_reference_with_the_cash_to_the_cent(screener_data_stub, monkeypatch, anchors_of_the_frozen_day):
     calls = []
     real = cr.build
     monkeypatch.setattr(cr, "build", lambda *a, **k: (calls.append(real(*a, **k)), calls[-1])[1])
@@ -654,8 +654,9 @@ def test_the_desk_on_the_packs_printed_facts_equals_the_reference_with_the_cash_
     ref = calls[-1]
     c_l = 8.0 * B * 1.03 ** 11 * 0.10
     assert ref["cash"] == pytest.approx(c_l) and ref["interest_removed"] == pytest.approx(c_l * 0.04 * 0.75)
-    text = str(pack)
-    parsed = pack_facts.from_text(text)
+    # the facts hold the DEFAULTS at the printed precision; since revision 24 the text no longer prints the long-run defaults or the reference, nor the
+    # unprinted long_run members the desk's working capital reads, so the desk's context is the pack's facts, not a read of its text
+    parsed = pack.facts
     lv, base = ref["levels"], ref["base_cf"] / B
     ctx = {"price": 1e6, "shares_default_b": parsed["shares_default"] / B, "coe_anchor": parsed["coe_anchor"],
            "terminal_g_default": parsed["terminal_g_default"], "terminal_g_anchor": parsed["terminal_g_anchor"],

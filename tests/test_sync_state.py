@@ -304,3 +304,29 @@ def test_a_paper_books_file_changed_on_both_sides_stops_the_sync(tmp_path, monke
     f.write_text("local", encoding="utf-8")
     assert sync_state.main(repo_dir=clone).startswith("error: uncommitted paper_books")
     assert f.read_text(encoding="utf-8") == "local"
+
+
+def test_a_carried_file_written_during_the_sync_is_not_rolled_back(tmp_path, monkeypatch):
+    # 2026-11-17 (cross-check S6): the old carry read the file, reset hard and wrote the old copy back, so lines a writer appended in
+    # between were lost. The writer here appends at the moment of the reset.
+    clone = _make_repos(tmp_path)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setattr(sync_state, "CACHE", cache)
+    j = clone / "paper_books" / "monitor" / "journal.jsonl"
+    j.parent.mkdir(parents=True)
+    j.write_text("one\n", encoding="utf-8")
+    _git(clone, "add", "-A")
+    _git(clone, "commit", "-m", "one")
+    _git(clone, "push")
+    j.write_text("one\ntwo\n", encoding="utf-8")                        # modified, not committed
+    real = sync_state._git
+
+    def git(repo, *a):
+        if a and a[0] == "reset":
+            with j.open("a", encoding="utf-8") as f:
+                f.write("three\n")                                      # the writer, mid-sync
+        return real(repo, *a)
+    monkeypatch.setattr(sync_state, "_git", git)
+    assert "synced" in sync_state.main(repo_dir=clone)
+    assert j.read_text(encoding="utf-8") == "one\ntwo\nthree\n"
