@@ -180,16 +180,14 @@ def test_interest_paid_stands_in_for_a_missing_interest_expense_and_is_stamped()
     assert b["ronic0"] == pytest.approx(base()["ronic0"])                    # the same interest as the exact fixture's FY0 value
 
 
-def test_interest_paid_is_taken_before_a_net_interest_line_and_ifrs_is_named_by_taxonomy():
-    b = base(no_interest(interest_paid=one(1.0, "InterestPaidClassifiedAsFinancingActivities"), interest_net=one(-3.0, "InterestIncomeExpenseNet")))
+def test_an_ifrs_interest_paid_tag_is_named_by_its_taxonomy():
+    b = base(no_interest(interest_paid=one(1.0, "InterestPaidClassifiedAsFinancingActivities")))
     assert b["substitutes"] == ["substitute:interest_expense:ifrs-full:InterestPaidClassifiedAsFinancingActivities"] and b["kd"] == pytest.approx(0.05)
 
 
-def test_a_net_interest_line_counts_only_as_an_expense():
-    b = base(no_interest(interest_net=one(-1.0, "InterestIncomeExpenseNet")))
-    assert b["substitutes"] == ["substitute:interest_expense:us-gaap:InterestIncomeExpenseNet"] and b["kd"] == pytest.approx(0.05)
-    with pytest.raises(desk.DeskRefusal) as e:                              # positive: net interest income, not an expense
-        base(no_interest(interest_net=one(1.0, "InterestIncomeExpenseNet")))
+def test_cash_interest_paid_that_is_not_positive_is_no_substitute():
+    with pytest.raises(desk.DeskRefusal) as e:
+        base(no_interest(interest_paid=one(0.0, "InterestPaidNet")))
     assert e.value.code == "debt_without_interest"
 
 
