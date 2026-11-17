@@ -566,6 +566,9 @@ def gather_name(info, gstate, src, now, peers=None, first_since=None):
                                                        "news_seen": {}, "closes": {}, "price_checked": None, "price_fired": None}
     g.update(ticker=ticker, cik=cik, last_gather=iso(now))
     since = utc(first_since) if first_since is not None else now - timedelta(days=FIRST_GATHER_DAYS)
+    # "first" is decided per source (cross-check 2026-11-16, S4): a source that failed at the name's first gather has seen nothing,
+    # so its next gather is still its first and reports only the recent days, not the whole feed as new.
+    sec_first, news_first = first or not g["filings_seen"], first or not g["news_seen"]
     res = {"filings": [], "news": [], "news_dropped_no_issuer_word": 0, "news_seen_not_reported": 0, "price": None, "price_source": None,
            "errors": [], "first": first}
     token = distinctive_word(company, ticker)
@@ -590,7 +593,7 @@ def gather_name(info, gstate, src, now, peers=None, first_since=None):
                 seen[f["accession"]] = f["accepted_utc"]
                 if not collected(f["form"]):
                     continue
-                if first and (f["accepted_utc"] is None or parse_utc(f["accepted_utc"]) < since):
+                if sec_first and (f["accepted_utc"] is None or parse_utc(f["accepted_utc"]) < since):
                     continue
                 f = dict(f, annotations=[])
                 if f["accepted_utc"] is None:
@@ -638,10 +641,10 @@ def gather_name(info, gstate, src, now, peers=None, first_since=None):
                     continue                                                  # new only if neither its title nor its address was seen
                 seen[tkey] = seen[ukey] = _stamp(now)
                 day = str(row.get("date") or "")[:10]
-                if first and not day:
+                if news_first and not day:
                     res["news_seen_not_reported"] += 1                         # an undated headline is never new at a first gather
                     continue
-                if first and day < _stamp(since):
+                if news_first and day < _stamp(since):
                     res["news_seen_not_reported"] += 1
                     continue
                 r = {k: row.get(k) for k in ("title", "url", "source", "snippet")}

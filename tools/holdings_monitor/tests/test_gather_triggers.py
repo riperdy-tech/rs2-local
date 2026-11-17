@@ -305,3 +305,17 @@ def test_searx_news_filters_and_dedupes_with_an_injected_getter():
 def test_q1_event_map_equals_prereg_m3o():
     prereg = json.loads(M.book_paths.prereg("PREREG_m3o.json").read_text(encoding="utf-8"))
     assert {v: k for k, v in prereg["rules"]["Q1"]["event_types"].items()} == M.Q1_EVENT_CLASS
+
+
+def test_a_source_that_failed_at_the_first_gather_is_still_first_at_the_next():
+    # cross-check 2026-11-16, S4: the SEC feed failed on day one, so the stored record has seen no filing; on day two an old filing
+    # in the feed is recorded as seen and NOT reported, exactly as at a first gather
+    old = filing("0000000001-26-000201", "8-K", "2026-06-01T10:00:00.000Z", "1.03")
+    fresh, _ = M.gather_name(AAA, None, sources([old]), NOW)
+    assert fresh["filings"] == []                                         # the reference: a true first gather skips it
+    g0 = {"cik": int(AAA["cik"]), "ticker": AAA["ticker"], "first_gather": "2026-10-28T12:00:00Z", "filings_seen": {}, "news_seen": {},
+          "closes": {}, "price_checked": None, "price_fired": None}
+    res, g = M.gather_name(AAA, g0, sources([old]), NOW)
+    assert res["first"] is False and res["filings"] == [] and "0000000001-26-000201" in g["filings_seen"]
+    res2, _ = M.gather_name(AAA, g, sources([old, filing("0000000001-26-000202", "8-K", NEW, "1.03")]), NOW)
+    assert [f["accession"] for f in res2["filings"]] == ["0000000001-26-000202"]      # afterwards only what is new
