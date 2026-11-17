@@ -346,6 +346,16 @@ def site_stem(t):
     return f"{t}_" if t.upper() in WINDOWS_RESERVED else t
 
 
+def fill_state(have):
+    """(names on the list, how many of them have a report), or (None, None) when the list cannot be read."""
+    try:
+        names = Q.list_names()
+    except Exception as e:  # noqa: BLE001  no verified screener run: the fill is then not called complete
+        print(f"list unreadable: {type(e).__name__}: {str(e)[:120]}", flush=True)
+        return None, None
+    return len(names), sum(t in have for t in names)
+
+
 def build():
     rows = {}
     for p in sorted(ONDEMAND.glob("*.json")) if ONDEMAND.exists() else []:
@@ -365,8 +375,12 @@ def build():
     for t, (_, rep) in rows.items():
         (REPORTS / f"{site_stem(t)}.json").write_text(json.dumps(rep, indent=1, sort_keys=True), encoding="utf-8")
     counts = {k: sum(r["verdict"] == k for r, _ in rows.values()) for k in ("BUY", "WATCH", "AVOID", "NO_CALL")}
+    listed, covered = fill_state(set(rows))
     ov = {"schema": SCHEMA, "generated_at": Q.now_z(), "model": GEM_MODEL, "effort": EFFORT, "count": len(rows),
           "valued_count": sum(bool(r["valued"]) for r, _ in rows.values()), "verdict_counts": counts,
+          # the first fill is complete when every list name has a report (analysed, or refused and on retry): the screener's
+          # Claude paper books then follow these verdicts (track_paper_portfolios.ai_verdicts; operator 2026-11-16)
+          "list_names": listed, "list_covered": covered, "fill_complete": listed is not None and listed > 0 and covered == listed,
           "verdict_rule": f"Expected value = the bear, base and bull values weighted by the valuation's probabilities. BUY: its "
                           f"return over {H_YEARS} years is {BUY_ALPHA_PTS:g} points a year or more above the required return, in "
                           "both runs. WATCH: above zero. AVOID: zero or less. NO_CALL: not valued.",

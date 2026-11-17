@@ -89,3 +89,13 @@ def test_a_claim_of_a_process_that_is_gone_is_taken_over(tmp_path, monkeypatch):
     assert G.claim("X") is False                     # its worker is alive: not ours
     monkeypatch.setattr(FR, "pid_alive", lambda pid: False)
     assert G.claim("X") is True                      # its worker is gone: taken over at once, not after three hours
+
+
+def test_the_fill_is_complete_only_when_every_list_name_has_a_report(monkeypatch):
+    monkeypatch.setattr(G.Q, "list_names", lambda: ["A", "B", "C"])
+    assert G.fill_state({"A", "B", "X"}) == (3, 2) and G.fill_state({"A", "B", "C", "X"}) == (3, 3)
+
+    def boom():
+        raise RuntimeError("no verified screener run")
+    monkeypatch.setattr(G.Q, "list_names", boom)
+    assert G.fill_state({"A"}) == (None, None)            # an unreadable list is never a complete fill
