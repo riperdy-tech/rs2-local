@@ -218,3 +218,11 @@ def test_report_coverage_and_queue_age(root, tmp_path):
     mon.resolve(make_run(tmp_path, T=M.iso(NOW), tc_claims=[tc("p1", "unchanged")]), now=NOW + timedelta(hours=4))
     assert mon.report(NOW + timedelta(days=13))["run_within_14_days"] == 1
     assert mon.report(NOW + timedelta(days=15))["run_within_14_days"] == 0
+
+
+def test_a_warning_says_whether_its_event_is_new_to_this_name(root, tmp_path):
+    mon = M.Monitor(root)
+    first = q1(mon, tmp_path, 1, [claim()])
+    assert first["warning_kind"] == "event_found" and first["warning_new_events"] == 1 and first["warning_cites_trigger"] is None
+    again = q1(mon, tmp_path, 2, [claim()])                               # the same event at a later read: still a warning, marked as not new
+    assert again["warning_kind"] == "event_found" and again["warning_new_events"] == 0

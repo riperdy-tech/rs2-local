@@ -1378,7 +1378,23 @@ class Monitor:
                "effective_at": e.get("effective_at"), "name": e.get("name")}
               for e in packet.get("evidence") or [] if e.get("fact_id") in cited]
         warning_kind = (q1["verdict"] if q1["verdict"] in ("event_found", "news_event") else ("thesis_changed" if compare == "changed" else None))
-        line = {"name_state": state, "warning_kind": warning_kind, "pending_review": n["pending_review"], "pending_reasons": reasons,
+        # Two annotations on an event warning (first live morning, 2026-11-17: three of four warnings rested on events months old,
+        # one on the filing that queued the read). They gate nothing. `warning_new_events`: the acting claims whose event (type and
+        # date) this name was not warned about before. `warning_cites_trigger`: an acting claim cites an item of a filing that
+        # queued this read (None when no filing trigger was covered).
+        new_events = cites_trigger = None
+        if warning_kind == "event_found":
+            acting = [c for c in q1.get("claims") or [] if c.get("acts")]
+            keys = [f"{c.get('event_type')}|{c.get('occurred_on')}" for c in acting]
+            before = set(n.get("warned_events") or [])
+            new_events = len({k for k in keys if k not in before})
+            n["warned_events"] = sorted(before | set(keys))
+            trig_acc = {t["id"].split(":", 1)[1] for t in covered_triggers if t.get("kind") == "sec_filing"}
+            if trig_acc:
+                acc_of = {e.get("fact_id"): (e.get("source") or {}).get("accession") for e in packet.get("evidence") or []}
+                cites_trigger = any(acc_of.get(fid) in trig_acc for c in acting for fid in c.get("fact_ids") or [])
+        line = {"name_state": state, "warning_kind": warning_kind, "warning_new_events": new_events, "warning_cites_trigger": cites_trigger,
+                "pending_review": n["pending_review"], "pending_reasons": reasons,
                 "thesis_compare": compare, "points": {k: v["state"] for k, v in (tp or {}).get("points", {}).items()},
                 "thesis_change_status": (tp or {}).get("status"), "q1": q1, "compared_with_run": _prior_ref(prior),
                 "triggers": covered_triggers, **common}

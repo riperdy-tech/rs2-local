@@ -464,6 +464,9 @@ def test_cli_run_uses_the_defaults_of_the_module_and_maps_the_exit_codes(rig, ca
     monkeypatch.setattr(M, "qwen_build_packet", rig.build)
     monkeypatch.setattr(M, "qwen_run", rig.runner)
     monkeypatch.setattr(M, "qwen_versions", lambda wt: (PROMPT, CONTRACT))
+    import formation_run
+    monkeypatch.setattr(M, "gpu_free", lambda: (True, None))              # the command's defaults read this machine's card and the
+    monkeypatch.setattr(formation_run, "formation_waiting", lambda: False)   # formation state: not this test's subject
     args = ["run", "--root", str(rig.root), "--worktree", str(rig.wt), "--checks-dir", str(rig.checks), "--screener-repo", "screener"]
     rig.script["AAA"] = ["gpu_busy"]
     assert M.main(args) == 4 and "stopped: gpu_busy" in capsys.readouterr().out
