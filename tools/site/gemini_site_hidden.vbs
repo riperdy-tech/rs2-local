@@ -11,6 +11,7 @@ siteDir = fso.BuildPath(fso.BuildPath(root, "cache"), "gemini_site")
 If Not fso.FolderExists(fso.BuildPath(root, "cache")) Then fso.CreateFolder fso.BuildPath(root, "cache")
 If Not fso.FolderExists(siteDir) Then fso.CreateFolder siteDir
 sh.Environment("Process")("PYTHONIOENCODING") = "utf-8"
+sh.Environment("Process")("VALUE_METHOD") = "decided"   ' operator 2026-11-18: the cloud arms value with the decided method
 cmd = "cmd /c """"" & py & """ -u """ & fso.BuildPath(here, "gemini_ondemand.py") & """ work" & _
       " >> """ & fso.BuildPath(siteDir, "worker.out") & """ 2>> """ & fso.BuildPath(siteDir, "worker.err") & """"""
 WScript.Quit sh.Run(cmd, 0, True)
