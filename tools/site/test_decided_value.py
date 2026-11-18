@@ -461,6 +461,17 @@ def test_value_meta_finds_the_decided_runs_result(tmp_path, monkeypatch):
     assert G.value_meta({"ticker": "TEST", "date": "2026-11-18T00:00:00Z"}) == (C.R, checks.PROB)
 
 
+def test_value_meta_prefers_the_runs_of_the_reports_own_method(tmp_path, monkeypatch):
+    monkeypatch.setattr(G, "ROOT", tmp_path)
+    two_runs(tmp_path, monkeypatch, root=tmp_path / "cache" / "m3q_sonnet")
+    menu = tmp_path / "cache" / "m3q" / "runs" / "TEST_20261118T000000Z_abc_1000"
+    menu.mkdir(parents=True)
+    (menu / "result.json").write_text(json.dumps({"status": "ok", "cost_of_equity": 0.5, "checks": {"prob": {"bear": 0.2, "base": 0.6, "bull": 0.2}}}), encoding="utf-8")
+    rep = {"ticker": "TEST", "date": "2026-11-18T00:00:00Z"}
+    assert G.value_meta(rep)[0] == 0.5                                                     # a menu report reads the menu run
+    assert G.value_meta(dict(rep, decided={"method": "decided.v1"})) == (C.R, checks.PROB)  # a decided report reads its own runs
+
+
 # ---- the switch in gemini_ondemand.analyze ---------------------------------------------------------------------------------------
 
 def switch(tmp_path, monkeypatch, method, family="operating"):

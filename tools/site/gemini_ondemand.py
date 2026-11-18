@@ -358,14 +358,15 @@ def alpha_pts(value, price, ke):
 def value_meta(rep):
     """(required return, {bear, base, bull: probability}) from the name's stored valuation result, or (None, None)."""
     stem = f"{rep['ticker']}_{runner.t_compact(rep['date'])}_"
-    for root in sorted((ROOT / "cache").glob("m3q*")):
-        for d in sorted((root / "runs").glob(stem + "*")):
-            f = d / "result.json"
-            if f.exists():
-                r = json.loads(f.read_text(encoding="utf-8"))
-                prob = (r.get("checks") or {}).get("prob")
-                if str(r.get("status", "")).startswith("ok") and r.get("cost_of_equity") is not None and prob:
-                    return r["cost_of_equity"], prob
+    dec = bool(rep.get("decided"))              # the runs of the report's own method first: a decided report beside an older menu run
+    dirs = [d for root in sorted((ROOT / "cache").glob("m3q*")) for d in sorted((root / "runs").glob(stem + "*"))]
+    for d in sorted(dirs, key=lambda d: ("_decided_" in d.name) != dec):
+        f = d / "result.json"
+        if f.exists():
+            r = json.loads(f.read_text(encoding="utf-8"))
+            prob = (r.get("checks") or {}).get("prob")
+            if str(r.get("status", "")).startswith("ok") and r.get("cost_of_equity") is not None and prob:
+                return r["cost_of_equity"], prob
     return None, None
 
 
