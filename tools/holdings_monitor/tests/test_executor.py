@@ -52,6 +52,7 @@ class Rig:
         self.checks = write_checks(tmp_path / "checks", {"check_20261028T000000Z.json": [check_row("c0ffee")]})
         self.mon = M.Monitor(self.root)
         self.build_calls, self.run_calls, self.script, self.fixed_sha, self.refuse, self.n = [], [], {}, {}, {}, 0
+        self.think = "high"                                                  # the level the stub runner records in each manifest
         self.packets = {}
         self.news_files = []
 
@@ -78,18 +79,18 @@ class Rig:
             return {"refused": "packet has no evidence items"}
         self.n += 1
         if what == "crash_mid":
-            d = make_run(self.runs, ticker=ticker, run_no=self.n, T=T, status="running", finished=None, packet_sha=s)
+            d = make_run(self.runs, ticker=ticker, run_no=self.n, T=T, status="running", finished=None, packet_sha=s, think=self.think)
             old = datetime(2026, 10, 30, 0, 0, tzinfo=timezone.utc).timestamp()
             os.utime(d / "manifest.json", (old, old))
             return {"crashed": "exit code 1: killed"}
-        d = make_run(self.runs, ticker=ticker, run_no=self.n, T=T, packet_sha=s,
+        d = make_run(self.runs, ticker=ticker, run_no=self.n, T=T, packet_sha=s, think=self.think,
                      **({"status": "failed", "finished": "2026-10-30T02:00:00Z"} if what == "failed"
                         else {"tc_claims": [tc("p1", "unchanged"), tc("p2", "unchanged")]}))
         return {"run_dir": str(d), "status": "complete" if what == "ok" else "failed"}
 
     def go(self, **kw):
         kw = {"worktree": self.wt, "checks_dir": self.checks, "screener_repo": "screener", "build": self.build, "runner": self.runner,
-              "versions": lambda wt: (PROMPT, CONTRACT), "clock": lambda: AFTER, "waiting": lambda: False, "gpu": lambda: (True, None), **kw}
+              "versions": lambda wt: (PROMPT, CONTRACT), "think": lambda wt: "high", "clock": lambda: AFTER, "waiting": lambda: False, "gpu": lambda: (True, None), **kw}
         return M.run_pass(self.root, **kw)
 
     def kinds(self, ticker=None):
@@ -217,6 +218,36 @@ def test_a_run_key_already_run_absorbs_the_entry_and_does_not_run(rig):
     assert len(q) == 1 and q[0]["run_key"] == rep["entries"][0]["run_key"] and q[0]["run_id"] == "AAA_1"
 
 
+def test_run_key_gains_the_thinking_level_only_when_given():
+    old = M.run_key(AAA["cik"], "s", "p", "c", "b")
+    assert M.run_key(AAA["cik"], "s", "p", "c", "b", None) == old and "think" not in old
+    assert M.run_key(AAA["cik"], "s", "p", "c", "b", "high") == old + "|think:high"
+    assert M.run_key(AAA["cik"], "s", "p", "c", "b", "medium") != M.run_key(AAA["cik"], "s", "p", "c", "b", "high")
+
+
+def test_a_packet_read_only_at_medium_is_read_again_at_high(rig):
+    rig.fixed_sha["AAA"] = sha("same evidence")
+    rig.think = "medium"
+    rig.queue(AAA, "sec:1", 3, EARLY)
+    rig.go(think=lambda wt: "medium")
+    assert len(rig.run_calls) == 1
+    rig.think = "high"
+    rig.queue(AAA, "sec:2", 3, MID)                                       # the same packet bytes, now at the required level
+    rep = rig.go()
+    assert len(rig.run_calls) == 2 and rep["entries"][0]["outcome"] == "resolved" and rep["entries"][0]["run_key"].endswith("|think:high")
+
+
+def test_unresolved_finished_run_skips_a_run_at_another_level(tmp_path):
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    sha_ = "p" * 64
+    d = make_run(runs, packet_sha=sha_, think="medium")
+    args = (tmp_path, None, "AAA", sha_, "m3m.prompt.v3", "m3m.analysis.v2", "v6")
+    assert M.unresolved_finished_run(*args, think="high") is None
+    assert M.unresolved_finished_run(*args, think="medium") == d
+    assert M.unresolved_finished_run(*args) == d                          # no level asked: as before
+
+
 # ---------------------------------------------------------------- the GPU
 
 @pytest.mark.parametrize("why", ["gpu_busy", "gpu_state_unreadable", "model_show_failed"])
@@ -241,7 +272,7 @@ def test_an_ok_run_resolves_and_calls_the_runner_with_the_right_arguments(rig):
     assert rig.run_calls == [("AAA", "material_events,thesis_change", 1000, str(rig.wt))]
     row = rep["entries"][0]
     assert row["outcome"] == "resolved" and row["name_state"] == "thesis_intact" and row["prior_run"] == "PRIOR_RUN" and "run_key_mismatch" not in row
-    assert row["run_key"] == M.run_key(AAA["cik"], rig.packets[next(iter(rig.packets))][2], PROMPT, CONTRACT, BUILT)
+    assert row["run_key"] == M.run_key(AAA["cik"], rig.packets[next(iter(rig.packets))][2], PROMPT, CONTRACT, BUILT, "high")
     assert [k for k in rig.kinds("AAA")] == ["discovered", "queued", "analysed", "resolved"]
     s = rig.state()
     assert row["run_key"] in s["ran_keys"] and s["names"]["AAA"]["last_good"]["run_id"] == "AAA_1" and rig.mon.ordered() == []
@@ -457,6 +488,17 @@ def test_qwen_versions_are_read_from_the_source_text(tmp_path):
         M.qwen_versions(tmp_path / "nowhere")
 
 
+def test_qwen_think_is_read_from_the_source_text(tmp_path):
+    (tmp_path / "qwen_c").mkdir()
+    (tmp_path / "qwen_c" / "runner.py").write_text('import x\n# THINK = "no"\nTHINK = "high"   # note\n', encoding="utf-8")
+    assert M.qwen_think(tmp_path) == "high"
+    (tmp_path / "qwen_c" / "runner.py").write_text("x = 1\n", encoding="utf-8")
+    with pytest.raises(M.MonitorError, match="THINK"):
+        M.qwen_think(tmp_path)
+    with pytest.raises(M.MonitorError):
+        M.qwen_think(tmp_path / "nowhere")
+
+
 # ---------------------------------------------------------------- the command
 
 def test_cli_run_uses_the_defaults_of_the_module_and_maps_the_exit_codes(rig, capsys, monkeypatch):
@@ -464,6 +506,7 @@ def test_cli_run_uses_the_defaults_of_the_module_and_maps_the_exit_codes(rig, ca
     monkeypatch.setattr(M, "qwen_build_packet", rig.build)
     monkeypatch.setattr(M, "qwen_run", rig.runner)
     monkeypatch.setattr(M, "qwen_versions", lambda wt: (PROMPT, CONTRACT))
+    monkeypatch.setattr(M, "qwen_think", lambda wt: "high")
     import formation_run
     monkeypatch.setattr(M, "gpu_free", lambda: (True, None))              # the command's defaults read this machine's card and the
     monkeypatch.setattr(formation_run, "formation_waiting", lambda: False)   # formation state: not this test's subject

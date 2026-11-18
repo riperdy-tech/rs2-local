@@ -64,7 +64,7 @@ def sha(b):
 
 def make_run(base, ticker="AAA", run_no=1, T="2026-10-30T01:00:00Z", status="complete", finished="2026-10-30T02:00:00Z", me_claims=None,
              tc_claims=None, tc_status="ok", prior="PRIOR_RUN", point_ids=("p1", "p2"), tamper=None, evidence=None, built="v6",
-             packet_sha=None):
+             packet_sha=None, think=None):
     """A qwen_c-shaped run directory with a valid manifest/analysis/packet. tamper: 'analysis' or 'packet' changes that file afterwards."""
     run_id = f"{ticker}_{run_no}"
     d = Path(base) / run_id
@@ -88,6 +88,8 @@ def make_run(base, ticker="AAA", run_no=1, T="2026-10-30T01:00:00Z", status="com
            "incomplete_tasks": {} if status == "complete" else {"risks": "malformed"}, "analysis_sha256": sha(ab)}
     if finished:
         man["finished_at"] = finished
+    if think is not None:
+        man["options"] = {"think": think}
     (d / "packet.json").write_bytes(pb)
     (d / "analysis.json").write_bytes(ab)
     (d / "manifest.json").write_text(json.dumps(man), encoding="utf-8")

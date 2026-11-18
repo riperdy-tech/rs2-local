@@ -924,9 +924,14 @@ def select_names(order, tickers, only=None, limit=None):
     return todo, alias, not_members
 
 
-def run_key(cik, packet_sha256, prompt, contract, builder):
-    """The run key of SPEC 4: (CIK, packet sha256, prompt, contract, builder), as one string."""
-    return "|".join([str(int(cik)) if str(cik).isdigit() else str(cik), str(packet_sha256), str(prompt), str(contract), str(builder)])
+def run_key(cik, packet_sha256, prompt, contract, builder, think=None):
+    """The run key of SPEC 4: (CIK, packet sha256, prompt, contract, builder), as one string. With a thinking level the key gains one more
+    part, `think:<level>`: a read at another thinking level is another read (operator 2026-11-18: medium reads are not evidence, so a packet
+    read at medium must be read again at high). Without one (None) the key is exactly the old one, so stored keys and old tests stay valid."""
+    parts = [str(int(cik)) if str(cik).isdigit() else str(cik), str(packet_sha256), str(prompt), str(contract), str(builder)]
+    if think is not None:
+        parts.append("think:" + str(think))
+    return "|".join(parts)
 
 
 def _event_id(*parts):
@@ -1259,7 +1264,7 @@ class Monitor:
             man_sha = sha256_bytes(man_bytes)
             pk = man.get("packet") or {}
             key = run_key(n["cik"] if n["cik"] is not None else ticker, pk.get("packet_sha256"), man.get("prompt_version"), man.get("contract"),
-                          man.get("builder_version"))
+                          man.get("builder_version"), (man.get("options") or {}).get("think"))
             common = {"run_id": run_id, "run_dir": str(run_dir), "manifest_sha256": man_sha, "run_key": key, "decision_time_utc": T,
                       "status": man.get("status"), "finished_at": man.get("finished_at")}
             prior = man.get("prior_run") or None
@@ -1862,6 +1867,19 @@ def qwen_versions(worktree):
     return tuple(out)
 
 
+def qwen_think(worktree):
+    """The thinking level (THINK) of the qwen_c in `worktree`, read from the source text (no import: nothing of qwen_c is executed)."""
+    path = Path(worktree) / "qwen_c" / "runner.py"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise MonitorError(f"{path}: unreadable ({e})") from e
+    m = re.search(r"^THINK\s*=\s*[\"']([^\"']+)[\"']", text, flags=re.M)
+    if not m:
+        raise MonitorError(f"{path}: no THINK found")
+    return m.group(1)
+
+
 def _json_tail(text):
     return json.loads(text[text.index("{"):])
 
@@ -1922,9 +1940,10 @@ def entry_T(entry):
     return iso(parse_utc(entry["packet_T"]))
 
 
-def unresolved_finished_run(run_root, name_rec, ticker, packet_sha256, prompt, contract, builder):
+def unresolved_finished_run(run_root, name_rec, ticker, packet_sha256, prompt, contract, builder, think=None):
     """The newest finished run in `run_root` with this exact run key that the monitor has not resolved (a crash between the run and its
-    resolve), or None. A run with no finished_at is not one (it is `crashed`; the crash scan records it)."""
+    resolve), or None. A run with no finished_at is not one (it is `crashed`; the crash scan records it). With a thinking level, a run made
+    at another level is not one either."""
     best = None
     runs = Path(run_root) / "runs"
     for d in sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []:
@@ -1935,6 +1954,8 @@ def unresolved_finished_run(run_root, name_rec, ticker, packet_sha256, prompt, c
         if (man.get("ticker") != ticker or not man.get("finished_at") or man.get("run_id") in (name_rec or {}).get("runs", {})
                 or (man.get("packet") or {}).get("packet_sha256") != packet_sha256 or man.get("prompt_version") != prompt
                 or man.get("contract") != contract or man.get("builder_version") != builder):
+            continue
+        if think is not None and (man.get("options") or {}).get("think") != think:
             continue
         if best is None or (man["finished_at"], d.name) > best[0]:
             best = ((man["finished_at"], d.name), d)
@@ -2001,7 +2022,7 @@ def gpu_free():
 
 
 def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SCREENER_REPO, limit=None, dry_run=False, build=None,
-             runner=None, versions=None, clock=None, seed_base=SEED_BASE, crash_scan=True, waiting=None, max_minutes=None, gpu=None, git_show=None):
+             runner=None, versions=None, think=None, clock=None, seed_base=SEED_BASE, crash_scan=True, waiting=None, max_minutes=None, gpu=None, git_show=None):
     """One executor pass (WO_P3b1): the queue's entries in order (priority, then trigger time), at most `limit`, each at most once.
 
     For an entry: T = its packet_T; the newest verified commit at or before T (none: `failed`, no_verified_commit_at_T); the packet through
@@ -2011,7 +2032,7 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
     Injectable: build(ticker, T, commit, verified_record, screener_repo, cwd[, news_file=path]) -> {"packet", "packet_sha256",
     "builder_version", ...} or raises PacketRefused (`news_file` is passed only when the entry has news rows, see news_file_for);
     runner(packet, tasks, seed_base, cwd) -> {"run_dir", ...} | {"refused": text} | {"crashed": text};
-    versions(worktree) -> (prompt_version, contract); clock() -> aware datetime.
+    versions(worktree) -> (prompt_version, contract); think(worktree) -> the thinking level (part of the run key); clock() -> aware datetime.
 
     One instance: state/executor.lock (take_lock; a dead pid is taken over). dry_run takes no lock and changes nothing. Returns
     {"dry_run", "stopped", "entries": [...], "crash_scan"}."""
@@ -2025,7 +2046,7 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
             rep["entries"].append({"ticker": e["ticker"], "priority": e["priority"], "T": T, "commit": c["commit"] if c else None,
                                    "check_file": c["check_file"] if c else None, "tasks": task_set(e["priority"]) or "all"})
         return rep
-    build, runner, versions = build or qwen_build_packet, runner or qwen_run, versions or qwen_versions
+    build, runner, versions, think = build or qwen_build_packet, runner or qwen_run, versions or qwen_versions, think or qwen_think
     if waiting is None:                                # the formation runner's own test of "a formation has Q1 work left" (its owner)
         import formation_run
         waiting = formation_run.formation_waiting
@@ -2034,6 +2055,7 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
     take_lock(lock)
     try:
         prompt, contract = versions(worktree)
+        level = think(worktree)
         run_root = Path(worktree) / "cache" / "m3m"
         if crash_scan:
             # Under the executor lock no qwen_c run of ours is in progress, so a `running` run with no finished_at is dead: record it now
@@ -2099,14 +2121,14 @@ def run_pass(root, *, worktree=WORKTREE, checks_dir=CHECKS_DIR, screener_repo=SC
                 row["outcome"] = "failed:packet_refused"
                 continue
             transport = 0
-            key = run_key(e["cik"], pk["packet_sha256"], prompt, contract, pk["builder_version"])
+            key = run_key(e["cik"], pk["packet_sha256"], prompt, contract, pk["builder_version"], level)
             row["run_key"] = key
             if mon.already_ran(key):
                 mon.absorb(t, key, now)
                 row["outcome"] = "absorbed"
                 continue
             run_dir = unresolved_finished_run(run_root, mon._load()["names"].get(t), t, pk["packet_sha256"], prompt, contract,
-                                              pk["builder_version"])
+                                              pk["builder_version"], level)
             if run_dir is not None:
                 row["recovered_run"] = str(run_dir)                       # finished before a crash, never resolved: resolve it, do not run again
             else:
