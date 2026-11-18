@@ -234,7 +234,7 @@ def test_a_clean_run_is_complete_and_every_record_recomputes(env):
     assert man["contract"] == "m3m.analysis.v3" and man["prompt_version"] == "m3m.prompt.v3" and man["builder_version"] == "fixture_b.1"
     assert man["ollama_version"] == "0.40.3" and man["kis_halt"] == "not_resolvable_in_rs2"
     assert man["qwen_c"] == {"git_commit": "a" * 40, "dirty": False}
-    assert man["options"]["num_ctx"] == 98304 and man["options"]["num_predict"] == 32768 and man["options"]["think"] == "high"
+    assert man["options"]["num_ctx"] == 98304 and man["options"]["num_predict"] == 49152 and man["options"]["think"] == "high"
     assert man["options"]["seeds"] == {t: 1000 + i for i, t in enumerate(tasks.TASKS)} and man["options"]["differs_from_defaults"] == []
     assert man["started_at"] and man["finished_at"] and man["status"] == "complete"
     assert man["tasks"]["thesis_change"]["status"] == "not_applicable_no_prior" and posts_of("thesis_change") == []
@@ -247,7 +247,7 @@ def test_the_requests_carry_the_fixed_options_our_system_and_think(env):
             continue
         (req,) = posts_of(t)
         assert req["raw"] is True and req["model"] == runner.MODEL
-        assert req["options"] == {"num_ctx": 98304, "num_predict": 32768, "seed": 1000 + i}      # sampling is the Modelfile's
+        assert req["options"] == {"num_ctx": 98304, "num_predict": 49152, "seed": 1000 + i}      # sampling is the Modelfile's
         msgs = tasks.messages(t, json.loads(env["packet"].read_text(encoding="utf-8")))
         assert req["prompt"] == ollama_raw.render_prompt(msgs, None, "high")
         assert req["prompt"] != ollama_raw.render_prompt(msgs, None, "medium") and tasks.SYSTEM in req["prompt"]
@@ -634,7 +634,7 @@ def test_a_reply_cut_at_num_predict_names_done_reason_length(env):
     Stub.script = {"risks": ["cut_at_length", "cut_at_length"]}
     res = run(env)
     assert res["incomplete_tasks"] == {"risks": "malformed"}
-    assert "done_reason is length: the reply was cut at num_predict 32768" in analysis(res)["tasks"]["risks"]["cause"]
+    assert "done_reason is length: the reply was cut at num_predict 49152" in analysis(res)["tasks"]["risks"]["cause"]
 
 
 def test_the_post_check_catches_a_reply_at_the_context_wall(env):

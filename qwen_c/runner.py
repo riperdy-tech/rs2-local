@@ -84,7 +84,7 @@ MODEL = "rs2-analyst-deep-mtp5-v33"          # config.json depth_model at r26-ha
 PACKET_CONTRACT = "m3m.packet.v1"
 NUM_CTX = 98304                               # ruling 4.2: the value rs2 already runs on this card
 CHARS_PER_TOKEN = 2.5                         # ruling 4.2: the preflight's estimate
-NUM_PREDICT = 32768                           # 2026-11-19: at high thinking a read measured 17,560 output tokens and 12288 cut both attempts before the answer; provisional (one name measured): a cut reply still shows as malformed, done_reason length
+NUM_PREDICT = 49152                           # 2026-11-19: high thinking spends most of the reply on thinking: measured 17,560 and 29,093 output tokens on two reads (12288 cut both attempts; 32768 left one read 11% short of a cut). The valuation call has used 49152 at high since 2026-11-11. The reply gets this or what the prompt leaves of the context
 MIN_PREDICT = 12288                           # 2026-11-19: the reply allowance the packet size bounds were sized for (NUM_PREDICT until that day). Raising
 #                                               NUM_PREDICT to 32768 had lowered the prompt ceiling from 215,040 to 163,840 characters and refused large monitor packets
 THINK = "high"                # operator, 2026-11-19, non-negotiable: Qwen reads at high thinking, always; run() refuses any other level (it was "medium" from 2026-10-29 to 2026-11-19: those runs are not evidence)
