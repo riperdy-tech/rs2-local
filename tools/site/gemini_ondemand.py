@@ -388,7 +388,7 @@ def pending_offer(rep):
     return None
 
 
-OFFER_REASON = "an offer to acquire the company is announced and pending: the price follows the offer's terms, not the standalone value shown"
+OFFER_REASON = "an offer to acquire the company is announced and pending: the price follows the offer's terms, not the company's standalone value"
 
 
 def verdict(row, ke, prob):
