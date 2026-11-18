@@ -205,9 +205,9 @@ VESSELS = [("x:InvestmentsInVessels", [100, 60, 111], "out"), ("x:InvestmentInVe
            ("x:ProceedsFromSaleOfVessels", [0, 0, 143], "in")]
 
 
-def capex_out(have=None, lines=VESSELS, **kw):
-    """(the series after the reading, the years read) for a cash-flow table of `lines`; `have`: {end: value} companyfacts already carries"""
-    out = {"capex": {"tags": [], "values": [{"end": e, "start": None, "value": v, "tag": "T", "form": "10-K"} for e, v in (have or {}).items()]}}
+def capex_out(have=None, lines=VESSELS, tag="T", **kw):
+    """(the series after the reading, the years read) for a cash-flow table of `lines`; `have`: {end: value} companyfacts already carries under `tag`"""
+    out = {"capex": {"tags": [], "values": [{"end": e, "start": None, "value": v, "tag": tag, "form": "10-K"} for e, v in (have or {}).items()]}}
     if not out["capex"]["values"]:
         del out["capex"]
     got = ix_figures.fill_capex(out, {}, source(document(cash_flow(lines, **kw))), 8)
@@ -258,12 +258,43 @@ def test_a_capital_spending_line_printed_as_a_receipt_is_not_read():
     assert capex_out(lines=[("x:PaymentsForVesselsUnderConstruction", [5, 5, 5], "in")])[1] == []
 
 
-def test_capex_companyfacts_carries_is_never_replaced_and_must_agree_where_the_filing_shows_the_same_year():
-    out, got = capex_out(have={"2023-12-31": 7.0})                                           # 7 against the filing's 100,000: the reading is rejected whole
+def test_capex_the_feed_files_under_another_tag_is_not_pooled_with_the_filings_years():
+    """WO_UV5: one source for every pooled year. The feed's narrower figure of a year the filing does not show, and of a year it does, are both dropped."""
+    out, got = capex_out(have={"2021-12-31": 1.0, "2024-12-31": 7.0})
+    assert got == ["2023-12-31", "2025-12-31"]
+    assert {v["end"]: v["value"] for v in out["capex"]["values"]} == {"2023-12-31": 100e3, "2024-12-31": 150e3, "2025-12-31": 310e3}
+    assert all(v["stamp"].startswith("ix_read:capex:") for v in out["capex"]["values"])
+
+
+def test_a_note_names_the_years_read_and_the_feed_years_dropped():
+    note = {}
+    out = {"capex": {"tags": ["T"], "values": [{"end": "2021-12-31", "start": None, "value": 1.0, "tag": "T", "form": "10-K"}]}}
+    ix_figures.fill_capex(out, {}, source(document(cash_flow(VESSELS))), 8, note)
+    assert note == {"capex": {"read": ["2023-12-31", "2024-12-31", "2025-12-31"], "dropped": ["2021-12-31"]}}
+
+
+ONE_LINE = [("us-gaap:PaymentsToAcquirePropertyPlantAndEquipment", [100, 60, 111], "out")]
+SAME = "PaymentsToAcquirePropertyPlantAndEquipment"
+
+
+def test_feed_years_under_the_very_tag_of_the_filings_one_line_are_the_same_concept_and_stay():
+    out, got = capex_out(have={"2021-12-31": 7.0, "2022-12-31": 9.0}, lines=ONE_LINE, tag=SAME)
+    vals = {v["end"]: v["value"] for v in out["capex"]["values"]}
+    assert got == ["2023-12-31", "2024-12-31", "2025-12-31"] and vals == {"2021-12-31": 7.0, "2022-12-31": 9.0, "2023-12-31": 100e3, "2024-12-31": 60e3, "2025-12-31": 111e3}
+
+
+def test_a_same_tag_feed_figure_that_disagrees_with_the_filing_rejects_the_reading():
+    out, got = capex_out(have={"2023-12-31": 7.0}, lines=ONE_LINE, tag=SAME)                 # 7 against the filing's 100,000
     assert got == [] and [v["value"] for v in out["capex"]["values"]] == [7.0]
-    out, got = capex_out(have={"2024-12-31": 150e3, "2021-12-31": 1.0})
-    assert got == ["2023-12-31", "2025-12-31"] and {v["end"]: v["value"] for v in out["capex"]["values"]}["2024-12-31"] == 150e3
-    assert out["capex"]["values"][0]["value"] == 1.0                                          # a year outside the filing is untouched
+    out, got = capex_out(have={"2024-12-31": 60e3, "2021-12-31": 1.0}, lines=ONE_LINE, tag=SAME)      # agrees to the dollar
+    assert got == ["2023-12-31", "2025-12-31"] and {v["end"]: v["value"] for v in out["capex"]["values"]}["2024-12-31"] == 60e3
+    assert out["capex"]["values"][0]["value"] == 1.0
+
+
+def test_a_filing_with_two_capital_spending_lines_is_never_the_same_concept_as_one_feed_tag():
+    two = ONE_LINE + [("x:PaymentsForVesselsUnderConstruction", [1, 2, 3], "out")]
+    out, got = capex_out(have={"2021-12-31": 7.0}, lines=two, tag=SAME)
+    assert got == ["2023-12-31", "2024-12-31", "2025-12-31"] and "2021-12-31" not in {v["end"] for v in out["capex"]["values"]}
 
 
 def test_a_statement_with_no_operating_subtotal_before_the_investing_one_is_not_read():
@@ -297,13 +328,49 @@ def test_the_document_is_read_once_for_all_the_readings_when_capex_and_d_and_a_a
     assert calls == []                                                                        # the financial route reads no capital spending
 
 
-def test_a_filed_series_mixed_with_years_from_the_filing_is_flagged_not_gated():
-    st = f"ix_read:capex:{ACC}:x:PaymentsForVesselsUnderConstruction"
-    vals = [{"end": e, "value": 5.0, "tag": "PaymentsToAcquirePropertyPlantAndEquipment", "form": "10-K"} for e in ti.ENDS[:2]]
-    vals += [{"end": e, "value": 6.0, "tag": "PaymentsForVesselsUnderConstruction", "form": "10-K", "stamp": st} for e in ti.ENDS[2:]]
-    b = base(ti.facts(capex={"tags": [], "values": vals}))
-    assert st in b["stamps"] and "ix_series_mixed:capex:2_of_5" in b["stamps"]
-    assert not any(s.startswith("ix_") for s in base()["stamps"])                         # a company with nothing read carries no ix stamp
+def mixed_capex(feed_tag, n_feed=2, line="x:PaymentsForVesselsUnderConstruction"):
+    st = f"ix_read:capex:{ACC}:{line}"
+    vals = [{"end": e, "value": 5.0, "tag": feed_tag, "form": "10-K"} for e in ti.ENDS[:n_feed]]
+    vals += [{"end": e, "value": 6.0, "tag": line.split(":")[-1], "form": "10-K", "stamp": st} for e in ti.ENDS[n_feed:]]
+    return st, ti.facts(capex={"tags": [], "values": vals})
+
+
+def test_a_series_of_the_filings_years_only_carries_its_stamp_and_a_company_with_nothing_read_none():
+    st, f = mixed_capex("x", n_feed=0)
+    assert st in base(f)["stamps"] and not any(s.startswith("ix_") for s in base()["stamps"])
+
+
+def test_a_pooled_series_that_mixes_the_filings_years_with_another_tag_is_refused_as_an_assertion():
+    """WO_UV5: the facts build no such series; if one reaches the engine it is refused, not flagged."""
+    st, f = mixed_capex(SAME)
+    with pytest.raises(desk.DeskRefusal) as e:
+        base(f)
+    assert e.value.code == "ix_series_mixed"
+
+
+def test_feed_years_under_the_tag_of_the_filings_one_line_are_not_a_mix():
+    st, f = mixed_capex(SAME, line=f"us-gaap:{SAME}")
+    assert st in base(f)["stamps"]
+
+
+def test_a_filing_covering_fewer_years_than_the_pool_needs_refuses_and_says_so():
+    """WO_UV5: the filing's own columns hold 2 years, the engine pools at least MIN_POOL_YEARS: the refusal names the filing's columns."""
+    st, f = mixed_capex("x", n_feed=3)
+    f["capex"]["values"] = f["capex"]["values"][3:]
+    f["_ix"] = {"url": "u", "accession": ACC, "read": {"capex": ti.ENDS[3:]}, "version": "v",
+                "single_source": {"capex": {"read": ti.ENDS[3:], "dropped": ti.ENDS[:3]}}}
+    with pytest.raises(desk.DeskRefusal) as e:
+        base(f)
+    msg = str(e.value)
+    assert e.value.code == "history_short" and "at least 3 are needed" in msg and "capex is taken from the filing's own columns only (2 fiscal years" in msg and ti.ENDS[0] in msg
+
+
+def test_the_whole_chain_gives_the_filings_years_only_and_the_engine_pools_them():
+    """facts.annual_facts -> inputs.base: companyfacts holds a narrower capex tag for older years, the filing the statement's lines for three."""
+    cf = whole_cf(PaymentsToAcquirePropertyPlantAndEquipment=1, DepreciationAndAmortization=1)
+    cf["facts"]["us-gaap"]["PaymentsToAcquireOtherPropertyPlantAndEquipment"] = {"units": {"USD": [fy("2021-12-31", 1e3, OLD, filed="2025-02-21")]}}
+    out = facts.annual_facts(cf, subs_new(), T, substitute_items=True, ix=lambda: source(document(cash_flow(VESSELS))))
+    assert [v["end"] for v in out["capex"]["values"]] == ["2023-12-31", "2024-12-31", "2025-12-31"] and out["_ix"]["single_source"]["capex"]["dropped"] == ["2021-12-31"]
 
 
 # ---- reading 3: D&A filed with one segment ----------------------------------------------------------------------------------------------
@@ -342,10 +409,22 @@ def test_da_with_two_members_or_with_a_changing_member_is_not_read():
     assert ix_figures.fill_da(da_out(), {}, source(two), facts.DA_EXCLUDES_AMORTIZATION, 8) == []
 
 
-def test_da_already_filed_for_the_year_is_never_replaced():
+def test_da_already_filed_for_every_year_the_filing_shows_is_not_read_again():
     out = da_out()
     out["da"]["values"].append({"end": "2025-12-31", "start": None, "value": 1.0, "tag": "Depreciation", "form": "10-K"})
     assert ix_figures.fill_da(out, {}, source(da_doc((24_359, 24_112, 25_335))), facts.DA_EXCLUDES_AMORTIZATION, 8) == []
+    assert out["da"]["values"][-1]["value"] == 1.0
+
+
+def test_da_read_from_the_filing_holds_the_filings_years_only():
+    """WO_UV5: the earlier years' depreciation under another tag (checked, as the filing shows them) and a year the filing does not show are not pooled with it."""
+    out, note = da_out(), {}
+    out["da"]["values"].insert(0, {"end": "2022-12-31", "start": None, "value": 500e3, "tag": "Depreciation", "form": "10-K"})
+    got = ix_figures.fill_da(out, {}, source(da_doc((24_359, 24_112, 25_335))), facts.DA_EXCLUDES_AMORTIZATION, 8, note)
+    assert got == ["2025-12-31"]
+    assert {v["end"]: v["value"] for v in out["da"]["values"]} == {"2023-12-31": 24_359e3, "2024-12-31": 24_112e3, "2025-12-31": 25_335e3}
+    assert out["da"]["tags"] == ["DepreciationAndAmortization"]
+    assert note == {"da": {"read": ["2023-12-31", "2024-12-31", "2025-12-31"], "dropped": ["2022-12-31"]}}
 
 
 # ---- reading 4: class-of-stock share counts ---------------------------------------------------------------------------------------------
@@ -455,4 +534,4 @@ def test_share_candidates_reach_the_facts_only_where_the_base_year_has_no_dilute
 
 
 def test_the_versions_are_bumped():
-    assert facts.FACTS_VERSION == "m3q.facts.v14" and inputs.INPUTS_VERSION == "m3q.inputs.v18" and ix_figures.IX_FIGURES_VERSION == "m3q.ix_figures.v1"
+    assert facts.FACTS_VERSION == "m3q.facts.v15" and inputs.INPUTS_VERSION == "m3q.inputs.v19" and ix_figures.IX_FIGURES_VERSION.startswith("m3q.ix_figures.v2")

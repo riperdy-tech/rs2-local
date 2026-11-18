@@ -351,8 +351,9 @@ def test_a_base_stamp_of_a_reading_made_without_a_filed_figure_reaches_the_flags
 
 
 def test_the_stamps_of_figures_read_from_the_filings_inline_xbrl_reach_the_flags():
-    """WO_UV3: which document and which tag or member a figure came from, and a pooled series that mixes read and filed years, are shown on the site."""
-    stamps = ["a", "ix_read:capex:0001-26-000010:x:PaymentsForVesselsUnderConstruction", "ix_series_mixed:capex:2_of_5",
+    """WO_UV3: which document and which tag or member a figure came from, and (WO_UV5) the IFRS interest expense used for an out-of-band finance-cost bundle, are shown on the site."""
+    stamps = ["a", "ix_read:capex:0001-26-000010:x:PaymentsForVesselsUnderConstruction",
+              "interest_ifrs_expense_for_finance_costs:refused=ifrs-full:FinanceCosts:used=ifrs-full:InterestExpense",
               "shares_from_ix_class_members:0001-26-000010:CommonStockMember", "shares_reconciled_with_class_eps", "shares_weighted_average_diluted"]
     assert D.surfaced_stamps({"stamps": stamps}) == stamps[1:5]
 

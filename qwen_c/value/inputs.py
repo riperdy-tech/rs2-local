@@ -23,7 +23,7 @@ from qwen_c.value.facts import (DA_EXCLUDES_AMORTIZATION, ITEM_SUBSTITUTES, PRET
                                   has_stamp, taxonomy_of)
 from qwen_c.value.ix_figures import SHARES_STAMP, STAMP as IX_STAMP
 
-INPUTS_VERSION = "m3q.inputs.v18"   # v18 2026-11-19 WO_UV3: diluted shares from class-of-stock members (proven against the member EPS by check_shares, no rescaling) where no other count resolves; every ix_read stamp of a figure the base uses reaches base["stamps"]; names that passed before are unchanged   # v17 2026-11-19 WO_UV2: senior-notes debt tags where no debt tag resolves (parts reconciled), cash interest also supplies the base year's interest where operating income is derived, an unclassified balance sheet gives working capital 0 for every family (flag working_capital_unclassified_balance_sheet), partnership units with per-unit EPS as the diluted count, a filed 0.0 preferred balance is a value and preferred dividends are taken as 0 where EPS x shares reconciles (financial route), derived-pretax and redeemable-NCI flags; names that passed before are unchanged   # v16 2026-11-19 WO_NC9c: base() takes real_estate (the decided method's real-estate family: an unclassified balance sheet gives working capital 0, a stale operating-income tag gives pretax plus interest, each stamped; False is byte-identical)   # v15 2026-11-18 WO_NC8: base() takes interest_override (the interest on borrowings stated from the filing text) where the tagged figure gives a cost of debt outside the band; stamped interest_from_filing_text, base["interest_from_filing"], the lease and financing-interest additions are not made for it, a kd_out_of_band refusal carries .figures   # v14 2026-11-18 WO_NC3: tax_rate's last rung is the statutory rate the company files for the base year (stamped tax_rate_statutory_fallback), base() carries it with a second rate (tax_fallback) and takes tau_override for the value at that rate   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v19"   # v19 2026-11-19 WO_UV5: where the IFRS finance-cost bundle gives a cost of debt outside the band, ifrs-full:InterestExpense of the same year is used if it gives one inside the band (stamped interest_ifrs_expense_for_finance_costs, base["interest_ifrs_expense"]); a pooled capex or D&A series read from the filing holds the filing's years only (an assertion refusal ix_series_mixed replaces the old flag; history_short names the filing's columns); names that passed before are unchanged   # v18 2026-11-19 WO_UV3: diluted shares from class-of-stock members (proven against the member EPS by check_shares, no rescaling) where no other count resolves; every ix_read stamp of a figure the base uses reaches base["stamps"]; names that passed before are unchanged   # v17 2026-11-19 WO_UV2: senior-notes debt tags where no debt tag resolves (parts reconciled), cash interest also supplies the base year's interest where operating income is derived, an unclassified balance sheet gives working capital 0 for every family (flag working_capital_unclassified_balance_sheet), partnership units with per-unit EPS as the diluted count, a filed 0.0 preferred balance is a value and preferred dividends are taken as 0 where EPS x shares reconciles (financial route), derived-pretax and redeemable-NCI flags; names that passed before are unchanged   # v16 2026-11-19 WO_NC9c: base() takes real_estate (the decided method's real-estate family: an unclassified balance sheet gives working capital 0, a stale operating-income tag gives pretax plus interest, each stamped; False is byte-identical)   # v15 2026-11-18 WO_NC8: base() takes interest_override (the interest on borrowings stated from the filing text) where the tagged figure gives a cost of debt outside the band; stamped interest_from_filing_text, base["interest_from_filing"], the lease and financing-interest additions are not made for it, a kd_out_of_band refusal carries .figures   # v14 2026-11-18 WO_NC3: tax_rate's last rung is the statutory rate the company files for the base year (stamped tax_rate_statutory_fallback), base() carries it with a second rate (tax_fallback) and takes tau_override for the value at that rate   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -270,7 +270,7 @@ def senior_debt(f, end):
     return tot + (loc if loc is not None else 0.0), "SeniorNotes" + ("+LongTermLineOfCredit" if loc is not None else "")
 
 
-def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None, real_estate=False):
+def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None, real_estate=False, interest_swap=None):
     """The measured base for value_operating. `market_cap` (USD, from the formation's price row) sets delta at market weights (O5);
     `bill_rate` (a fraction, or None) is the 3-month bill rate over the base fiscal year (the cash term). `tau_override` (WO_NC3):
     replaces the rate tax_rate returns in the base, RONIC and the NCI term, nothing else (the value at a statutory fallback's second rate).
@@ -285,7 +285,11 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
     WO_UV2, every family: an unclassified balance sheet (no current assets and no current liabilities for the base year) gives working capital 0 also
     where total assets and total liabilities are filed for that year (`working_capital_unclassified_balance_sheet`); where operating income is derived
     and the base year has no gross interest expense, cash interest paid supplies it (as the labelled substitute below does); where no debt tag resolves
-    and the filed interest would exceed cash even at the band's lowest rate, the senior-notes tags are read for both years (senior_debt)."""
+    and the filed interest would exceed cash even at the band's lowest rate, the senior-notes tags are read for both years (senior_debt).
+    WO_UV5, every family: where the interest read is the IFRS finance-cost bundle (ifrs-full:FinanceCosts) and the cost of debt it gives is outside the band,
+    ifrs-full:InterestExpense of the same year is tried: base calls itself with that figure as the interest (`interest_swap` names the refused and the
+    used tag; the lease and financing-interest additions are not made, as for any other stated interest) and returns that base if it passes the band,
+    stamped. No tolerance against cash interest. If it is also outside, the first refusal stands (and says so)."""
     rev = _by_end(f, "revenue")
     ends = sorted(rev)[-POOL_YEARS:]
     if len(ends) < MIN_POOL_YEARS:
@@ -342,7 +346,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
             raise DeskRefusal("input_missing" if name not in ("operating_income",) else "bridge_unavailable", f"{name} for the latest fiscal year {e0}")
     pool = [e for e in ends if e in da and e in cx]
     if len(pool) < MIN_POOL_YEARS:
-        raise DeskRefusal("history_short", f"{len(pool)} years with revenue, D&A and capex")
+        raise DeskRefusal("history_short", f"{len(pool)} years with revenue, D&A and capex; at least {MIN_POOL_YEARS} are needed" + _single_source_note(f))
     # ruling 19: the amortization basis holds in every pooled year, or nowhere
     sched = [_by_end(f, f"amort_next_{k}").get(e0) for k in range(1, 6)]
     after = _by_end(f, "amort_after_5").get(e0)
@@ -396,7 +400,9 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
     prev = ends[-2]
     debt_prev, _ = debt_total(f, prev)
     interest = ie.get(e0) if interest_override is None else interest_override                              # WO_NC8
-    if interest_override is not None:
+    if interest_swap is not None:
+        stamps.append(f"interest_ifrs_expense_for_finance_costs:refused={interest_swap[0]}:used={interest_swap[1]}")          # WO_UV5
+    elif interest_override is not None:
         stamps.append("interest_from_filing_text")
     if debt0 is None:
         # F_SPEC §6: kd is unused when delta = 0 (desk.equity_ronic). With no debt tag, delta is 0 when even the most debt the filed
@@ -446,8 +452,19 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
         kd_interest = interest + fin
         stamps.append("kd_includes_financing_interest")
     kd = kd_interest / ((debt0 + debt_prev) / 2) if interest and debt0 + debt_prev > 0 else 0.0
+    swap_note = ""
     if interest and debt0 + debt_prev > 0 and not KD_BAND[0] <= kd <= KD_BAND[1]:
-        refusal = DeskRefusal("kd_out_of_band", f"kd = interest / average debt = {kd:.4f}, outside {KD_BAND}" + (
+        alt = _by_end(f, "interest_expense_ifrs").get(e0)                  # WO_UV5: the IFRS interest expense where the bundle is out of band
+        if interest_override is None and _tag(f, "interest_expense", e0) == "FinanceCosts" and alt is not None and alt > 0:
+            try:
+                return base(f, market_cap=market_cap, bill_rate=bill_rate, tau_override=tau_override, interest_override=alt, real_estate=real_estate,
+                            interest_swap=("ifrs-full:FinanceCosts", "ifrs-full:InterestExpense"))
+            except DeskRefusal as second:
+                if second.code != "kd_out_of_band":
+                    raise
+                swap_note = f"; ifrs-full:InterestExpense ({alt:.6g}) for the same year is also outside"
+    if interest and debt0 + debt_prev > 0 and not KD_BAND[0] <= kd <= KD_BAND[1]:
+        refusal = DeskRefusal("kd_out_of_band", f"kd = interest / average debt = {kd:.4f}, outside {KD_BAND}" + swap_note + (
             "; the interest stated from the filing text, in place of the tagged figure, is also outside" if interest_override is not None else ""))
         refusal.figures = {"fy0": e0, "tag": _tag(f, "interest_expense", e0), "interest": interest, "kd_interest": kd_interest, "debt0": debt0,     # WO_NC8: what the cloud read is shown
                            "debt_prev": debt_prev, "debt_basis": how0, "kd": kd}
@@ -517,7 +534,9 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,
             "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps + substitutes, **({"substitutes": substitutes} if substitutes else {}),
             **({"tax_fallback": tax_fallback} if tax_fallback else {}),
-            **({"interest_from_filing": {"value": interest_override, "tagged_value": ie.get(e0), "kd_used": kd}} if interest_override is not None else {}),
+            **({"interest_from_filing": {"value": interest_override, "tagged_value": ie.get(e0), "kd_used": kd}} if interest_override is not None and interest_swap is None else {}),
+            **({"interest_ifrs_expense": {"value": interest_override, "refused_tag": interest_swap[0], "used_tag": interest_swap[1],
+                                          "tagged_value": ie.get(e0), "kd_used": kd}} if interest_swap is not None else {}),
             **({"real_estate": True} if real_estate else {}),
             "da_rule": "vintages" if ppe else "pooled",
             "ytd": _ytd(f, e0),
@@ -526,17 +545,31 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
                        "rev_growth": {c[i]: rev[c[i]] / rev[c[i - 1]] - 1 for c in [_year_chain(ends)] for i in range(1, len(c))}}}  # F_SPEC §2.1
 
 
+def _single_source_note(f):
+    """WO_UV5: what a pooled series read from the filing's inline XBRL is made of, for a refusal's wording: the filing's years only, the feed's years
+    under another tag left out. Empty where nothing was read for capital spending or D&A."""
+    one = ((f.get("_ix") or {}).get("single_source")) or {}
+    return "".join(f"; {c} is taken from the filing's own columns only ({len(n['read'])} fiscal years: {', '.join(n['read'])}), "
+                   f"the feed's figures for {', '.join(n['dropped']) or 'no other year'} are another tag and are not pooled with them" for c, n in sorted(one.items()))
+
+
 def _ix_marks(f, ends):
     """WO_UV3: the ix_read stamps (document, tag or member) of every figure the base uses, one per figure, sorted: the facts' values of the fiscal
-    years `ends`. Where a pooled series (capex, D&A) holds both years read from the filing and years companyfacts filed under its own tag, that is
-    stamped too (ix_series_mixed:<concept>:<years from companyfacts>_of_<years used>): the two may not cover the same lines, a flag and no gate."""
+    years `ends`. WO_UV5: a pooled series (capex, D&A) that holds years read from the filing holds nothing else but years the feed filed under the very
+    tag of the filing's one undimensioned line (the same concept); any other mix is refused (ix_series_mixed), an assertion, as the facts build none."""
     marks = {x for c, d in f.items() if not c.startswith("_") for v in d["values"] if v["end"] in ends for x in (v.get("stamp") or "").split(";")
              if x.startswith(IX_STAMP + ":")}
     for c in ("capex", "da"):
         vals = [v for v in (f.get(c) or {}).get("values", []) if v["end"] in ends]
-        read = [v for v in vals if any(x.startswith(IX_STAMP + ":") for x in (v.get("stamp") or "").split(";"))]
+        stamp = lambda v: next((x for x in (v.get("stamp") or "").split(";") if x.startswith(IX_STAMP + ":")), None)    # noqa: E731
+        read = [stamp(v) for v in vals if stamp(v)]
         if read and len(read) < len(vals):
-            marks.add(f"ix_series_mixed:{c}:{len(vals) - len(read)}_of_{len(vals)}")
+            lines = {x.split(":", 3)[3] for x in read}
+            names = next(iter(lines)).split("+") if len(lines) == 1 else []
+            others = [v for v in vals if not stamp(v)]
+            if len(names) != 1 or "[" in names[0] or any(names[0].split(":")[-1] != v["tag"] for v in others):
+                raise DeskRefusal("ix_series_mixed", f"{c}: years read from the filing's inline XBRL are pooled with years of another source or tag "
+                                                     f"({[(v['end'], v['tag']) for v in others]})")
     return sorted(marks)
 
 

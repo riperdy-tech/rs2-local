@@ -17,6 +17,12 @@ figure, never in place of a figure companyfacts carries, and each USED only afte
  4. share_candidates  the diluted weighted-average share count by class of stock, with the diluted EPS of the same class. Not a series: inputs
                    proves each candidate with check_shares against the class's own EPS and uses one that reconciles.
 
+One source per pooled series (WO_UV5): where a reading 2 or 3 supplies capex or D&A, every pooled year of that concept comes from the filing's own
+columns. The feed's figures for the same years or for older years are a narrower tag against the statement's line (or a total against a segment's), so they
+are not pooled with the filing's: they are dropped, and the engine then refuses the name if the filing's columns hold fewer than the pool's minimum
+(inputs.MIN_POOL_YEARS) of years. A feed year under the SAME tag as the filing's one line (same member) is the same concept: it is kept, and must
+agree with the filing where both show the year.
+
 Tolerance, everywhere: the rounding of the printed figures (decimals attribute): one printed figure is off by at most half a unit, so a sum of n
 figures by n/2 units (the rule inputs.senior_debt already uses). No other threshold exists here; where a figure cannot be verified it is not used.
 A cell the filer left untagged is blank, never 0 (a tagged "-" is a filed 0). Every value read is stamped
@@ -28,7 +34,7 @@ from dataclasses import dataclass
 from qwen_c import packet, sec_store
 from qwen_c.value import ixbrl
 
-IX_FIGURES_VERSION = "m3q.ix_figures.v1"
+IX_FIGURES_VERSION = "m3q.ix_figures.v2"   # v2 WO_UV5: a pooled series read from the filing comes from the filing's columns alone
 STAMP = "ix_read"
 SHARES_STAMP = "shares_from_ix_class_members"
 ANNUAL_DAYS = (350, 380)         # facts.py: a fiscal year
@@ -136,6 +142,22 @@ def _add(out, absent, concept, vals, years):
     absent.pop(concept, None)
 
 
+def _replace(out, absent, concept, vals, keep, years):
+    """WO_UV5: the series of `concept` becomes `vals` (read from the filing) plus the feed's own values `keep` (the same concept), the latest `years`."""
+    out[concept] = {"tags": [], "values": []}
+    _add(out, absent, concept, list(vals) + list(keep), years)
+
+
+def _same_tag_as(concept, tag, names):
+    """Whether the feed's `tag` (a local name, as the facts store it) is the one filed line `names` holds: a single tag, undimensioned, the same name."""
+    from qwen_c.value.facts import CONCEPTS, ITEM_SUBSTITUTES
+    if len(names) != 1:
+        return False
+    full = {f"{tax}:{t}" for tax, t, _ in CONCEPTS[concept][1] if t == tag}
+    full |= {f"{tax}:{t}" for tax, t, _, _ in ITEM_SUBSTITUTES.get(concept, []) if t == tag}
+    return next(iter(names)) in full
+
+
 # ---------------------------------------------------------------------------------------------------------------- 1. a year not ingested
 def fill_new_year(out, absent, src, cf_value, concepts, max_concepts, years):
     """Reading 1. The fiscal year `src.report_date` is the newest annual report and `out` ends earlier. For each concept, the first listed tag
@@ -199,13 +221,15 @@ def _shown(f):
     return -abs(f.value) if f.neg else abs(f.value)
 
 
-def fill_capex(out, absent, src, keep):
-    """Reading 2. Capital spending, for the fiscal years of the newest filing's cash-flow statement that `out` does not carry. Used only for a
-    statement where, for each year read, (a) every investing line adds to the filed subtotal within the rounding of the printed figures, (b) every
-    capital-spending row has a tagged cell for the year (an untagged cell is blank: the year is not read), (c) each such line is printed as a
-    payment (or is a tagged 0), and (d) where `out` also carries capex for a year the filing shows, the two agree within the rounding. Returns the
-    years read. `keep`: how many fiscal years a series keeps."""
-    have = {v["end"]: v["value"] for v in (out.get("capex") or {}).get("values", [])}
+def fill_capex(out, absent, src, keep, note=None):
+    """Reading 2. Capital spending, from the fiscal years of the newest filing's cash-flow statement. Used only for a statement where, for each year
+    read, (a) every investing line adds to the filed subtotal within the rounding of the printed figures, (b) every capital-spending row has a tagged
+    cell for the year (an untagged cell is blank: the year is not read), (c) each such line is printed as a payment (or is a tagged 0), and (d) where
+    `out` carries capex for a year the filing shows under the SAME tag as the filing's one line, the two agree within the rounding. It is used only
+    where it adds a year `out` lacks. WO_UV5: the series then holds the filing's years only (every pooled year of one concept from one source);
+    the feed's years under another tag are dropped, those under the same tag stay. Returns the years read. `keep`: how many fiscal years a series
+    keeps. `note`, if given, receives {"capex": {"read": [...], "dropped": [...]}} for the refusal's wording."""
+    have = {v["end"]: v for v in (out.get("capex") or {}).get("values", [])}
     for table, lo, hi in investing_section(src.doc):
         rows = {}
         for f in src.doc.facts:
@@ -215,7 +239,7 @@ def fill_capex(out, absent, src, keep):
         cap_rows = {r: fs for r, fs in rows.items() if any(is_capex_tag(f.name) for f in fs)}
         if not cap_rows:
             continue
-        years, mismatch = {}, False
+        years, names_all = {}, set()
         for s in sub:
             col = [f for fs in rows.values() for f in fs if (f.start, f.end) == (s.start, s.end)]
             tol = (len(col) + 1) / 2 * max(_half_unit(f.decimals) * 2 for f in col + [s]) if col else 0.0
@@ -228,26 +252,32 @@ def fill_capex(out, absent, src, keep):
             if any(f.value != 0 and not f.neg for f in cells.values()):
                 continue                                                  # a capital-spending line printed as a receipt
             total = sum(abs(f.value) for f in cells.values())
-            if s.end in have and abs(have[s.end] - total) > tol:
-                mismatch = True
+            names_all |= {f.name for f in cells.values()}
             years[s.end] = (s.start, total, sorted({f.name for f in cells.values()}), tol)
-        if mismatch or not years:
+        if not years:
             continue
-        new = [(e, y) for e, y in sorted(years.items()) if e not in have]
-        if not new:
+        same = {e: v for e, v in have.items() if _same_tag_as("capex", v["tag"], names_all)}          # the feed's years that are the filing's own line
+        if any(e in years and abs(v["value"] - years[e][1]) > years[e][3] for e, v in same.items()):
+            continue                                                      # a same-tag figure that disagrees with the filing: the whole reading is rejected
+        if not [e for e in years if e not in have]:
             continue
-        _add(out, absent, "capex", [_value(src, "capex", e, st, tot, "+".join(n.split(":")[-1] for n in names), "+".join(names))
-                                    for e, (st, tot, names, _) in new], keep)
-        return [e for e, _ in new]
+        dropped = sorted(e for e in have if e not in same and e not in years)
+        _replace(out, absent, "capex", [_value(src, "capex", e, st, tot, "+".join(n.split(":")[-1] for n in names), "+".join(names))
+                                        for e, (st, tot, names, _) in sorted(years.items()) if e not in same], list(same.values()), keep)
+        if note is not None:
+            note["capex"] = {"read": sorted(years), "dropped": dropped}
+        return [e for e in sorted(years) if e not in have]
     return []
 
 
 # ---------------------------------------------------------------------------------------------------------------- 3. depreciation and amortization with one segment
-def fill_da(out, absent, src, excludes, keep):
+def fill_da(out, absent, src, excludes, keep, note=None):
     """Reading 3. us-gaap:DepreciationAndAmortization filed only with one dimension member (a company with one reportable segment files its total
-    that way). Read for the fiscal years `out` does not carry, when for every earlier year the filing shows (at least one) the figure, net of the
-    filed amortization, equals `out`'s depreciation net of the same amortization (`excludes`: the D&A tags that already exclude amortization) within
-    the rounding of the printed figures. One member only, the same in every year. Returns the years read."""
+    that way). Read when for every earlier year the filing shows that `out` also carries (at least one) the figure, net of the filed amortization,
+    equals `out`'s depreciation net of the same amortization (`excludes`: the D&A tags that already exclude amortization) within the rounding of the
+    printed figures, and it adds a year `out` lacks. One member only, the same in every year. WO_UV5: the series then holds the filing's years only
+    (the feed's years are a different quantity from a segment's total, whatever the arithmetic of the years that were checked). Returns the years read;
+    `note` as for fill_capex."""
     name = "us-gaap:DepreciationAndAmortization"
     by_end = {}
     for f in src.doc.facts:
@@ -265,12 +295,14 @@ def fill_da(out, absent, src, excludes, keep):
             if abs((_unique(fs) - am[e]) - cf_org) > _half_unit(_coarsest(fs)) * 2:
                 return []
             seen += 1
-    new = [(e, fs) for e, fs in sorted(by_end.items()) if e not in da]
+    new = [e for e in by_end if e not in da]
     if not seen or not new:
         return []
     dim = "+".join(f"{a}={m}" for a, m in next(iter(members)))
-    _add(out, absent, "da", [_value(src, "da", e, fs[0].start, _unique(fs), "DepreciationAndAmortization", f"{name}[{dim}]") for e, fs in new], keep)
-    return [e for e, _ in new]
+    _replace(out, absent, "da", [_value(src, "da", e, fs[0].start, _unique(fs), "DepreciationAndAmortization", f"{name}[{dim}]") for e, fs in sorted(by_end.items())], [], keep)
+    if note is not None:
+        note["da"] = {"read": sorted(by_end), "dropped": sorted(e for e in da if e not in by_end)}
+    return sorted(new)
 
 
 # ---------------------------------------------------------------------------------------------------------------- 4. class-of-stock share counts

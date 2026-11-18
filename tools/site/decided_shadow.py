@@ -36,35 +36,43 @@ DROP = ("tasks", "valuation", "ticker", "authority")      # as gemini_ondemand.b
 _ROWS = {}
 
 
-def real_estate_family(pk, raw):
-    """WO_NC9c: True when the stored name is a real-estate name the variant values (decided_real_estate.routes on the family record of the stored SEC
-    documents, offline); False when it is not or the documents are not there."""
+def routed_family(pk, raw):
+    """(the family the live worker gives the name, the family record), WO_UV5: gemini_ondemand.analyze routes with value_family.family on the SEC
+    facts at T (formation_value.name_family) and sends a name decided_real_estate.routes accepts to the real-estate variant; this does the same on
+    the stored SEC documents (`raw`), offline. (None, None) when the documents are not there or the record cannot be built."""
     import value_family
     from qwen_c.value import facts
     try:
         T = runner._parse_t(pk["decision_time_utc"])
         cf, subs, _ = facts.fetch(pk["cik"], T, online=False, root=raw)
-        return RE.routes(value_family.family(cf, subs, facts.annual_facts(cf, subs, T), T))
+        fam = value_family.family(cf, subs, facts.annual_facts(cf, subs, T), T)
     except Exception:
-        return False
+        return None, None
+    return (RE.FAMILY if RE.routes(fam) else fam.get("family")), fam
 
 
 def stored_names(store, raw=None):
-    """[(report, run dir of the stored Q1 run)] of every stored report with a routed family and a stored read, by ticker. A report stored as
-    `family_not_built` is taken as family `real_estate` (WO_NC9c) when its stored packet's SEC documents (`raw`) say so through decided_real_estate.routes."""
+    """[(report, run dir of the stored Q1 run)] of every stored report with a stored read whose ROUTED family is valued (operating, commodity, financial,
+    real estate). WO_UV5: the family is the engine's routing on the stored SEC documents (routed_family), not the family written in the stored report;
+    a name routed differently has the report's `family` replaced and the stored one kept as `stored_family`. Where the documents are not there the
+    stored family stands, and the report says so (`routing_note`); a stored `family_not_built` then stays out unless routed."""
     out = []
+    ok = D.FAMILIES + DF.FAMILIES + (RE.FAMILY,)
     for p in sorted((store / "gemini_site" / "ondemand").glob("*.json")):
         rep = json.loads(p.read_text(encoding="utf-8"))
-        if rep.get("analysis") == "not run" or rep.get("family") not in D.FAMILIES + DF.FAMILIES + ("family_not_built",):
+        if rep.get("analysis") == "not run":
             continue
         stem = f"{rep['ticker']}_{runner.t_compact(rep['date'])}_"
         dirs = sorted(d for m in sorted(store.glob("m3m*")) for d in (m / "runs").glob(stem + "*_1") if (d / "packet.json").exists() and (d / "analysis.json").exists())
         if not dirs:
             continue
-        if rep["family"] == "family_not_built":
-            if not real_estate_family(json.loads((dirs[0] / "packet.json").read_text(encoding="utf-8")), raw or ROOT / "cache" / "m3m" / "raw"):
-                continue
-            rep = dict(rep, family=RE.FAMILY)
+        family, _ = routed_family(json.loads((dirs[0] / "packet.json").read_text(encoding="utf-8")), raw or ROOT / "cache" / "m3m" / "raw")
+        if family is None:
+            family, rep = rep.get("family"), dict(rep, routing_note="the stored SEC documents did not give a family record: the stored family is kept")
+        if family not in ok:
+            continue
+        if family != rep.get("family"):
+            rep = dict(rep, family=family, stored_family=rep.get("family"))
         out.append((rep, dirs[0]))
     return out
 
@@ -100,6 +108,7 @@ def table_row(rep, stock, store, results):
     """One line of the table from the stored report and the two runs' results."""
     old, (ke_old, prob_old) = quoted(rep, stock), stored_meta(store, rep)
     line = {"ticker": rep["ticker"], "family": rep["family"], "price": stock.get("price"),
+            **({"stored_family": rep["stored_family"]} if "stored_family" in rep else {}), **({"routing_note": rep["routing_note"]} if "routing_note" in rep else {}),
             "old": {k: old.get(f"value_{k}") for k in ("bear", "base", "bull")}, "old_verdict": G.verdict(old, ke_old, prob_old)[0]}
     n = {"packet": None, "cik": None, "sector": None, "market_cap": None, "family": rep["family"]}
     new = Q.report(rep["ticker"], "list", rep["date"], {}, n, results, rep.get("screener_commit"))
@@ -119,10 +128,11 @@ def write_table(out, rows):
     rows = [rows[t] for t in sorted(rows)]
     (out / "shadow_table.json").write_text(json.dumps(rows, indent=1, sort_keys=True), encoding="utf-8")
     f = lambda x: "-" if x is None else f"{x:,.2f}"  # noqa: E731
-    lines = ["| ticker | price | old bear/base/bull | new bear/base/bull | at old defaults | run gap | verdict old > new | flags |", "|---|---|---|---|---|---|---|---|"]
+    lines = ["| ticker | family | price | old bear/base/bull | new bear/base/bull | at old defaults | run gap | verdict old > new | flags |", "|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         new = r["new"] and "/".join(f(r["new"][k]) for k in ("bear", "base", "bull"))
-        lines.append(f"| {r['ticker']} | {f(r['price'])} | " + "/".join(f(r["old"][k]) for k in ("bear", "base", "bull"))
+        fam = r["family"] + (f" (stored: {r['stored_family']})" if "stored_family" in r else "")
+        lines.append(f"| {r['ticker']} | {fam} | {f(r['price'])} | " + "/".join(f(r["old"][k]) for k in ("bear", "base", "bull"))
                      + f" | {new or 'not valued: ' + str(r['reason'])} | {f(r.get('value_at_old_defaults'))} | "
                      + ("-" if r["run_gap"] is None else f"{r['run_gap']:.1%}") + f" | {r['old_verdict']} > {r['new_verdict'] or '-'} | {'; '.join(r['flags'])} |")
     (out / "shadow_table.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

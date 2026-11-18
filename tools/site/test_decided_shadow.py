@@ -79,7 +79,7 @@ def test_a_run_writes_the_two_runs_and_the_table_only_under_its_own_folder_and_s
     names = sorted(p.parent.name for p in (out / "runs").glob("*/result.json"))
     assert len(names) == 2 and names[0].startswith("TEST_20261118T000000Z_") and names[0].endswith("_decided_1000") and names[1].endswith("_decided_3000")
     (row,) = json.loads((out / "shadow_table.json").read_text(encoding="utf-8"))
-    assert {"ticker", "family", "price", "old", "old_verdict", "valued", "new", "new_verdict", "run_gap", "flags", "value_at_old_defaults", "ke_old", "ke_new", "reason"} == set(row)
+    assert {"ticker", "family", "price", "old", "old_verdict", "valued", "new", "new_verdict", "run_gap", "flags", "value_at_old_defaults", "ke_old", "ke_new", "reason", "routing_note"} == set(row)
     assert row["ticker"] == "TEST" and row["old"] == {"bear": 4.0, "base": 5.0, "bull": 6.0} and row["valued"] is True and row["ke_old"] == 0.09 and row["ke_new"] == T.C.R
     assert set(row["new"]) == {"bear", "base", "bull"} and row["new_verdict"] in ("BUY", "WATCH", "AVOID") and row["old_verdict"] in ("BUY", "WATCH", "AVOID")
     assert 0 < row["run_gap"] < 1 and row["flags"][0].startswith("run 1000: ") and row["value_at_old_defaults"] is not None
@@ -125,19 +125,61 @@ def test_max_names_and_the_ticker_filter(tmp_path, monkeypatch):
     assert go(st, out, "--tickers", "TEST", "--max-names", "1") == 0 and len(sent) == 2
 
 
-def test_a_name_stored_as_family_not_built_is_taken_as_real_estate_only_when_the_stored_documents_route_it(tmp_path, monkeypatch):
-    """WO_NC9c: the shadow reaches REITs through decided_real_estate.routes on the stored SEC documents; every other not-built name stays out."""
-    st = store_of(tmp_path)
-    stem = "REIT_20261118T000000Z_abc123"
-    rep = {"ticker": "REIT", "date": DATE, "analysis": "complete", "family": "family_not_built", "valued": False}
-    (st / "gemini_site" / "ondemand" / "REIT.json").write_text(json.dumps(rep), encoding="utf-8")
-    d = st / "m3m_sonnet" / "runs" / f"{stem}_1"
+def stored_report(st, ticker, family, stem_hash="abc123"):
+    rep = {"ticker": ticker, "date": DATE, "analysis": "complete", "family": family, "valued": False}
+    (st / "gemini_site" / "ondemand" / f"{ticker}.json").write_text(json.dumps(rep), encoding="utf-8")
+    d = st / "m3m_sonnet" / "runs" / f"{ticker}_20261118T000000Z_{stem_hash}_1"
     d.mkdir(parents=True)
-    (d / "packet.json").write_text(json.dumps(dict(T.PK, ticker="REIT")), encoding="utf-8")
+    (d / "packet.json").write_text(json.dumps(dict(T.PK, ticker=ticker)), encoding="utf-8")
     (d / "analysis.json").write_text(json.dumps(T.AN), encoding="utf-8")
+
+
+def test_a_name_stored_as_family_not_built_is_taken_as_real_estate_only_when_the_stored_documents_route_it(tmp_path, monkeypatch):
+    """WO_NC9c: the shadow reaches REITs through the routing on the stored SEC documents; every other not-built name stays out."""
+    st = store_of(tmp_path)
+    stored_report(st, "REIT", "family_not_built")
     seen = []
-    monkeypatch.setattr(S, "real_estate_family", lambda pk, raw: seen.append(raw) or True)
+    monkeypatch.setattr(S, "routed_family", lambda pk, raw: seen.append(raw) or ("real_estate", {}))
     got = {r["ticker"]: r["family"] for r, _ in S.stored_names(st, tmp_path / "raw")}
-    assert got["REIT"] == "real_estate" and got["TEST"] == "operating" and seen == [tmp_path / "raw"]
-    monkeypatch.setattr(S, "real_estate_family", lambda pk, raw: False)
+    assert got["REIT"] == "real_estate" and got["TEST"] == "real_estate" and set(seen) == {tmp_path / "raw"}
+    monkeypatch.setattr(S, "routed_family", lambda pk, raw: ("family_not_built", {}))
     assert "REIT" not in {r["ticker"] for r, _ in S.stored_names(st)}
+
+
+def test_the_family_is_the_routing_of_the_stored_documents_not_the_one_written_in_the_stored_report(tmp_path, monkeypatch):
+    """WO_UV5: a name stored as operating that the routing now sends to real estate is valued as real estate; both families are in the table row."""
+    st = store_of(tmp_path)
+    monkeypatch.setattr(S, "routed_family", lambda pk, raw: ("real_estate", {}))
+    (rep, _), = S.stored_names(st)
+    assert rep["family"] == "real_estate" and rep["stored_family"] == "operating"
+    monkeypatch.setattr(S.Q, "report", lambda *a, **k: {"valued": False, "no_value_reason": "x"})
+    row = S.table_row(rep, {"price": 10.0}, st, {"1000": {"status": "ok"}})
+    assert row["family"] == "real_estate" and row["stored_family"] == "operating"
+    S.write_table(st.parent, {"TEST": row})
+    assert "real_estate (stored: operating)" in (st.parent / "shadow_table.md").read_text(encoding="utf-8")
+
+
+def test_a_name_whose_routing_gives_the_stored_family_has_no_stored_family_field(tmp_path, monkeypatch):
+    st = store_of(tmp_path)
+    monkeypatch.setattr(S, "routed_family", lambda pk, raw: ("operating", {}))
+    (rep, _), = S.stored_names(st)
+    assert rep["family"] == "operating" and "stored_family" not in rep and "routing_note" not in rep
+
+
+def test_where_the_stored_documents_give_no_family_record_the_stored_family_stands_and_the_report_says_so(tmp_path):
+    st = store_of(tmp_path)
+    (rep, _), = S.stored_names(st, tmp_path / "no_such_raw")                  # the real routing, on documents that are not there
+    assert rep["family"] == "operating" and "stored family is kept" in rep["routing_note"]
+
+
+def test_routed_family_applies_the_workers_rule_to_the_family_record(monkeypatch):
+    """The record is value_family.family's; decided_real_estate.routes sends it to the real-estate variant, any other record keeps its own family."""
+    import value_family
+    from qwen_c.value import facts
+    monkeypatch.setattr(facts, "fetch", lambda *a, **k: ({}, {}, None))
+    monkeypatch.setattr(facts, "annual_facts", lambda *a, **k: {})
+    pk = {"cik": "1", "decision_time_utc": DATE}
+    monkeypatch.setattr(value_family, "family", lambda *a: {"family": "family_not_built", "sic": "7011", "reit_evidence": {"x": 1}, "route": "operating_real_estate"})
+    assert S.routed_family(pk, Path("."))[0] == "real_estate"
+    monkeypatch.setattr(value_family, "family", lambda *a: {"family": "operating", "sic": "7011", "route": "operating"})
+    assert S.routed_family(pk, Path("."))[0] == "operating"

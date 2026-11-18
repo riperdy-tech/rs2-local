@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta, timezone
 from qwen_c import packet, sec_store
 from qwen_c.value import ix_figures
 
-FACTS_VERSION = "m3q.facts.v14"   # v14 2026-11-19 WO_UV3: figures read from the newest annual filing's inline XBRL where companyfacts lacks them and the base would be refused (ix_figures: a year not ingested, capital spending under a company's own tags, one-segment D&A, class-of-stock share counts), each verified by a second filed figure and stamped ix_read; no existing series moves   # v13 2026-11-19 WO_UV2: cash interest paid also under us-gaap:InterestPaid; auxiliary senior-notes, line-of-credit, partnership-unit, redeemable-NCI, total assets and total liabilities concepts (read by inputs only where the exact figure cannot be read); the ProfitLoss basis also less the redeemable NCI income; pretax income derived from net income, NCI income and the tax provision where its tag is absent or stale and no discontinued operation is filed for the year (no existing series moves)   # v12 2026-11-19 WO_NC9c: re_gain_on_sales and re_impairment (auxiliary, the real-estate record block; no existing concept moves)   # v11 2026-11-18 WO_NC3: statutory_tax_rate, the rate the company files for the base year in its own rate reconciliation (auxiliary; inputs.tax_rate reads it only as the last rung)   # v10 2026-11-18 WO_NC2: labelled substitutes for equity, capex, D&A, current items and pretax income (ITEM_SUBSTITUTES), consulted only where the exact concept lacks a needed year, one tag for every year   # v9 2026-11-17 WO_NC1: labelled fact substitutes (revenue: the largest narrower revenue line; aux period-end share counts and interest paid), consulted only where the exact concept is absent   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v15"   # v15 2026-11-19 WO_UV5: a capex or D&A series read from the filing's inline XBRL holds the filing's own years only (the feed's years under another tag are dropped); interest_expense_ifrs (auxiliary: ifrs-full:InterestExpense, read by inputs only where the finance-cost bundle gives a cost of debt outside the band); no existing series moves for a name the filing's inline XBRL was not read for   # v14 2026-11-19 WO_UV3: figures read from the newest annual filing's inline XBRL where companyfacts lacks them and the base would be refused (ix_figures: a year not ingested, capital spending under a company's own tags, one-segment D&A, class-of-stock share counts), each verified by a second filed figure and stamped ix_read; no existing series moves   # v13 2026-11-19 WO_UV2: cash interest paid also under us-gaap:InterestPaid; auxiliary senior-notes, line-of-credit, partnership-unit, redeemable-NCI, total assets and total liabilities concepts (read by inputs only where the exact figure cannot be read); the ProfitLoss basis also less the redeemable NCI income; pretax income derived from net income, NCI income and the tax provision where its tag is absent or stale and no discontinued operation is filed for the year (no existing series moves)   # v12 2026-11-19 WO_NC9c: re_gain_on_sales and re_impairment (auxiliary, the real-estate record block; no existing concept moves)   # v11 2026-11-18 WO_NC3: statutory_tax_rate, the rate the company files for the base year in its own rate reconciliation (auxiliary; inputs.tax_rate reads it only as the last rung)   # v10 2026-11-18 WO_NC2: labelled substitutes for equity, capex, D&A, current items and pretax income (ITEM_SUBSTITUTES), consulted only where the exact concept lacks a needed year, one tag for every year   # v9 2026-11-17 WO_NC1: labelled fact substitutes (revenue: the largest narrower revenue line; aux period-end share counts and interest paid), consulted only where the exact concept is absent   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -120,6 +120,8 @@ CONCEPTS = {
     "lease_liabilities_ifrs16": ("instant", [("ifrs-full", "LeaseLiabilities", "USD")]),
     "lease_liabilities_current_ifrs16": ("instant", [("ifrs-full", "CurrentLeaseLiabilities", "USD")]),
     "financing_interest": ("flow", [("us-gaap", "FinancingInterestExpense", "USD")]),
+    # WO_UV5: the IFRS interest expense concept, read by inputs only where the finance-cost bundle (ifrs-full:FinanceCosts) gives a cost of debt outside the band
+    "interest_expense_ifrs": ("flow", [("ifrs-full", "InterestExpense", "USD")]),
     # WO_NC1 substitutes: read by inputs only where the exact concept is absent (never part of an exact series)
     "shares_period_end": ("instant", [("us-gaap", "CommonStockSharesOutstanding", "shares"), ("ifrs-full", "NumberOfSharesOutstanding", "shares")]),
     "shares_cover": ("instant", [("dei", "EntityCommonStockSharesOutstanding", "shares")]),
@@ -173,7 +175,7 @@ NET_SCOPE = "net"
 SUBSTITUTE_WINDOW, SUBSTITUTE_MIN_POOL = 5, 3     # inputs.POOL_YEARS and MIN_POOL_YEARS: the years capex and D&A are pooled over
 AUX_CONCEPTS = {"income_continuing", "income_discontinued", "profit_loss_consolidated", "basic_shares_ifrs", "dilutive_effect_ifrs",
                 "equity_incl_nci", "nci_equity", "cost_excl_da", "lease_interest_ifrs16", "lease_liabilities_ifrs16", "lease_liabilities_current_ifrs16",
-                "financing_interest",
+                "financing_interest", "interest_expense_ifrs",
                 "shares_period_end", "shares_cover", "interest_paid", "statutory_tax_rate", "re_gain_on_sales", "re_impairment",
                 "debt_senior_total", "debt_senior_noncurrent", "debt_senior_current", "line_of_credit_noncurrent", "lp_units_diluted", "eps_lp_diluted",
                 "nci_redeemable_income", "assets_total", "liabilities_total"}
@@ -299,7 +301,7 @@ def annual_facts(cf, subs, T, years=8, substitute_revenue=False, substitute_item
         if sub:
             out["revenue"] = sub
             absent.pop("revenue", None)
-    once, ix_read = _Once(ix), {}
+    once, ix_read, ix_single = _Once(ix), {}, {}
 
     def cf_value(tax, tag, unit, kind, end):
         rows = (((facts.get(tax) or {}).get(tag) or {}).get("units") or {}).get(unit) or []
@@ -343,7 +345,7 @@ def annual_facts(cf, subs, T, years=8, substitute_revenue=False, substitute_item
     if substitute_items:
         _item_substitutes(out, absent, facts, eligible, known, T, years)
         if ix is not None:
-            _ix_spending(out, absent, once, ix_read, years)
+            _ix_spending(out, absent, once, ix_read, years, ix_single)
     latest = max((v["end"] for v in out.get("revenue", {}).get("values", [])), default=None)
     stale = {c: d["values"][-1]["end"] for c, d in out.items()
              if latest and d["values"][-1]["end"] < latest and c != "nci_income" and c not in AUX_CONCEPTS}
@@ -354,7 +356,8 @@ def annual_facts(cf, subs, T, years=8, substitute_revenue=False, substitute_item
         if cands:
             out["_ix_shares"] = {"end": latest, "accession": src.accession, "url": src.url, "candidates": cands}
     if once.src is not None:
-        out["_ix"] = {"url": once.src.url, "accession": once.src.accession, "read": ix_read, "version": ix_figures.IX_FIGURES_VERSION}
+        out["_ix"] = {"url": once.src.url, "accession": once.src.accession, "read": ix_read, "version": ix_figures.IX_FIGURES_VERSION,
+                     **({"single_source": ix_single} if ix_single else {})}
     out["_latest_annual_period"] = latest_annual_period(subs, T)
     out["_ytd"] = ytd(cf, eligible, known, T, (out.get("revenue") or {}).get("values", [])[-1:])
     return out
@@ -381,10 +384,11 @@ def _shares_wanted(out, end):
     return inputs.shares_substitute(out, end) is None or end not in {v["end"] for v in (out.get("eps_diluted") or {}).get("values", [])}
 
 
-def _ix_spending(out, absent, once, ix_read, years):
+def _ix_spending(out, absent, once, ix_read, years, note):
     """WO_UV3: capital spending and D&A from the newest annual filing's inline XBRL (ix_figures), for the operating route and only where the
     valuation would be refused for them: the base year, or at least SUBSTITUTE_MIN_POOL of the last SUBSTITUTE_WINDOW fiscal years of revenue,
-    is missing from the series (after the companyfacts series and the WO_NC2 substitutes)."""
+    is missing from the series (after the companyfacts series and the WO_NC2 substitutes). WO_UV5: a series so read holds the filing's years only
+    (ix_figures.fill_capex, fill_da); `note` receives, per concept, the years read and the feed's years dropped, for inputs' refusal wording."""
     ends = sorted(v["end"] for v in (out.get("revenue") or {}).get("values", []))[-SUBSTITUTE_WINDOW:]
     if not ends:
         return
@@ -392,8 +396,8 @@ def _ix_spending(out, absent, once, ix_read, years):
     def lacking(concept):
         have = {v["end"] for v in (out.get(concept) or {}).get("values", [])}
         return ends[-1] not in have or len(have & set(ends)) < SUBSTITUTE_MIN_POOL
-    for concept, fn in (("capex", lambda s: ix_figures.fill_capex(out, absent, s, years)),
-                        ("da", lambda s: ix_figures.fill_da(out, absent, s, DA_EXCLUDES_AMORTIZATION, years))):
+    for concept, fn in (("capex", lambda s: ix_figures.fill_capex(out, absent, s, years, note)),
+                        ("da", lambda s: ix_figures.fill_da(out, absent, s, DA_EXCLUDES_AMORTIZATION, years, note))):
         if lacking(concept):
             src = once()
             if src is not None and src.report_date >= ends[-1]:
