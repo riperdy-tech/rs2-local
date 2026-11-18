@@ -646,3 +646,13 @@ def test_the_report_carries_the_adjustments_of_each_run(tmp_path, monkeypatch):
     runs = rep["decided"]["runs"]
     assert runs["1000"]["adjustments"]["excess_cash_after"] == pytest.approx(4.5e6) and runs["3000"]["adjustments"]["cash_not_free"] is None
     json.dumps(rep)
+
+
+def test_the_overlay_row_keeps_only_the_marker_of_the_decided_method():
+    import gemini_ondemand as G
+    row = {"valued": True, "value_base": 0.0, "decided": {"method": "decided", "version": "decided.v1", "runs": {"1000": {"inputs": {}}}, "flags": []}}
+    out = G.overlay_row(row)
+    assert out["decided"] == {"method": "decided", "version": "decided.v1"} and out["value_base"] == 0.0
+    assert "runs" in row["decided"]                                  # the report's own object is not touched
+    plain = {"valued": True, "decided": None}
+    assert G.overlay_row(plain) is plain

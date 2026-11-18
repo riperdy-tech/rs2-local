@@ -424,6 +424,13 @@ def fill_state(have):
     return len(names), sum(t in have for t in names)
 
 
+def overlay_row(row):
+    """The overlay's row of a name: the row, with the decided method's detail (tens of kilobytes a name; the stock page reads it from the
+    per-name report) cut to the two fields that say the name was valued by it."""
+    d = row.get("decided")
+    return dict(row, decided={k: d.get(k) for k in ("method", "version")}) if d else row
+
+
 def build():
     rows = {}
     for p in sorted(ONDEMAND.glob("*.json")) if ONDEMAND.exists() else []:
@@ -457,7 +464,7 @@ def build():
                           "both runs. WATCH: above zero. AVOID: zero or less. NO_CALL: not valued.",
           "note": "Gemini reading of SEC filings in the place of the local model; values per share from code using Gemini's "
                   "choices, where both seeds agree. Paper only, not investment advice.",
-          "tickers": {t: r for t, (r, _) in sorted(rows.items())}}
+          "tickers": {t: overlay_row(r) for t, (r, _) in sorted(rows.items())}}
     OVERLAY.write_text(json.dumps(ov, indent=1, sort_keys=True), encoding="utf-8")
     print(f"built {len(rows)} names ({ov['valued_count']} valued) {counts}", flush=True)
     return ov
