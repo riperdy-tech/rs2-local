@@ -11,6 +11,7 @@ In order; a failing step logs FAILED to cache/paper_books.log and the run exits 
   3. forward_ledger.py --asof <last completed New York session>; a "STOP at" line (no verified scoring run) fails the step
   4. universe.py fetch for each contemporaneous formation whose latest universe price fetch does not reach the date its marks need
   5. m3o_engine.py (its stop rule exits nonzero)
+  5b. dropped_readout.py (the names the Qwen book drops against the names it keeps); a failure is logged and is not a failed run
   6. commit paper_books/ in rs2-state by pathspec and push (pull --rebase and retry); this also runs after a failed step, so nothing a
      step appended is left uncommitted. A push that still fails leaves branch paper-books/unpushed and exits 1.
 Idempotent: when mtm_<asof>.json and marks/<asof>.json both exist for the last completed session, nothing runs (a second fetch of
@@ -101,6 +102,10 @@ def steps(state, books, asof):
     for T, end in universe_due(books, asof):
         run("universe", py("universe.py", "fetch", T, "--asof", end))
     run("m3o_engine", py("m3o_engine.py"))
+    # The dropped-against-kept readout (WO_DR1), a measurement beside the books: it writes paper_books/m3o/readout/, which the commit
+    # below carries. Its failure (a price fetch) is logged and never fails the run; its printed JSON is not copied into the log.
+    p = subprocess.run([str(x) for x in py("dropped_readout.py")], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    log(f"[dropped_readout] exit {p.returncode}" + ("" if p.returncode == 0 else f" (not fatal): {(p.stderr or p.stdout).strip()[-300:]}"))
 
 
 def commit_and_push(state, failed):
