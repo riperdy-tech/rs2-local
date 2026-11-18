@@ -231,7 +231,8 @@ def report(t, source, T, q1, n, results, commit, interest_override=None):
     import decided_value                                                      # WO_NC7: results of the decided method are valued from the two runs, not by the menu's consensus
     dec = bool(results) and all((x.get("versions") or {}).get("method") == decided_value.METHOD for x in results.values())
     if dec:
-        valued, v = decided_value.combine_runs(results)
+        import decided_financial                                              # WO_NC9b
+        valued, v = (decided_financial if n["family"] in decided_financial.FAMILIES else decided_value).combine_runs(results)
         seed0 = next(iter(ok.values()), {}).get("base") or {}
         if valued and seed0.get("tax_fallback"):
             tax_range = _tax_range_decided(ok, seed0.get("shares"))

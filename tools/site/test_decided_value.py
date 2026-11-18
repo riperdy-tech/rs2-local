@@ -455,8 +455,8 @@ def test_decided_values_an_operating_name_with_the_decided_step_in_place_of_the_
     assert a[1:4] == ("1", "Technology", 1e8) and k["family"] == "operating" and k["analysis"] == {} and k["out_root"] == G.vrun.RUNS
 
 
-def test_decided_keeps_the_menu_for_the_financial_family_and_for_a_family_not_routed(tmp_path, monkeypatch):
-    for family in ("financial", "reit"):
+def test_decided_keeps_the_menu_for_a_family_not_routed(tmp_path, monkeypatch):      # WO_NC9b: the financial family is routed to decided_financial (test_decided_financial.py)
+    for family in ("reit",):
         (tmp_path / family).mkdir()
         seeds, reports, calls = switch(tmp_path / family, monkeypatch, "decided", family)
         G.analyze("TEST", "list")
