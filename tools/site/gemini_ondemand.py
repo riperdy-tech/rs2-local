@@ -370,6 +370,27 @@ def value_meta(rep):
     return None, None
 
 
+def pending_offer(rep):
+    """The read's supported claim that an acquisition of the company itself is announced and pending (its `material_events` task, event type
+    `acquisition_of_the_company`, status `announced_pending`), as {claim, date}, or None. Read from the name's stored read, as value_meta
+    reads the stored valuation. Operator 2026-11-19: a company under a signed offer trades at the offer, so a verdict on its standalone
+    value misleads; build() gives it no verdict and says why, and the value stays on the page."""
+    stem = f"{rep['ticker']}_{runner.t_compact(rep['date'])}_"
+    for root in sorted((ROOT / "cache").glob("m3m*")):
+        for d in sorted((root / "runs").glob(stem + "*_1")):
+            f = d / "analysis.json"
+            if f.exists():
+                claims = ((json.loads(f.read_text(encoding="utf-8")).get("tasks") or {}).get("material_events") or {}).get("claims") or []
+                for c in claims:
+                    if c.get("event_type") == "acquisition_of_the_company" and c.get("status") == "announced_pending" and c.get("support") == "supported":
+                        return {"claim": c.get("claim"), "date": c.get("occurred_on")}
+                return None
+    return None
+
+
+OFFER_REASON = "an offer to acquire the company is announced and pending: the price follows the offer's terms, not the standalone value shown"
+
+
 def verdict(row, ke, prob):
     """(verdict, reason, alpha in points or None) in the quoted unit. A label, paper only."""
     if not row.get("valued"):
@@ -443,8 +464,11 @@ def build():
     for row, rep in rows.values():
         ke, prob = value_meta(rep) if row.get("valued") else (None, None)
         v, why, a = verdict(row, ke, prob)
+        offer = pending_offer(rep)
+        if offer:                               # no verdict on a standalone value while the company is under offer; the value and alpha stay
+            v, why = "NO_CALL", OFFER_REASON + (f" (on the value alone: {v}, {why})" if a is not None else "")
         for d in (row, rep):
-            d.update(verdict=v, verdict_reason=why, alpha_pts=a, ke=ke)
+            d.update(verdict=v, verdict_reason=why, alpha_pts=a, ke=ke, pending_offer=offer)
         if row.get("tax_range"):
             for d in (row, rep):
                 d["verdict_differs_at_alt_tax_rate"] = verdict_differs_at_alt_tax_rate(row, ke, prob, v)

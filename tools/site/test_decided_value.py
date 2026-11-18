@@ -472,6 +472,19 @@ def test_value_meta_prefers_the_runs_of_the_reports_own_method(tmp_path, monkeyp
     assert G.value_meta(dict(rep, decided={"method": "decided.v1"})) == (C.R, checks.PROB)  # a decided report reads its own runs
 
 
+def test_pending_offer_reads_the_supported_pending_acquisition_of_the_company(tmp_path, monkeypatch):
+    monkeypatch.setattr(G, "ROOT", tmp_path)
+    d = tmp_path / "cache" / "m3m_x" / "runs" / "TEST_20261118T000000Z_abc_1"
+    d.mkdir(parents=True)
+    rep = {"ticker": "TEST", "date": "2026-11-18T00:00:00Z"}
+    ev = {"claim": "c", "event_type": "acquisition_of_the_company", "status": "announced_pending", "occurred_on": "d", "support": "supported"}
+    for claims, want in (([ev], {"claim": "c", "date": "d"}), ([dict(ev, status="occurred")], None), ([dict(ev, support="quote_not_found")], None),
+                         ([dict(ev, event_type="other_material_event")], None), ([], None)):
+        (d / "analysis.json").write_text(json.dumps({"tasks": {"material_events": {"claims": claims}}}), encoding="utf-8")
+        assert G.pending_offer(rep) == want
+    assert G.pending_offer(dict(rep, ticker="NONE")) is None
+
+
 # ---- the switch in gemini_ondemand.analyze ---------------------------------------------------------------------------------------
 
 def switch(tmp_path, monkeypatch, method, family="operating"):
