@@ -86,10 +86,26 @@ def later_name(s0, names_at_T):
     return _norm(s0) not in {_norm(n) for n in names_at_T}
 
 
+def names_in_use(subs, T):
+    """The company names an SEC submissions document shows in use on T's date: each former name whose period holds that date, and the
+    current name unless a former name ended after it (the current name was then adopted later)."""
+    day, formers = T[:10], subs.get("formerNames") or []
+    out = {f.get("name") for f in formers if str(f.get("from") or "")[:10] <= day < str(f.get("to") or "")[:10]}
+    if not any(str(f.get("to") or "")[:10] > day for f in formers):
+        out.add(subs.get("name"))
+    return out
+
+
 def names_at_T(packet, T):
-    """STUB. The packet pins its SEC submissions file only as (url, sha256) in raw_inputs; the former-names data is in the store's bytes, and
-    which names count as in use at T is not defined by the registration. Not guessed."""
-    raise NotImplementedError("later-name set: the packet holds only the submissions file's url and sha256, not its former names or their dates")
+    """names_in_use of the packet's pinned submissions file (raw_inputs: url and sha256; the bytes are in the packet store's raw folder,
+    checked against the sha256). A packet with no such pin has no names: its row is later-name (it cannot be shown otherwise)."""
+    pins = [r for r in packet.get("raw_inputs") or [] if str(r.get("url", "")).startswith("https://data.sec.gov/submissions/CIK")]
+    if not pins:
+        return set()
+    raw = FRUN.PACKETS.parent / "raw" / pins[0]["sha256"]
+    if sha256_file(raw) != pins[0]["sha256"]:
+        raise Refused(f"{packet.get('ticker')}: the stored submissions file does not match its pinned sha256")
+    return names_in_use(json.loads(raw.read_bytes().decode("utf-8")), T)
 
 
 # ---------------------------------------------------------------- one slot (Q1 and B1 unchanged)
@@ -222,11 +238,12 @@ def compare(rows, h, a_groups, b_groups, seed=SEED, draws=DRAWS):
 def sentence(primary, h=PRIMARY_H):
     """The sentence of amendment E from the primary comparison (an interval wholly below zero, wholly above, or neither)."""
     lo, hi = primary["interval90"]
+    n = f"{primary['a']['n']} restricted, {primary['b']['n']} kept"       # amendment D: the survivorship statement rides on every form
     if hi is not None and hi < 0:
-        return f"Names restricted by Qwen's read alone did worse than kept names over {h} sessions"
+        return f"Names restricted by Qwen's read alone did worse than kept names over {h} sessions ({n}; survivor-conditioned pool)"
     if lo is not None and lo > 0:
-        return f"Names restricted by Qwen's read alone did better than kept names over {h} sessions"
-    return f"no difference shown ({primary['a']['n']} restricted, {primary['b']['n']} kept; survivor-conditioned pool)"
+        return f"Names restricted by Qwen's read alone did better than kept names over {h} sessions ({n}; survivor-conditioned pool)"
+    return f"no difference shown ({n}; survivor-conditioned pool)"
 
 
 def scopes(cohorts):
@@ -347,10 +364,11 @@ def write_new(path, obj):
 
 
 def cmd_classify(load=load_rows, out_dir=OUT_DIR):
-    rows, open_slots = load(False)
-    out = {"open_slots": open_slots, "rows": [{k: r[k] for k in ("ticker", "T", "cohort", "cik", "state", "group", "q1_restricted", "b1_restricted")}
-                                              for r in rows],
-           "counts": {c: {g: sum(r["cohort"] == c and r["group"] == g for r in rows) for g in GROUPS + ("no_read", "no_packet", "open")}
+    rows, open_slots = load(True)
+    out = {"open_slots": open_slots, "rows": [{k: r[k] for k in ("ticker", "T", "cohort", "cik", "state", "group", "q1_restricted", "b1_restricted",
+                                                                 "later_name")} for r in rows],
+           "counts": {c: {**{g: sum(r["cohort"] == c and r["group"] == g for r in rows) for g in GROUPS + ("no_read", "no_packet", "open")},
+                          "later_name": sum(r["cohort"] == c and bool(r["later_name"]) for r in rows)}
                       for c in sorted({r["cohort"] for r in rows})}}
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "classify.json").write_text(json.dumps(out, indent=1, sort_keys=True), encoding="utf-8")

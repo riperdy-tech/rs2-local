@@ -78,11 +78,16 @@ def test_classify_slot_b1_no_read_no_packet_and_open(monkeypatch):
     assert S.classify_slot("2026-01-02T21:00:00Z", "TSTA", packet(), "open", None, T2CLS, None)["group"] == "open"
 
 
-def test_later_name_and_the_stub():
-    assert S.later_name("Testco  Alpha INC", {"testco alpha inc"}) is False
-    assert S.later_name("Newco", {"Oldco"}) is True
-    with pytest.raises(NotImplementedError):
-        S.names_at_T(packet(), "2026-01-02T21:00:00Z")
+def test_names_in_use_on_the_date_of_T():
+    T = "2026-01-02T21:00:00Z"
+    subs = {"name": "Tst New Corp", "formerNames": [{"name": "Tst Old Corp", "from": "2019-01-01T00:00:00.000Z", "to": "2026-03-01T00:00:00.000Z"},
+                                                    {"name": "Tst Older Corp", "from": "2010-01-01T00:00:00.000Z", "to": "2019-01-01T00:00:00.000Z"}]}
+    assert S.names_in_use(subs, T) == {"Tst Old Corp"}                            # the current name came after T; the old one held on T
+    assert S.later_name("Tst New Corp", S.names_in_use(subs, T)) and not S.later_name("TST OLD  corp", S.names_in_use(subs, T))
+    early = {"name": "Tst New Corp", "formerNames": [{"name": "Tst Old Corp", "from": "2019-01-01T00:00:00.000Z", "to": "2025-06-01T00:00:00.000Z"}]}
+    assert S.names_in_use(early, T) == {"Tst New Corp"}                           # renamed before T: the current name is the one in use
+    assert S.names_in_use({"name": "Tst Corp"}, T) == {"Tst Corp"}
+    assert S.names_at_T({"raw_inputs": []}, T) == set()                           # no pinned submissions file: nothing can be shown in use
 
 
 # ---- sessions, indexing, no carry-forward, closed horizons
@@ -204,8 +209,8 @@ def cell(lo, hi, na=12, nb=90):
 
 
 def test_sentence_three_cases():
-    assert S.sentence(cell(-0.3, -0.01)) == "Names restricted by Qwen's read alone did worse than kept names over 60 sessions"
-    assert S.sentence(cell(0.01, 0.3)) == "Names restricted by Qwen's read alone did better than kept names over 60 sessions"
+    assert S.sentence(cell(-0.3, -0.01)) == "Names restricted by Qwen's read alone did worse than kept names over 60 sessions (12 restricted, 90 kept; survivor-conditioned pool)"
+    assert S.sentence(cell(0.01, 0.3)) == "Names restricted by Qwen's read alone did better than kept names over 60 sessions (12 restricted, 90 kept; survivor-conditioned pool)"
     assert S.sentence(cell(-0.1, 0.2)) == "no difference shown (12 restricted, 90 kept; survivor-conditioned pool)"
     assert S.sentence(cell(-0.3, 0.0)).startswith("no difference shown")                 # touching zero is not wholly below
     assert S.sentence(cell(None, None)).startswith("no difference shown")
