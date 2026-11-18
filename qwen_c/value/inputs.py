@@ -22,11 +22,12 @@ from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import (DA_EXCLUDES_AMORTIZATION, ITEM_SUBSTITUTES, PRETAX_FROM_NI, SUBSTITUTE_PREFIX, SUBSTITUTE_SCOPE_PREFIX, has_stamp,
                                   taxonomy_of)
 
-INPUTS_VERSION = "m3q.inputs.v13"   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v14"   # v14 2026-11-18 WO_NC3: tax_rate's last rung is the statutory rate the company files for the base year (stamped tax_rate_statutory_fallback), base() carries it with a second rate (tax_fallback) and takes tau_override for the value at that rate   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
 PERSISTENT_SPREAD = 0.05
+STATUTORY_UPLIFT = 0.055       # WO_NC3: the upper quartile of (measured rate - filed statutory rate) on 28 stored US filers, 2026-11-18: the second rate of a statutory fallback
 TAX_DEPART = 0.05            # ruling 9: the latest in-band rate is used only within 5 points of the in-band median
 KD_BAND = (0.01, 0.20)       # ruling 5 (the audited coverage rule)
 SHARES_TOL = 0.05            # ruling 5: NI / diluted shares against filed diluted EPS
@@ -119,13 +120,23 @@ def _tag(f, concept, end):
     return next((v["tag"] for v in (f.get(concept) or {}).get("values", []) if v["end"] == end), None)
 
 
+def statutory_rate(f, e0):
+    """WO_NC3: (rate, "<taxonomy>:<tag>") of the statutory tax rate the company files for the fiscal year end `e0` in its own rate
+    reconciliation, when it lies in TAX_BAND; else None. A filed 0.0 is a rate."""
+    for v in (f.get("statutory_tax_rate") or {}).get("values", []):
+        if v["end"] == e0 and TAX_BAND[0] <= v["value"] <= TAX_BAND[1]:
+            return v["value"], f"{taxonomy_of('statutory_tax_rate', v['tag'])}:{v['tag']}"
+    return None
+
+
 def tax_rate(f, e0=None):
     """V8: (tau, stamp). The in-band years (provision / pretax in [0, 0.35], positive pretax) of the last 8: with >= 3 of them, their median
     unless the latest year is in band and within 5 points of it (then the latest); with fewer, the latest if in band; else a persistent
     rate (>= 3 measured years, all >= 0, within 5 points): their median. F6: else, with no income-tax fact filed at all (the base year's
     pretax income derived by facts._derive), a zero rate. F_SPEC §6: else, with no provision filed for the base year `e0`
     and its filed net income within 2% of pretax income less NCI, a zero rate; else, with >= 3 measured years, zero when their median
-    is within 1 point of 0 (v1.2), else their UNCLAMPED median when it lies in [0, 1); else refused. Never a clamped default."""
+    is within 1 point of 0 (v1.2), else their UNCLAMPED median when it lies in [0, 1); else (WO_NC3) the statutory rate the company files for
+    `e0` when it lies in the band, stamped tax_rate_statutory_fallback (the last rung: every rung above comes first); else refused."""
     tax, pre = _by_end(f, "tax_provision"), _by_end(f, "pretax_income")
     years = sorted(set(tax) & set(pre))
     rates = [(e, tax[e] / pre[e]) for e in years if pre[e] > 0][-8:]
@@ -151,7 +162,10 @@ def tax_rate(f, e0=None):
         return 0.0, "tax_rate_median_near_zero"
     if len(recent) >= 3 and 0 <= statistics.median(recent) < 1:
         return statistics.median(recent), "tax_rate_median_outside_band"
-    raise DeskRefusal("tax_unavailable", f"no usable measured tax rate (latest {rates[-1][1] if rates else None}); never a stamped default")
+    sr = statutory_rate(f, e0)
+    if sr is not None:
+        return sr[0], "tax_rate_statutory_fallback"
+    raise DeskRefusal("tax_unavailable", f"no usable measured tax rate (latest {rates[-1][1] if rates else None}); no statutory rate in the band is filed for {e0}")
 
 
 def debt_total(f, end):
@@ -170,9 +184,10 @@ def debt_total(f, end):
     return parts, "components"
 
 
-def base(f, *, market_cap, bill_rate):
+def base(f, *, market_cap, bill_rate, tau_override=None):
     """The measured base for value_operating. `market_cap` (USD, from the formation's price row) sets delta at market weights (O5);
-    `bill_rate` (a fraction, or None) is the 3-month bill rate over the base fiscal year (the cash term)."""
+    `bill_rate` (a fraction, or None) is the 3-month bill rate over the base fiscal year (the cash term). `tau_override` (WO_NC3):
+    replaces the rate tax_rate returns in the base, RONIC and the NCI term, nothing else (the value at a statutory fallback's second rate)."""
     rev = _by_end(f, "revenue")
     ends = sorted(rev)[-POOL_YEARS:]
     if len(ends) < MIN_POOL_YEARS:
@@ -194,6 +209,15 @@ def base(f, *, market_cap, bill_rate):
         stamps.append("split_after_fy0_unchecked")                          # CROSS_CHECK_Q2 #18: split detection not built
     tau, s = tax_rate(f, e0)
     stamps.append(s)
+    tax_fallback = None
+    if s == "tax_rate_statutory_fallback":                                 # WO_NC3: the filed rate drives the value; a second rate rides beside it
+        pre_all = _by_end(f, "pretax_income")
+        n_pre = [pre_all[e] for e in ends if e in pre_all]                  # the pooled window's fiscal years with a filed pretax income
+        tax_fallback = {"rate": tau, "rate_alt": tau + STATUTORY_UPLIFT, "source_tag": statutory_rate(f, e0)[1],
+                        "positive_pretax_years": sum(x > 0 for x in n_pre), "pretax_years": len(n_pre)}
+        stamps.append(f"tax_fallback_positive_pretax_years:{tax_fallback['positive_pretax_years']}_of_{tax_fallback['pretax_years']}")
+    if tau_override is not None:
+        tau = tau_override
     ni, da, cx, am, pt, oi = (_by_end(f, k) for k in ("net_income", "da", "capex", "amortization", "pretax_income", "operating_income"))
     if not oi:                                                             # F_SPEC §6: OperatingIncomeLoss not filed in any year
         ie_all = _by_end(f, "interest_expense")
@@ -361,6 +385,7 @@ def base(f, *, market_cap, bill_rate):
             "ronic0": ronic0, "delta": delta, "delta_market": delta_market, "kd": kd, "debt0": debt0, "debt_basis": how0, "shares": shares, "excess_cash": excess_cash,
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,
             "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps + substitutes, **({"substitutes": substitutes} if substitutes else {}),
+            **({"tax_fallback": tax_fallback} if tax_fallback else {}),
             "da_rule": "vintages" if ppe else "pooled",
             "ytd": _ytd(f, e0),
             "record": {"op_margin": {e: oi[e] / rev[e] for e in ends if e in oi}, "capex_ratio": capex_record,

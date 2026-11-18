@@ -340,6 +340,17 @@ def verdict(row, ke, prob):
     return "BUY", why, a
 
 
+def verdict_differs_at_alt_tax_rate(row, ke, prob, v):
+    """WO_NC3: whether the same verdict() on the values at the second rate of a statutory tax fallback gives a label other than `v`
+    (the verdict at the filed rate); None when no second value was made. Annotation only: the label itself is unchanged."""
+    tr = row.get("tax_range") or {}
+    alt = tr.get("value_alt")
+    if not alt:
+        return None
+    return verdict(dict(row, value_bear=alt["bear"], value_base=alt["base"], value_bull=alt["bull"],
+                        value_per_filed_share=tr["value_per_filed_share_alt"], seed_base=tr["seed_base_alt"]), ke, prob)[0] != v
+
+
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 
 
@@ -373,6 +384,9 @@ def build():
         v, why, a = verdict(row, ke, prob)
         for d in (row, rep):
             d.update(verdict=v, verdict_reason=why, alpha_pts=a, ke=ke)
+        if row.get("tax_range"):
+            for d in (row, rep):
+                d["verdict_differs_at_alt_tax_rate"] = verdict_differs_at_alt_tax_rate(row, ke, prob, v)
     if REPORTS.exists():
         shutil.rmtree(REPORTS)
     REPORTS.mkdir(parents=True)

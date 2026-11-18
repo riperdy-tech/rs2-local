@@ -137,6 +137,9 @@ def quote_units(rows, stocks):
                    share_unit_note=(f"filed shares {row['filed_shares']:,.0f} against {quoted:,.0f} quoted (x{1 / k:.3g}); values are per "
                                     f"quoted share") if k != 1.0 else None,
                    far_from_price=not 0.5 <= row["equity_value"] / mcap <= 2.0)
+        tr = row.get("tax_range")                                                # WO_NC3: the second rate's values in the same unit
+        if tr and tr.get("value_per_filed_share_alt"):
+            upd["tax_range"] = dict(tr, value_alt={n: x * k for n, x in tr["value_per_filed_share_alt"].items()})
         row.update(upd)
         rep.update(upd)
 

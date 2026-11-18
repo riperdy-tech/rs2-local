@@ -187,20 +187,47 @@ def _write_refusal(t, source, T, why):
     return "refused"
 
 
+TAX_RANGE_LABEL = "statutory rate (company's filed rate), not measured"
+
+
+def _tax_range(f, b, ok, results, ids, bar, r, fy_ends, route, n, shares):
+    """WO_NC3: the base value at the two rates of a statutory tax fallback. The filed rate's value is the report's own (consensus.combine on
+    the first base); the second rate's is the same combine on the same seed results with the base taken at the second rate. An alt that cannot
+    be valued leaves its values None and says why in status_alt; the first value is never touched."""
+    from qwen_c.value import consensus, desk, run
+    tf = b["tax_fallback"]
+    tr = {"label": TAX_RANGE_LABEL, "rate": tf["rate"], "rate_alt": tf["rate_alt"], "source_tag": tf["source_tag"],
+          "positive_pretax_years": tf["positive_pretax_years"], "pretax_years": tf["pretax_years"], "value_per_filed_share_alt": None,
+          "equity_value_alt": None, "status_alt": None,
+          "seed_base_alt": {k: (((x.get("tax_range") or {}).get("values_alt")) or {}).get("base") for k, x in results.items()}}
+    try:
+        va = consensus.combine(ok, ids, run.alt_tax_base(f, b, n["market_cap"] or 0), bar, r, fy_ends, route)
+    except (desk.DeskRefusal, AssertionError) as e:   # the first value stands
+        return dict(tr, status_alt=f"{type(e).__name__}: {e}")
+    tr["status_alt"] = va.get("status")
+    if str(va.get("status", "")).startswith("ok"):
+        tr.update(value_per_filed_share_alt={k: va["values"][k] for k in ("bear", "base", "bull")},
+                  equity_value_alt=va["values"]["base"] * shares if shares else None)
+    return tr
+
+
 def report(t, source, T, q1, n, results, commit):
     """The site report of one on-demand name, in qwen_site's schema."""
     an = {}
     if q1.get("run_dir") and (Path(q1["run_dir"]) / "analysis.json").exists():
         an = json.loads((Path(q1["run_dir"]) / "analysis.json").read_text(encoding="utf-8"))
     ok = {k: v for k, v in results.items() if str(v.get("status", "")).startswith("ok")}
-    valued, v, reason = False, {}, None
+    valued, v, reason, tax_range = False, {}, None, None
     if ok:
         from qwen_c.value import consensus, run, task
         pk = json.loads(Path(n["packet"]).read_text(encoding="utf-8"))
         f, b, bar, record, r, prov, fy_ends = run.prepare(pk, n["cik"], str(n["sector"]), n["market_cap"] or 0, online=False, family=n["family"])
         route = "financial" if n["family"] in run.FINANCIAL else "operating"
-        v = consensus.combine(ok, task.evidence_ids(pk, record, b, bar, r, prov), b, bar, r, fy_ends, route)
+        ids = task.evidence_ids(pk, record, b, bar, r, prov)
+        v = consensus.combine(ok, ids, b, bar, r, fy_ends, route)
         valued = str(v.get("status", "")).startswith("ok")
+        if valued and b.get("tax_fallback"):                                  # WO_NC3
+            tax_range = _tax_range(f, b, ok, results, ids, bar, r, fy_ends, route, n, (next(iter(ok.values())).get("base") or {}).get("shares"))
     if not valued:
         codes = sorted({str(x.get("reason")) for x in results.values()}) or ["not_valued"]
         reason = "; ".join(qwen_site.NO_VALUE.get(c, c) for c in codes)
@@ -223,6 +250,8 @@ def report(t, source, T, q1, n, results, commit):
                    value_per_filed_share={k: v["values"][k] for k in ("bear", "base", "bull")},
                    seeds_agree=not any(a.startswith("seeds_disagree") for a in v.get("annotations", [])),
                    seed_base={k: (x.get("values") or {}).get("base") for k, x in results.items()})
+        if tax_range:
+            rep["tax_range"] = tax_range
     return rep
 
 

@@ -69,6 +69,30 @@ def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow
     return f, b, bar, record, r, prov, fy_ends
 
 
+def alt_tax_base(f, b, market_cap):
+    """WO_NC3: the base of a statutory tax fallback taken at its second rate (b["tax_fallback"]["rate_alt"]): the same facts, market value and
+    bill rate, tau replaced, and the fields prepare() adds to b carried over."""
+    a = inputs.base(f, market_cap=market_cap, bill_rate=b["bill_rate"], tau_override=b["tax_fallback"]["rate_alt"])
+    a.update({k: b[k] for k in ("bill_source", "stub_days", "g_anchor")})
+    return a
+
+
+def _tax_range(f, b, market_cap, reply, ids, bar, r, fy_ends, values):
+    """WO_NC3: the same checked reply valued at the second rate of a statutory tax fallback. The first result is never touched: a refusal or an
+    error here leaves values_alt None with status_alt saying why."""
+    tr = {"rate": b["tax_fallback"]["rate"], "rate_alt": b["tax_fallback"]["rate_alt"], "values": values, "values_alt": None, "status_alt": None}
+    if reply is None:
+        return dict(tr, status_alt="no_checked_attempt")
+    try:
+        res = checks.check(reply, ids, alt_tax_base(f, b, market_cap), bar, r, fy_ends, route="operating")
+    except desk.DeskRefusal as e:
+        return dict(tr, status_alt=f"no_call: {e.code}: {e}")
+    except AssertionError as e:                                       # N11: an engine defect is recorded, never a crash
+        return dict(tr, status_alt=f"engine_defect: {e}")
+    detail = f": {res.get('reason')}: {res.get('detail')}" if res["status"] == "no_call" else ""
+    return dict(tr, values_alt=res["values"] if str(res["status"]).startswith("ok") else None, status_alt=f"{res['status']}{detail}")
+
+
 def _prepare_financial(f, T, sector, allow_after_T):
     """prepare() for the financial route: no market value, bill rate or operating bridge is needed."""
     b = inputs.base_financial(f)
@@ -176,6 +200,8 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
                       checked_attempt=checked[-1]["attempt"])
         if result["status"] == "no_call":                                 # the desk refused the Base (a data refusal)
             result.update(reason=result["checks"].get("reason"), detail=result["checks"].get("detail"))
+    if b.get("tax_fallback"):                                         # WO_NC3: the value at the second rate rides beside the first, which is unchanged
+        result["tax_range"] = _tax_range(f, b, market_cap, checked[-1]["inputs"] if checked else None, ids, bar, r, fy_ends, result.get("values"))
     return _write(run_dir, result)
 
 
