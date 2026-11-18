@@ -49,6 +49,7 @@ sys.path.insert(0, str(ROOT / "tools" / "paper_books"))
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
 import decided_value  # noqa: E402
+import decided_real_estate  # noqa: E402                       # WO_NC9c: registers the real-estate variant of decided_value
 import qwen_ondemand as Q  # noqa: E402
 import qwen_site  # noqa: E402
 import why_losses  # noqa: E402
@@ -274,10 +275,12 @@ def analyze(t, source):
     fam = FV.name_family(cik, datetime.fromisoformat(T.replace("Z", "+00:00"))) if cik else {"family": None}
     n = {"packet": packet, "packet_sha256": pk.get("packet_sha256"), "cik": cik, "sector": row.get("sector"),
          "market_cap": row.get("marketCap"), "family": fam.get("family")}
+    if decided() and decided_real_estate.routes(fam):               # WO_NC9c: a real-estate name (not a mortgage REIT by the balance-sheet route) is valued by the decided method's real-estate variant
+        n["family"] = decided_real_estate.FAMILY
     out_root = vrun.RUNS if ARM == "gemini" else ROOT / "cache" / f"m3q_{ARM}" / "runs"
     why, why_reason = None, None                  # WO_NC5: why a thin profit record is thin, asked once, before the two seeds (a base with a statutory tax fallback only)
     ifl, override = None, None                    # WO_NC8: the interest on borrowings from the filing text, asked once, only where the tagged interest gives a cost of debt outside the band
-    prep = lambda **k: vrun.prepare(pkj, str(cik), str(n["sector"]), float(n["market_cap"] or 0), online=True, family=str(n["family"]), **k)[:2]  # noqa: E731
+    prep = lambda **k: vrun.prepare(pkj, str(cik), str(n["sector"]), float(n["market_cap"] or 0), online=True, family=str(n["family"]), **({"real_estate": True} if n["family"] == decided_real_estate.FAMILY else {}), **k)[:2]  # noqa: E731
     try:
         try:
             f, b = prep()
@@ -302,7 +305,7 @@ def analyze(t, source):
             ifl["kd_used"] = (getattr(e, "figures", None) or {}).get("kd")
     ov = {} if override is None else {"interest_override": override}      # WO_NC8: without it every call is exactly as before
     results = {}
-    use_decided = decided() and n["family"] in decided_value.FAMILIES      # WO_NC7: the financial route and every other family keep the menu
+    use_decided = decided() and (n["family"] in decided_value.FAMILIES or n["family"] in decided_value.VARIANTS)      # WO_NC7: the financial route and every other family keep the menu; WO_NC9c: real estate
     an = decided_value.read_analysis(q1) if use_decided else None
     for seed in (() if why_reason else Q.SEEDS):
         STATE["label"] = f"{t}:value{seed}"
