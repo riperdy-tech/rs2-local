@@ -40,6 +40,7 @@ import interest_from_filing as IFF  # noqa: E402                    # WO_NC9a: t
 DECIDED_VERSION = "decided.v2 2026-11-19 WO_NC9a"          # v2: cash not free, base-year one-offs, tax and debt flags (the method label stays decided.v1)
 METHOD = "decided.v1"
 FAMILIES = vrun.ROUTED                    # the financial route keeps the menu until it is tested the same way
+VARIANTS = {}                             # WO_NC9c: family -> the module that registered itself here (decided_real_estate): record text, task text, extra checks
 ALL_YEARS = 100                           # facts.build's `years`: every filed fiscal year the company facts hold, for the prompt's record only
 
 INPUT_KEYS = ("rev_growth", "op_margin", "long_run_op_margin", "terminal_growth", "fade_years", "return_on_new_investment_long_run", "capex_to_revenue")
@@ -97,14 +98,14 @@ def _f4(x):
     return "n/a" if x is None else f"{x:.4f}"
 
 
-def record_text(f, f_all, b, r, prov):
+def record_text(f, f_all, b, r, prov, no_oi="no operating income being filed"):
     """(text of the item [REC], {"margins": {end: operating margin}, "growths": {end: growth}}): every filed fiscal year's revenue, growth and
     operating margin (f_all), then the pinned base (b) as the prompt shows it. Facts computed by code from the filings."""
     rev, oi = _by_end(f_all, "revenue"), _by_end(f_all, "operating_income")
     basis = "operating income / revenue"
     if not oi:                                                  # as inputs.base: no operating income filed in any year
         pt, ie = _by_end(f_all, "pretax_income"), _by_end(f_all, "interest_expense")
-        oi, basis = {e: pt[e] + ie[e] for e in pt if e in ie}, "(pretax income + interest expense) / revenue, no operating income being filed"
+        oi, basis = {e: pt[e] + ie[e] for e in pt if e in ie}, f"(pretax income + interest expense) / revenue, {no_oi}"
     ends = sorted(rev)
     margins, growths = {}, {}
     lines = ["[REC] FILED RECORD (computed by code from the filings; facts). Currency: USD as filed. Fiscal years, oldest first.",
@@ -142,10 +143,10 @@ def prior_read(an):
     return ("\n".join(out) if out else "(none)"), len(out), dropped
 
 
-def messages(packet, rec, prior, retry=None):
+def messages(packet, rec, prior, retry=None, task=None):
     """[system, user] (+ the repair turn: the previous reply and what was wrong). The packet is shown with its prices masked."""
     user = "\n\n".join([tasks.render_packet(vtask.mask_price(packet)), rec,
-                        "PRIOR READ (another analyst's notes, unverified; not evidence, not to be quoted)\n" + prior, BASE_RATES, TASK])
+                        "PRIOR READ (another analyst's notes, unverified; not evidence, not to be quoted)\n" + prior, BASE_RATES, task or TASK])
     msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
     if retry:
         prev, problems = retry
@@ -459,26 +460,29 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
                            "inputs": inputs.INPUTS_VERSION, "checks": checks.CHECKS_VERSION, "coe": coe.COE_VERSION,
                            "contract": contract.CONTRACT, "model": runner.MODEL, "git": runner.git_state()},
               "authority": "diagnostic_only"}
+    V = VARIANTS.get(family)                                           # WO_NC9c: the family's variant (record text, task text, extra checks), or None
+    if V:
+        result["versions"]["variant"] = V.VERSION
     try:
-        if family not in FAMILIES:
+        if family not in FAMILIES and V is None:
             raise desk.DeskRefusal("family_not_routed", f"family {family!r}: the decided method values only {FAMILIES}")
         if any(e.get("kind") == "news" for e in packet.get("evidence") or []):         # as vrun.value
             raise desk.DeskRefusal("news_items_not_valued", "the packet holds news items; the valuation reads filings only")
         f, b, bar, record, r, prov, fy_ends = vrun.prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T, family=family,
-                                                     interest_override=interest_override)      # WO_NC8
+                                                     interest_override=interest_override, **(V.PREPARE if V else {}))      # WO_NC8, WO_NC9c
     except desk.DeskRefusal as e:
         result.update(status="no_call", reason=e.code, detail=str(e))
         return _write(run_dir, result)
     result.update(family=family, base=b, bar=bar, cost_of_equity=r, coe=prov, facts_provenance=f.get("_provenance"), stamps=b["stamps"] + prov.get("stamps", []))
     old_value, old_how = old_defaults(b, bar, r)                       # code only: before any call
     f_all = facts.build(cik, runner._parse_t(packet["decision_time_utc"]), online=False, root=root, years=ALL_YEARS, substitute_revenue=True, substitute_items=True)
-    rec_text, rec = record_text(f, f_all, b, r, prov)
+    rec_text, rec = (V.record_text if V else record_text)(f, f_all, b, r, prov)
     texts = contract.evidence_texts(vtask.mask_price(packet))
     texts["REC"] = rec_text
     prior, n_kept, n_dropped = prior_read(analysis)
-    attempts, retry, out = [], None, None
+    attempts, retry, out, extra = [], None, None, None
     for n in (1, 2):
-        msgs = messages(packet, rec_text, prior, retry)
+        msgs = messages(packet, rec_text, prior, retry, V.TASK if V else None)
         t0 = time.monotonic()
         kind, resp, detail = runner.call({"model": runner.MODEL, "stream": False, "messages": msgs}, runner.llm_provider.OLLAMA_URL, runner.TASK_TIMEOUT_S)
         secs = round(time.monotonic() - t0, 3)
@@ -491,12 +495,22 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         if perr:
             problems = [f"not valid JSON: {perr}"]
         else:
-            problems = shape_problems(obj)
+            problems = shape_problems(obj) or (V.shape_problems(obj) if V else [])
+            ref = V.refusal(obj) if V and not problems else None         # WO_NC9c: a refusal the read itself states (a lender), before any further check
+            if ref:
+                att.update(outcome="refused", problems=[])
+                attempts.append(att)
+                runner._write_json(run_dir / "raw" / f"attempt_{n}.json", {"messages": msgs, "response": content, "problems": [], "refusal": ref})
+                result.update(status="no_call", reason=ref[0], detail=ref[1], attempts=attempts, decided={"situation": obj["situation"]})
+                return _write(run_dir, result)
             if not problems:
                 verified = verify_quotes(obj, texts)
                 problems = numeric_problems(obj, r) + quote_problems(verified)
                 ap, b_adj, adj, cash, offs = read_adjustments(obj, b, texts)           # WO_NC9a
                 problems += ap
+                if V:
+                    vp, extra = V.check(obj, texts, f, b)                 # WO_NC9c: the variant's own fields; its problems go to the repair turn with the others
+                    problems += vp
             if not problems:
                 try:
                     vals, problems, base_v = values(b_adj, r, obj["inputs"], obj["ranges"])
@@ -519,7 +533,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         return _write(run_dir, result)
     n, obj, verified, vals, base_v, adj, cash, offs = out
     inp, rng = obj["inputs"], obj["ranges"]
-    flags = flags_of(obj, b, rec, verified, vals)
+    flags = flags_of(obj, b, rec, verified, vals) + (extra["flags"] if V else [])
     dec = {"situation": obj["situation"], "inputs": inp, "ranges": rng, "risks": obj["biggest_risks"], "confidence": obj["confidence"],
            "reasons": {k: {"why": obj["reasons"][k]["why"], "quotes": verified[k][0], "quotes_given": verified[k][1]} for k in INPUT_KEYS},
            "scenarios": {s: {k: v for k, v in scenario_inputs(inp, rng, side).items() if k in ("rev_growth", "long_run_op_margin", "terminal_growth")}
@@ -528,6 +542,8 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
            "prior_read_claims": {"kept": n_kept, "dropped_unsupported": n_dropped},
            "diagnostics": {"equity_value": base_v["equity_value"], "tv_share": base_v["tv_pv"] / base_v["equity_value"] if base_v["equity_value"] else None,
                            "seam_ratio": base_v["seam_ratio"], "da_rule": base_v["da_rule"], "wedge_rate_5": base_v["wedge_rate_5"]}}
+    if V:
+        dec[V.KEY] = extra["record"]
     result.update(status="ok", values=vals, checks={"prob": dict(checks.PROB), "version": DECIDED_VERSION}, inputs=obj, checked_attempt=n, decided=dec)
     if b.get("tax_fallback"):
         result["tax_range"] = _tax_range(f, b, market_cap, inp, rng, r, vals, cash, offs)

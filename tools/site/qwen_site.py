@@ -59,6 +59,7 @@ NO_VALUE = {
     "preferred_series_incomplete": "preferred stock is not filed for every year needed",
     "loss_record_operating": "the filings show the continuing operations themselves losing money, so no value is given",
     "loss_record_unexplained": "the filings in the packet do not explain why the profit record is thin, so no value is given",
+    "mortgage_reit_not_routed": "a mortgage REIT is a lender; this method does not value it yet",     # WO_NC9c
     "decision_invalid": "the cloud read's valuation inputs did not pass the code's checks, even after one repair, so no value is given",     # WO_NC7
 }
 FQ_ACTION = {"enter": "held", "enter_after_pending": "held (entered after its analysis finished)", "new_entry_restricted":

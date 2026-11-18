@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools" / "paper_books"))
 sys.path.insert(0, str(HERE))
 import decided_financial as DF  # noqa: E402
+import decided_real_estate as RE  # noqa: E402
 import decided_value as D  # noqa: E402
 import gemini_ondemand as G  # noqa: E402
 import qwen_ondemand as Q  # noqa: E402
@@ -35,17 +36,36 @@ DROP = ("tasks", "valuation", "ticker", "authority")      # as gemini_ondemand.b
 _ROWS = {}
 
 
-def stored_names(store):
-    """[(report, run dir of the stored Q1 run)] of every stored report with a routed family and a stored read, by ticker."""
+def real_estate_family(pk, raw):
+    """WO_NC9c: True when the stored name is a real-estate name the variant values (decided_real_estate.routes on the family record of the stored SEC
+    documents, offline); False when it is not or the documents are not there."""
+    import value_family
+    from qwen_c.value import facts
+    try:
+        T = runner._parse_t(pk["decision_time_utc"])
+        cf, subs, _ = facts.fetch(pk["cik"], T, online=False, root=raw)
+        return RE.routes(value_family.family(cf, subs, facts.annual_facts(cf, subs, T), T))
+    except Exception:
+        return False
+
+
+def stored_names(store, raw=None):
+    """[(report, run dir of the stored Q1 run)] of every stored report with a routed family and a stored read, by ticker. A report stored as
+    `family_not_built` is taken as family `real_estate` (WO_NC9c) when its stored packet's SEC documents (`raw`) say so through decided_real_estate.routes."""
     out = []
     for p in sorted((store / "gemini_site" / "ondemand").glob("*.json")):
         rep = json.loads(p.read_text(encoding="utf-8"))
-        if rep.get("analysis") == "not run" or rep.get("family") not in D.FAMILIES + DF.FAMILIES:
+        if rep.get("analysis") == "not run" or rep.get("family") not in D.FAMILIES + DF.FAMILIES + ("family_not_built",):
             continue
         stem = f"{rep['ticker']}_{runner.t_compact(rep['date'])}_"
         dirs = sorted(d for m in sorted(store.glob("m3m*")) for d in (m / "runs").glob(stem + "*_1") if (d / "packet.json").exists() and (d / "analysis.json").exists())
-        if dirs:
-            out.append((rep, dirs[0]))
+        if not dirs:
+            continue
+        if rep["family"] == "family_not_built":
+            if not real_estate_family(json.loads((dirs[0] / "packet.json").read_text(encoding="utf-8")), raw or ROOT / "cache" / "m3m" / "raw"):
+                continue
+            rep = dict(rep, family=RE.FAMILY)
+        out.append((rep, dirs[0]))
     return out
 
 
@@ -119,7 +139,7 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     out = a.out or ROOT / "cache" / "decided_shadow" / a.arm
-    stored = stored_names(a.store)
+    stored = stored_names(a.store, a.raw)
     names = [(rep, d) for rep, d in stored if not a.tickers or rep["ticker"] in a.tickers.split(",")]
     runs = out / "runs"
     on_disk = lambda rep, seed: list(runs.glob(f"{rep['ticker']}_{runner.t_compact(rep['date'])}_*_decided_{seed}/result.json"))  # noqa: E731

@@ -123,3 +123,21 @@ def test_max_names_and_the_ticker_filter(tmp_path, monkeypatch):
     assert go(st, out, "--tickers", "OTHER") == 0 and sent == []
     assert go(st, out, "--max-names", "0") == 0 and sent == [] and json.loads((out / "shadow_table.json").read_text(encoding="utf-8")) == []
     assert go(st, out, "--tickers", "TEST", "--max-names", "1") == 0 and len(sent) == 2
+
+
+def test_a_name_stored_as_family_not_built_is_taken_as_real_estate_only_when_the_stored_documents_route_it(tmp_path, monkeypatch):
+    """WO_NC9c: the shadow reaches REITs through decided_real_estate.routes on the stored SEC documents; every other not-built name stays out."""
+    st = store_of(tmp_path)
+    stem = "REIT_20261118T000000Z_abc123"
+    rep = {"ticker": "REIT", "date": DATE, "analysis": "complete", "family": "family_not_built", "valued": False}
+    (st / "gemini_site" / "ondemand" / "REIT.json").write_text(json.dumps(rep), encoding="utf-8")
+    d = st / "m3m_sonnet" / "runs" / f"{stem}_1"
+    d.mkdir(parents=True)
+    (d / "packet.json").write_text(json.dumps(dict(T.PK, ticker="REIT")), encoding="utf-8")
+    (d / "analysis.json").write_text(json.dumps(T.AN), encoding="utf-8")
+    seen = []
+    monkeypatch.setattr(S, "real_estate_family", lambda pk, raw: seen.append(raw) or True)
+    got = {r["ticker"]: r["family"] for r, _ in S.stored_names(st, tmp_path / "raw")}
+    assert got["REIT"] == "real_estate" and got["TEST"] == "operating" and seen == [tmp_path / "raw"]
+    monkeypatch.setattr(S, "real_estate_family", lambda pk, raw: False)
+    assert "REIT" not in {r["ticker"] for r, _ in S.stored_names(st)}

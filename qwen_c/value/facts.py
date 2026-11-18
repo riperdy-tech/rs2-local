@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
 
-FACTS_VERSION = "m3q.facts.v11"   # v11 2026-11-18 WO_NC3: statutory_tax_rate, the rate the company files for the base year in its own rate reconciliation (auxiliary; inputs.tax_rate reads it only as the last rung)   # v10 2026-11-18 WO_NC2: labelled substitutes for equity, capex, D&A, current items and pretax income (ITEM_SUBSTITUTES), consulted only where the exact concept lacks a needed year, one tag for every year   # v9 2026-11-17 WO_NC1: labelled fact substitutes (revenue: the largest narrower revenue line; aux period-end share counts and interest paid), consulted only where the exact concept is absent   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v12"   # v12 2026-11-19 WO_NC9c: re_gain_on_sales and re_impairment (auxiliary, the real-estate record block; no existing concept moves)   # v11 2026-11-18 WO_NC3: statutory_tax_rate, the rate the company files for the base year in its own rate reconciliation (auxiliary; inputs.tax_rate reads it only as the last rung)   # v10 2026-11-18 WO_NC2: labelled substitutes for equity, capex, D&A, current items and pretax income (ITEM_SUBSTITUTES), consulted only where the exact concept lacks a needed year, one tag for every year   # v9 2026-11-17 WO_NC1: labelled fact substitutes (revenue: the largest narrower revenue line; aux period-end share counts and interest paid), consulted only where the exact concept is absent   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -127,6 +127,13 @@ CONCEPTS = {
     # WO_NC3: the statutory rate the company states in its own rate reconciliation (a fraction); read by inputs.tax_rate only, as the last rung
     "statutory_tax_rate": ("flow", [("us-gaap", "EffectiveIncomeTaxRateReconciliationAtFederalStatutoryIncomeTaxRate", "pure"),
                                     ("ifrs-full", "ApplicableTaxRate", "pure")]),
+    # WO_NC9c: the real-estate record block only (the decided method's derived funds from operations); no valuation input reads them. Gains: the first
+    # tag filed for the year, a gain positive; impairments: the first filed, a charge positive
+    "re_gain_on_sales": ("flow", [("us-gaap", "GainLossOnSaleOfProperties", "USD"), ("us-gaap", "GainsLossesOnSalesOfInvestmentRealEstate", "USD"),
+                                  ("us-gaap", "GainLossOnDispositionOfAssets", "USD"), ("us-gaap", "GainLossOnSaleOfPropertyPlantEquipment", "USD"),
+                                  ("us-gaap", "GainLossOnDispositionOfAssets1", "USD"), ("us-gaap", "GainsLossesOnSalesOfOtherRealEstate", "USD")]),
+    "re_impairment": ("flow", [("us-gaap", "ImpairmentOfRealEstate", "USD"), ("us-gaap", "AssetImpairmentCharges", "USD"),
+                               ("us-gaap", "ImpairmentOfLongLivedAssetsHeldForUse", "USD")]),
 }
 # WO_NC1: the narrower revenue lines, consulted only when no total-revenue tag resolves for any year
 REVENUE_SUBSTITUTES = [("ifrs-full", "RevenueFromRenderingOfServices", "USD"), ("ifrs-full", "RevenueFromRenderingOfTransportServices", "USD"),
@@ -155,7 +162,7 @@ SUBSTITUTE_WINDOW, SUBSTITUTE_MIN_POOL = 5, 3     # inputs.POOL_YEARS and MIN_PO
 AUX_CONCEPTS = {"income_continuing", "income_discontinued", "profit_loss_consolidated", "basic_shares_ifrs", "dilutive_effect_ifrs",
                 "equity_incl_nci", "nci_equity", "cost_excl_da", "lease_interest_ifrs16", "lease_liabilities_ifrs16", "lease_liabilities_current_ifrs16",
                 "financing_interest",
-                "shares_period_end", "shares_cover", "interest_paid", "statutory_tax_rate"}
+                "shares_period_end", "shares_cover", "interest_paid", "statutory_tax_rate", "re_gain_on_sales", "re_impairment"}
 # F6: the cost-of-sales D&A line is D&A only where the same year's cost of sales is filed EXCLUDING D&A (the face statement then shows
 # D&A as its own line, which this tag carries); without that companion the year's value is dropped. Stamped da_from_cost_of_sales_line
 DA_COST_LINE = "CostOfGoodsAndServicesSoldDepreciationAndAmortization"
