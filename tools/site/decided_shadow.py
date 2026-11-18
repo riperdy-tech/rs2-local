@@ -24,6 +24,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools" / "paper_books"))
 sys.path.insert(0, str(HERE))
+import decided_financial as DF  # noqa: E402
 import decided_value as D  # noqa: E402
 import gemini_ondemand as G  # noqa: E402
 import qwen_ondemand as Q  # noqa: E402
@@ -39,7 +40,7 @@ def stored_names(store):
     out = []
     for p in sorted((store / "gemini_site" / "ondemand").glob("*.json")):
         rep = json.loads(p.read_text(encoding="utf-8"))
-        if rep.get("analysis") == "not run" or rep.get("family") not in D.FAMILIES:
+        if rep.get("analysis") == "not run" or rep.get("family") not in D.FAMILIES + DF.FAMILIES:
             continue
         stem = f"{rep['ticker']}_{runner.t_compact(rep['date'])}_"
         dirs = sorted(d for m in sorted(store.glob("m3m*")) for d in (m / "runs").glob(stem + "*_1") if (d / "packet.json").exists() and (d / "analysis.json").exists())
@@ -164,7 +165,7 @@ def main(argv=None):
                     return 3
                 G.STATE["label"] = f"{t}:decided{seed}"
                 try:
-                    res = D.value(pk, str(cik), str(stock.get("sector")), float(stock.get("marketCap") or 0), family=rep["family"],
+                    res = (DF if rep["family"] in DF.FAMILIES else D).value(pk, str(cik), str(stock.get("sector")), float(stock.get("marketCap") or 0), family=rep["family"],
                                   analysis=json.loads((d / "analysis.json").read_text(encoding="utf-8")), seed=seed, out_root=runs,
                                   online=False, root=a.raw, allow_after_T=True)
                 except RuntimeError as e:

@@ -48,6 +48,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools" / "paper_books"))
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
+import decided_financial  # noqa: E402
 import decided_value  # noqa: E402
 import qwen_ondemand as Q  # noqa: E402
 import qwen_site  # noqa: E402
@@ -302,12 +303,12 @@ def analyze(t, source):
             ifl["kd_used"] = (getattr(e, "figures", None) or {}).get("kd")
     ov = {} if override is None else {"interest_override": override}      # WO_NC8: without it every call is exactly as before
     results = {}
-    use_decided = decided() and n["family"] in decided_value.FAMILIES      # WO_NC7: the financial route and every other family keep the menu
+    use_decided = decided() and n["family"] in decided_value.FAMILIES + decided_financial.FAMILIES      # WO_NC7, WO_NC9b: every other family keeps the menu
     an = decided_value.read_analysis(q1) if use_decided else None
     for seed in (() if why_reason else Q.SEEDS):
         STATE["label"] = f"{t}:value{seed}"
         if use_decided:
-            res = decided_value.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), analysis=an, seed=seed, out_root=out_root, **ov)
+            res = (decided_financial if n["family"] in decided_financial.FAMILIES else decided_value).value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), analysis=an, seed=seed, out_root=out_root, **ov)
         else:
             res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed, out_root=out_root, **ov)
         results[str(seed)] = res
