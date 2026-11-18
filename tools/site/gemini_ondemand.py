@@ -50,8 +50,9 @@ sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
 import qwen_ondemand as Q  # noqa: E402
 import qwen_site  # noqa: E402
+import why_losses  # noqa: E402
 from qwen_c import runner  # noqa: E402
-from qwen_c.value import run as vrun  # noqa: E402
+from qwen_c.value import desk, run as vrun  # noqa: E402
 
 PY = sys.executable
 EFFORT = "high"                       # operator 2026-11-16: thinking effort is not negotiable
@@ -262,15 +263,29 @@ def analyze(t, source):
     fam = FV.name_family(cik, datetime.fromisoformat(T.replace("Z", "+00:00"))) if cik else {"family": None}
     n = {"packet": packet, "packet_sha256": pk.get("packet_sha256"), "cik": cik, "sector": row.get("sector"),
          "market_cap": row.get("marketCap"), "family": fam.get("family")}
+    out_root = vrun.RUNS if ARM == "gemini" else ROOT / "cache" / f"m3q_{ARM}" / "runs"
+    why, why_reason = None, None                  # WO_NC5: why a thin profit record is thin, asked once, before the two seeds (a base with a statutory tax fallback only)
+    try:
+        f, b = vrun.prepare(pkj, str(cik), str(n["sector"]), float(n["market_cap"] or 0), online=True, family=str(n["family"]))[:2]
+        if b.get("tax_fallback"):
+            STATE["label"] = f"{t}:why_losses"
+            raw = out_root / f"{pkj['ticker']}_{runner.t_compact(pkj['decision_time_utc'])}_{runner.sha256_bytes(Path(packet).read_bytes())[:12]}_why_losses"
+            why, why_reason = why_losses.ask(pkj, f, raw)
+            log(f"{t} why losses: {why['cause']} {why_reason or 'valued'}")
+    except desk.DeskRefusal:                      # the seeds record the same refusal
+        pass
     results = {}
-    for seed in Q.SEEDS:
+    for seed in (() if why_reason else Q.SEEDS):
         STATE["label"] = f"{t}:value{seed}"
-        res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed,
-                         out_root=vrun.RUNS if ARM == "gemini" else ROOT / "cache" / f"m3q_{ARM}" / "runs")
+        res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed, out_root=out_root)
         results[str(seed)] = res
         log(f"{t} value seed {seed} {res.get('status')} {res.get('reason') or ''}")
+    if why_reason:
+        results["loss_record"] = {"status": "no_call", "reason": why_reason}
     rep = Q.report(t, source, T, q1, n, results, commit)
     rep["model"] = GEM_MODEL
+    if why:
+        rep["loss_record"] = why
     _write_report(rep)
     return "ok"
 

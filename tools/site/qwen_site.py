@@ -57,6 +57,8 @@ NO_VALUE = {
     "record_neutral_unavailable": "no usable growth anchor for this company",
     "debt_without_interest": "debt is filed but interest expense is not",
     "preferred_series_incomplete": "preferred stock is not filed for every year needed",
+    "loss_record_operating": "the filings show the continuing operations themselves losing money, so no value is given",
+    "loss_record_unexplained": "the filings in the packet do not explain why the profit record is thin, so no value is given",
 }
 FQ_ACTION = {"enter": "held", "enter_after_pending": "held (entered after its analysis finished)", "new_entry_restricted":
              "not bought: Qwen flagged a material event", "escalation": "held, with a material event flagged for review",
