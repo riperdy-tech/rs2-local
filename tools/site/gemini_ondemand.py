@@ -48,6 +48,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools" / "paper_books"))
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
+import decided_value  # noqa: E402
 import qwen_ondemand as Q  # noqa: E402
 import qwen_site  # noqa: E402
 import why_losses  # noqa: E402
@@ -83,6 +84,15 @@ RETRY_REFUSED_HOURS = 24
 FLOORS = ARMS[ARM]["floors"]
 SITE_FILES = ("public/data/gemini_c_overlay.json", "public/data/gemini_c_reports")
 STATE = {"label": ""}
+VALUE_METHOD = os.environ.get("VALUE_METHOD", "menu")      # WO_NC7: "menu" (default) or "decided" (the read decides the valuation inputs; operating and commodity names)
+VALUE_METHODS = ("menu", "decided")
+
+
+def decided():
+    """True when this process values operating and commodity names by decided_value (VALUE_METHOD, or --value-method)."""
+    if VALUE_METHOD not in VALUE_METHODS:
+        raise ValueError(f"VALUE_METHOD {VALUE_METHOD!r} is not one of {VALUE_METHODS}")
+    return VALUE_METHOD == "decided"
 
 
 def agy_exe():
@@ -275,9 +285,14 @@ def analyze(t, source):
     except desk.DeskRefusal:                      # the seeds record the same refusal
         pass
     results = {}
+    use_decided = decided() and n["family"] in decided_value.FAMILIES      # WO_NC7: the financial route and every other family keep the menu
+    an = decided_value.read_analysis(q1) if use_decided else None
     for seed in (() if why_reason else Q.SEEDS):
         STATE["label"] = f"{t}:value{seed}"
-        res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed, out_root=out_root)
+        if use_decided:
+            res = decided_value.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), analysis=an, seed=seed, out_root=out_root)
+        else:
+            res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed, out_root=out_root)
         results[str(seed)] = res
         log(f"{t} value seed {seed} {res.get('status')} {res.get('reason') or ''}")
     if why_reason:
@@ -553,6 +568,7 @@ def take_lock():
 
 
 def work(max_names, do_publish):
+    decided()                                   # WO_NC7: an unknown VALUE_METHOD stops the worker before it claims a name
     if not take_lock():
         print("another worker holds the lock", flush=True)
         return 0
@@ -591,6 +607,7 @@ def work(max_names, do_publish):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", choices=sorted(ARMS), default="gemini")
+    ap.add_argument("--value-method", choices=VALUE_METHODS, help="WO_NC7: the valuation method (default: the VALUE_METHOD environment variable, else menu)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     wk = sub.add_parser("work")
     wk.add_argument("--max-names", type=int)
@@ -599,6 +616,7 @@ if __name__ == "__main__":
         sub.add_parser(c)
     a = ap.parse_args()
     set_arm(a.arm)
+    VALUE_METHOD = a.value_method or VALUE_METHOD
     if a.cmd == "work":
         sys.exit(work(a.max_names, not a.no_publish))
     elif a.cmd == "build":

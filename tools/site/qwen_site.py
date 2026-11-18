@@ -59,6 +59,7 @@ NO_VALUE = {
     "preferred_series_incomplete": "preferred stock is not filed for every year needed",
     "loss_record_operating": "the filings show the continuing operations themselves losing money, so no value is given",
     "loss_record_unexplained": "the filings in the packet do not explain why the profit record is thin, so no value is given",
+    "decision_invalid": "the cloud read's valuation inputs did not pass the code's checks, even after one repair, so no value is given",     # WO_NC7
 }
 FQ_ACTION = {"enter": "held", "enter_after_pending": "held (entered after its analysis finished)", "new_entry_restricted":
              "not bought: Qwen flagged a material event", "escalation": "held, with a material event flagged for review",
@@ -142,6 +143,9 @@ def quote_units(rows, stocks):
         tr = row.get("tax_range")                                                # WO_NC3: the second rate's values in the same unit
         if tr and tr.get("value_per_filed_share_alt"):
             upd["tax_range"] = dict(tr, value_alt={n: x * k for n, x in tr["value_per_filed_share_alt"].items()})
+        dd = row.get("decided")                                                  # WO_NC7: the reference value at the old defaults in the same unit
+        if dd and dd.get("value_at_old_defaults") is not None:
+            upd["decided"] = dict(dd, value_at_old_defaults_quoted=dd["value_at_old_defaults"] * k)
         row.update(upd)
         rep.update(upd)
 

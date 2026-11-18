@@ -211,6 +211,16 @@ def _tax_range(f, b, ok, results, ids, bar, r, fy_ends, route, n, shares):
     return tr
 
 
+def _tax_range_decided(ok, shares):
+    """WO_NC7: _tax_range for the decided method: the two runs' values at the second rate (decided_value._tax_range, per run) averaged like the first."""
+    import decided_value
+    tf = next(iter(ok.values()))["base"]["tax_fallback"]
+    alt, status, seed_base = decided_value.tax_range_alt(ok)
+    return {"label": TAX_RANGE_LABEL, "rate": tf["rate"], "rate_alt": tf["rate_alt"], "source_tag": tf["source_tag"],
+            "positive_pretax_years": tf["positive_pretax_years"], "pretax_years": tf["pretax_years"], "value_per_filed_share_alt": alt,
+            "equity_value_alt": alt["base"] * shares if alt and shares else None, "status_alt": status, "seed_base_alt": seed_base}
+
+
 def report(t, source, T, q1, n, results, commit):
     """The site report of one on-demand name, in qwen_site's schema."""
     an = {}
@@ -218,7 +228,14 @@ def report(t, source, T, q1, n, results, commit):
         an = json.loads((Path(q1["run_dir"]) / "analysis.json").read_text(encoding="utf-8"))
     ok = {k: v for k, v in results.items() if str(v.get("status", "")).startswith("ok")}
     valued, v, reason, tax_range = False, {}, None, None
-    if ok:
+    import decided_value                                                      # WO_NC7: results of the decided method are valued from the two runs, not by the menu's consensus
+    dec = bool(results) and all((x.get("versions") or {}).get("method") == decided_value.METHOD for x in results.values())
+    if dec:
+        valued, v = decided_value.combine_runs(results)
+        seed0 = next(iter(ok.values()), {}).get("base") or {}
+        if valued and seed0.get("tax_fallback"):
+            tax_range = _tax_range_decided(ok, seed0.get("shares"))
+    elif ok:
         from qwen_c.value import consensus, run, task
         pk = json.loads(Path(n["packet"]).read_text(encoding="utf-8"))
         f, b, bar, record, r, prov, fy_ends = run.prepare(pk, n["cik"], str(n["sector"]), n["market_cap"] or 0, online=False, family=n["family"])
@@ -229,7 +246,7 @@ def report(t, source, T, q1, n, results, commit):
         if valued and b.get("tax_fallback"):                                  # WO_NC3
             tax_range = _tax_range(f, b, ok, results, ids, bar, r, fy_ends, route, n, (next(iter(ok.values())).get("base") or {}).get("shares"))
     if not valued:
-        codes = sorted({str(x.get("reason")) for x in results.values()}) or ["not_valued"]
+        codes = sorted({str(x.get("reason")) for x in results.values() if not (dec and str(x.get("status", "")).startswith("ok"))}) or ["not_valued"]
         reason = "; ".join(qwen_site.NO_VALUE.get(c, c) for c in codes)
     ss = an.get("support_summary") or {}
     rep = {"ticker": t, "date": T, "source": f"on request ({source})" if source != "list" else "screener list refresh",
@@ -241,7 +258,7 @@ def report(t, source, T, q1, n, results, commit):
            "tasks": {k: qwen_site._claims((an.get("tasks") or {}).get(k)) for k in qwen_site.TASKS},
            "valuation": ({k: v.get(k) for k in ("options", "numbers", "neutral", "directions", "departures", "evidence", "annotations",
                                                 "reverts", "of_record", "year")} | {"unknowns": (v.get("reply") or {}).get("unknowns")})
-           if valued else None,
+           if valued and not dec else None,
            "authority": "diagnostic: paper only, not investment advice"}
     if valued:
         seed = next(iter(ok.values()))
@@ -252,6 +269,8 @@ def report(t, source, T, q1, n, results, commit):
                    seed_base={k: (x.get("values") or {}).get("base") for k, x in results.items()})
         if tax_range:
             rep["tax_range"] = tax_range
+        if dec:
+            rep["decided"] = v["decided"]
     return rep
 
 
