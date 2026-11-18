@@ -232,4 +232,4 @@ def test_prepare_substitutes_items_on_the_operating_route_only(monkeypatch):
 
 
 def test_versions_are_bumped():
-    assert facts.FACTS_VERSION == "m3q.facts.v11" and inputs.INPUTS_VERSION == "m3q.inputs.v14"
+    assert facts.FACTS_VERSION == "m3q.facts.v11" and inputs.INPUTS_VERSION == "m3q.inputs.v15"

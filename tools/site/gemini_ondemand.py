@@ -52,6 +52,7 @@ import decided_value  # noqa: E402
 import qwen_ondemand as Q  # noqa: E402
 import qwen_site  # noqa: E402
 import why_losses  # noqa: E402
+import interest_from_filing  # noqa: E402
 from qwen_c import runner  # noqa: E402
 from qwen_c.value import desk, run as vrun  # noqa: E402
 
@@ -275,32 +276,50 @@ def analyze(t, source):
          "market_cap": row.get("marketCap"), "family": fam.get("family")}
     out_root = vrun.RUNS if ARM == "gemini" else ROOT / "cache" / f"m3q_{ARM}" / "runs"
     why, why_reason = None, None                  # WO_NC5: why a thin profit record is thin, asked once, before the two seeds (a base with a statutory tax fallback only)
+    ifl, override = None, None                    # WO_NC8: the interest on borrowings from the filing text, asked once, only where the tagged interest gives a cost of debt outside the band
+    prep = lambda **k: vrun.prepare(pkj, str(cik), str(n["sector"]), float(n["market_cap"] or 0), online=True, family=str(n["family"]), **k)[:2]  # noqa: E731
     try:
-        f, b = vrun.prepare(pkj, str(cik), str(n["sector"]), float(n["market_cap"] or 0), online=True, family=str(n["family"]))[:2]
+        try:
+            f, b = prep()
+        except desk.DeskRefusal as e:
+            if e.code != "kd_out_of_band" or not getattr(e, "figures", None):
+                raise
+            STATE["label"] = f"{t}:interest_from_filing"
+            raw = out_root / f"{pkj['ticker']}_{runner.t_compact(pkj['decision_time_utc'])}_{runner.sha256_bytes(Path(packet).read_bytes())[:12]}_interest_from_filing"
+            ifl, override = interest_from_filing.ask(pkj, e.figures, raw)
+            log(f"{t} interest from the filing: {ifl['status']}")
+            if override is None:
+                raise
+            f, b = prep(interest_override=override)           # the band still applies to the new rate: outside it, this raises kd_out_of_band again
+            ifl["kd_used"] = b["interest_from_filing"]["kd_used"]
         if b.get("tax_fallback"):
             STATE["label"] = f"{t}:why_losses"
             raw = out_root / f"{pkj['ticker']}_{runner.t_compact(pkj['decision_time_utc'])}_{runner.sha256_bytes(Path(packet).read_bytes())[:12]}_why_losses"
             why, why_reason = why_losses.ask(pkj, f, raw)
             log(f"{t} why losses: {why['cause']} {why_reason or 'valued'}")
-    except desk.DeskRefusal:                      # the seeds record the same refusal
-        pass
+    except desk.DeskRefusal as e:                 # the seeds record the same refusal
+        if ifl and override is not None:
+            ifl["kd_used"] = (getattr(e, "figures", None) or {}).get("kd")
+    ov = {} if override is None else {"interest_override": override}      # WO_NC8: without it every call is exactly as before
     results = {}
     use_decided = decided() and n["family"] in decided_value.FAMILIES      # WO_NC7: the financial route and every other family keep the menu
     an = decided_value.read_analysis(q1) if use_decided else None
     for seed in (() if why_reason else Q.SEEDS):
         STATE["label"] = f"{t}:value{seed}"
         if use_decided:
-            res = decided_value.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), analysis=an, seed=seed, out_root=out_root)
+            res = decided_value.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), analysis=an, seed=seed, out_root=out_root, **ov)
         else:
-            res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed, out_root=out_root)
+            res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed, out_root=out_root, **ov)
         results[str(seed)] = res
         log(f"{t} value seed {seed} {res.get('status')} {res.get('reason') or ''}")
     if why_reason:
         results["loss_record"] = {"status": "no_call", "reason": why_reason}
-    rep = Q.report(t, source, T, q1, n, results, commit)
+    rep = Q.report(t, source, T, q1, n, results, commit, **ov)
     rep["model"] = GEM_MODEL
     if why:
         rep["loss_record"] = why
+    if ifl:
+        rep["interest_from_filing"] = ifl
     _write_report(rep)
     return "ok"
 

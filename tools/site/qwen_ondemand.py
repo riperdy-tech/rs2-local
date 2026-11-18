@@ -221,8 +221,8 @@ def _tax_range_decided(ok, shares):
             "equity_value_alt": alt["base"] * shares if alt and shares else None, "status_alt": status, "seed_base_alt": seed_base}
 
 
-def report(t, source, T, q1, n, results, commit):
-    """The site report of one on-demand name, in qwen_site's schema."""
+def report(t, source, T, q1, n, results, commit, interest_override=None):
+    """The site report of one on-demand name, in qwen_site's schema. `interest_override` (WO_NC8): the one the name's runs were valued with, for the re-preparation."""
     an = {}
     if q1.get("run_dir") and (Path(q1["run_dir"]) / "analysis.json").exists():
         an = json.loads((Path(q1["run_dir"]) / "analysis.json").read_text(encoding="utf-8"))
@@ -238,7 +238,7 @@ def report(t, source, T, q1, n, results, commit):
     elif ok:
         from qwen_c.value import consensus, run, task
         pk = json.loads(Path(n["packet"]).read_text(encoding="utf-8"))
-        f, b, bar, record, r, prov, fy_ends = run.prepare(pk, n["cik"], str(n["sector"]), n["market_cap"] or 0, online=False, family=n["family"])
+        f, b, bar, record, r, prov, fy_ends = run.prepare(pk, n["cik"], str(n["sector"]), n["market_cap"] or 0, online=False, family=n["family"], interest_override=interest_override)
         route = "financial" if n["family"] in run.FINANCIAL else "operating"
         ids = task.evidence_ids(pk, record, b, bar, r, prov)
         v = consensus.combine(ok, ids, b, bar, r, fy_ends, route)

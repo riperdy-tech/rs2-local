@@ -22,7 +22,7 @@ from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import (DA_EXCLUDES_AMORTIZATION, ITEM_SUBSTITUTES, PRETAX_FROM_NI, SUBSTITUTE_PREFIX, SUBSTITUTE_SCOPE_PREFIX, has_stamp,
                                   taxonomy_of)
 
-INPUTS_VERSION = "m3q.inputs.v14"   # v14 2026-11-18 WO_NC3: tax_rate's last rung is the statutory rate the company files for the base year (stamped tax_rate_statutory_fallback), base() carries it with a second rate (tax_fallback) and takes tau_override for the value at that rate   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v15"   # v15 2026-11-18 WO_NC8: base() takes interest_override (the interest on borrowings stated from the filing text) where the tagged figure gives a cost of debt outside the band; stamped interest_from_filing_text, base["interest_from_filing"], the lease and financing-interest additions are not made for it, a kd_out_of_band refusal carries .figures   # v14 2026-11-18 WO_NC3: tax_rate's last rung is the statutory rate the company files for the base year (stamped tax_rate_statutory_fallback), base() carries it with a second rate (tax_fallback) and takes tau_override for the value at that rate   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -184,10 +184,13 @@ def debt_total(f, end):
     return parts, "components"
 
 
-def base(f, *, market_cap, bill_rate, tau_override=None):
+def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None):
     """The measured base for value_operating. `market_cap` (USD, from the formation's price row) sets delta at market weights (O5);
     `bill_rate` (a fraction, or None) is the 3-month bill rate over the base fiscal year (the cash term). `tau_override` (WO_NC3):
-    replaces the rate tax_rate returns in the base, RONIC and the NCI term, nothing else (the value at a statutory fallback's second rate)."""
+    replaces the rate tax_rate returns in the base, RONIC and the NCI term, nothing else (the value at a statutory fallback's second rate).
+    `interest_override` (WO_NC8, a number in the filing's currency): replaces the tagged interest expense of the base year where it is read, in the
+    cost of debt, the interest scaled with revenue (k0_interest) and the interest added back in RONIC; the IFRS 16 lease and financing-interest
+    additions are not made (the figure is the interest on borrowings alone). The band still applies. None: byte-identical to before."""
     rev = _by_end(f, "revenue")
     ends = sorted(rev)[-POOL_YEARS:]
     if len(ends) < MIN_POOL_YEARS:
@@ -263,7 +266,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None):
     if not x0 > 0:
         raise DeskRefusal("e0_not_positive", f"X_0 = {x0:.6g}: no earnings base (O7)")
     k0 = oi[e0] - pt_ex
-    k0_int = _by_end(f, "interest_expense").get(e0) or 0.0                                            # B12b: only interest scales with revenue (debt grows with it)
+    k0_int = (_by_end(f, "interest_expense").get(e0) or 0.0) if interest_override is None else interest_override                  # B12b: only interest scales with revenue (debt grows with it)
     stamps.append("bridge_constant_from_base_year")
     r_sum = sum(rev[e] for e in pool)
     da_tag = {v["end"]: v["tag"] for v in f["da"]["values"]}
@@ -279,7 +282,9 @@ def base(f, *, market_cap, bill_rate, tau_override=None):
         stamps.append("debt_total_tag_ambiguous")                          # CROSS_CHECK_Q2 #27 (MTCH)
     prev = ends[-2]
     debt_prev, _ = debt_total(f, prev)
-    interest = ie.get(e0)
+    interest = ie.get(e0) if interest_override is None else interest_override                              # WO_NC8
+    if interest_override is not None:
+        stamps.append("interest_from_filing_text")
     if debt0 is None:
         # F_SPEC §6: kd is unused when delta = 0 (desk.equity_ronic). With no debt tag, delta is 0 when even the most debt the filed
         # interest allows at the band's lowest rate (interest / KD_BAND[0]) is covered by cash and short-term investments
@@ -307,7 +312,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None):
     li, ll = _by_end(f, "lease_interest_ifrs16").get(e0), _by_end(f, "lease_liabilities_ifrs16")
     lease_cur = 0.0
     if (interest and sub_interest is None and li is not None and 0 < li <= interest and e0 in ll and prev in ll and how0 != "no_debt_filed"
-            and how0 not in DEBT_INCLUDES_LEASES):         # not for a substituted interest: whether it holds the lease interest is not filed
+            and how0 not in DEBT_INCLUDES_LEASES and interest_override is None):         # not for a substituted interest: whether it holds the lease interest is not filed
         debt0, debt_prev, how0 = debt0 + ll[e0], debt_prev + ll[prev], f"{how0}+lease_liabilities"
         stamps.append("debt_includes_ifrs16_lease_liabilities")
         if e0 in _by_end(f, "lease_liabilities_current_ifrs16"):
@@ -318,12 +323,16 @@ def base(f, *, market_cap, bill_rate, tau_override=None):
     # (FinancingInterestExpense), while the debt tags carry that arm's debt: kd takes both interests (kd only; the bridge keeps the former)
     kd_interest = interest
     fin = _by_end(f, "financing_interest").get(e0)
-    if interest and fin is not None and _tag(f, "interest_expense", e0) == "InterestExpenseNonoperating":
+    if interest and fin is not None and interest_override is None and _tag(f, "interest_expense", e0) == "InterestExpenseNonoperating":
         kd_interest = interest + fin
         stamps.append("kd_includes_financing_interest")
     kd = kd_interest / ((debt0 + debt_prev) / 2) if interest and debt0 + debt_prev > 0 else 0.0
     if interest and debt0 + debt_prev > 0 and not KD_BAND[0] <= kd <= KD_BAND[1]:
-        raise DeskRefusal("kd_out_of_band", f"kd = interest / average debt = {kd:.4f}, outside {KD_BAND}")
+        refusal = DeskRefusal("kd_out_of_band", f"kd = interest / average debt = {kd:.4f}, outside {KD_BAND}" + (
+            "; the interest stated from the filing text, in place of the tagged figure, is also outside" if interest_override is not None else ""))
+        refusal.figures = {"fy0": e0, "tag": _tag(f, "interest_expense", e0), "interest": interest, "kd_interest": kd_interest, "debt0": debt0,     # WO_NC8: what the cloud read is shown
+                           "debt_prev": debt_prev, "debt_basis": how0, "kd": kd}
+        raise refusal
     cur_debt = _by_end(f, "debt_current").get(e0, 0.0) + (_by_end(f, "debt_short").get(e0, 0.0)
                                                            if _tag(f, "debt_current", e0) not in CURRENT_INCLUDES_SHORT else 0.0) + lease_cur
     nwc0 = (ac[e0] - cash[e0] - _by_end(f, "st_investments").get(e0, 0.0)) - (lc[e0] - cur_debt)
@@ -386,6 +395,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None):
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,
             "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps + substitutes, **({"substitutes": substitutes} if substitutes else {}),
             **({"tax_fallback": tax_fallback} if tax_fallback else {}),
+            **({"interest_from_filing": {"value": interest_override, "tagged_value": ie.get(e0), "kd_used": kd}} if interest_override is not None else {}),
             "da_rule": "vintages" if ppe else "pooled",
             "ytd": _ytd(f, e0),
             "record": {"op_margin": {e: oi[e] / rev[e] for e in ends if e in oi}, "capex_ratio": capex_record,

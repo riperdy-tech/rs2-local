@@ -326,7 +326,7 @@ def read_analysis(q1):
 
 
 def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=runner.SEED_BASE, out_root=vrun.RUNS, online=True, root=None,
-          allow_after_T=False):
+          allow_after_T=False, interest_override=None):
     """One run of the decided method (one decision call, plus one repair turn when a check fails); writes result.json and raw/attempt_<n>.json
     under out_root. The result has vrun.value's shape (status, values, base, cost_of_equity, checks.prob, stamps, versions) and `decided`.
     A name code refuses before any call is refused as the menu method refuses it. A call that gets no reply raises (the worker's failure path)."""
@@ -343,7 +343,8 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
             raise desk.DeskRefusal("family_not_routed", f"family {family!r}: the decided method values only {FAMILIES}")
         if any(e.get("kind") == "news" for e in packet.get("evidence") or []):         # as vrun.value
             raise desk.DeskRefusal("news_items_not_valued", "the packet holds news items; the valuation reads filings only")
-        f, b, bar, record, r, prov, fy_ends = vrun.prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T, family=family)
+        f, b, bar, record, r, prov, fy_ends = vrun.prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T, family=family,
+                                                     interest_override=interest_override)      # WO_NC8
     except desk.DeskRefusal as e:
         result.update(status="no_call", reason=e.code, detail=str(e))
         return _write(run_dir, result)
