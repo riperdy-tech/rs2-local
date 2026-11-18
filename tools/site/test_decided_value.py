@@ -22,10 +22,17 @@ from qwen_c.value import checks, desk, forecast, inputs, menu  # noqa: E402
 
 F1_TEXT = "Revenue grew steadily over the last five years and margins were stable. The company expects demand to stay firm."
 QUOTE = "Revenue grew steadily over the last five years"
+F2_TEXT = ("Cash held for customers was 2,500 thousand at year end. Restricted cash was $9.0 million. A loss on the sale of an investment of $1.2 million "
+           "was recorded outside operating income. A gain on a legal settlement of 0.4 million was recorded outside operating income. "
+           "A gain on the sale of a building of $50.0 million was recorded outside operating income.")
+Q_CASH, Q_RESTRICTED, Q_LOSS, Q_GAIN, Q_BIG = ("Cash held for customers was 2,500 thousand", "Restricted cash was $9.0 million", "A loss on the sale of an investment of $1.2 million",
+                                              "A gain on a legal settlement of 0.4 million", "A gain on the sale of a building of $50.0 million")
 PK = {"contract": runner.PACKET_CONTRACT, "ticker": "TEST", "cik": "1", "decision_time_utc": "2026-11-18T00:00:00Z",
       "screener": {"commit": "abc"},
       "evidence": [{"fact_id": "F1", "kind": "annual_section", "title": "t", "form": "10-K", "period": "2025", "effective_at": "2026-01-01T00:00:00Z",
                     "source": None, "text": F1_TEXT},
+                   {"fact_id": "F2", "kind": "annual_section", "title": "t2", "form": "10-K", "period": "2025", "effective_at": "2026-01-01T00:00:00Z",
+                    "source": None, "text": F2_TEXT},
                    {"fact_id": "S0", "kind": "screener_row", "title": "row", "form": None, "period": None, "effective_at": None, "source": None,
                     "text": "sector: Industrials\nprice: 12.5\nmarketCap: 1000000\nprice as-of: 2026-11-17\nrank: 3"}]}
 UNSUPPORTED = "An unsupported claim that must not reach the prompt."
@@ -43,10 +50,12 @@ def f_all():
 
 
 def reply(**over):
-    o = {"situation": {"cyclical": "no", "margin_position": "The margin is steady.", "base_year_representative": "yes", "why": "A stable year."},
+    o = {"situation": {"cyclical": "no", "margin_position": "The margin is steady.", "base_year_representative": "yes", "why": "A stable year.",
+                       "tax_rate_representative": {"answer": "yes", "why": "The rate is the one filed."}, "debt_level_representative": {"answer": "yes", "why": "Debt is steady."}},
          "inputs": {"rev_growth": [0.05, 0.05, 0.04, 0.04, 0.03], "op_margin": [0.14, 0.14, 0.14, 0.14, 0.14], "long_run_op_margin": 0.13,
                     "terminal_growth": 0.03, "fade_years": 10, "return_on_new_investment_long_run": 0.15, "capex_to_revenue": 0.06},
          "ranges": {"long_run_op_margin": [0.10, 0.16], "rev_growth_y3": [0.02, 0.07], "terminal_growth": [0.02, 0.035]},
+         "cash_not_free": None, "base_year_one_offs": None,
          "reasons": {k: {"why": f"Because of {k}.", "quotes": [{"id": "F1", "quote": QUOTE}]} for k in D.INPUT_KEYS},
          "biggest_risks": [{"risk": "Demand softens.", "input_hit": "op_margin", "bear_value": 0.12}], "confidence": "medium"}
     for path, v in over.items():                       # "inputs.fade_years": 30
@@ -56,6 +65,14 @@ def reply(**over):
             node = node[h]
         node[last] = v
     return o
+
+
+def cash(value=2500, scale="thousands", quote=Q_CASH, what="cash held for customers"):
+    return {"value": value, "scale": scale, "what": what, "quotes": [{"id": "F2", "quote": quote}]}
+
+
+def one_off(value, sign, quote, scale="millions", what="an item"):
+    return {"value": value, "scale": scale, "sign": sign, "what": what, "quotes": [{"id": "F2", "quote": quote}]}
 
 
 def stub(monkeypatch, replies):
@@ -92,9 +109,10 @@ def run(tmp_path, packet, seed=1000, family="operating", **k):
 
 def test_the_prompt_text_is_pinned():
     """Changing what the model is told is a versioned decision (non-negotiable 7): re-pin this hash and bump DECIDED_VERSION together."""
-    assert hashlib.sha256((D.SYSTEM + "\n" + D.BASE_RATES + "\n" + D.TASK).encode()).hexdigest() == "37561520f8b7a799cb755851bc9fe3017b4e2c64945753d2db73ecffe6c2951e"
+    assert hashlib.sha256((D.SYSTEM + "\n" + D.BASE_RATES + "\n" + D.TASK).encode()).hexdigest() == "c8d2745276ceafe7de06d6b9d9f21aa83e5f39b5cb3c12ae42cecbd9852bfbb3"
     assert "1 in 4 chance of being undershot" in D.TASK and "1 in 4 chance of being overshot" in D.TASK and "Do not quote the PRIOR READ" in D.TASK
-    assert D.METHOD == "decided.v1" and D.DECIDED_VERSION.startswith("decided.v1")
+    assert D.METHOD == "decided.v1" and D.DECIDED_VERSION.startswith("decided.v2")        # WO_NC9a: the label stays, the prompt version moves
+    assert "cash_not_free" in D.TASK and "base_year_one_offs" in D.TASK and "tax_rate_representative" in D.TASK and "debt_level_representative" in D.TASK
 
 
 def test_the_message_carries_the_packet_masked_the_record_of_every_year_the_supported_read_and_the_base_rates(tmp_path, monkeypatch):
@@ -106,6 +124,7 @@ def test_the_message_carries_the_packet_masked_the_record_of_every_year_the_supp
     assert F1_TEXT in u and "sector: Industrials" in u and "price: 12.5" not in u and "marketCap" not in u and "price as-of" not in u      # prices masked
     assert all(f"{e} | " in u for e in ENDS_ALL)                                                           # every filed year, not the base's five
     assert "2015-12-31 | $66.0 million | 0.1000 | 0.1000" in u and "2014-12-31 | $60.0 million | n/a | 0.1000" in u
+    assert f"{menu.neutral_ronic(b, C.R):.4f}" in u and "Non-operating items that the valuation holds in dollars for ever" in u and f"{b['k0'] / 1e6:,.1f} million, of which interest on debt $1.0 million" in u
     assert "A supported claim about the business. Mechanism: It sells things." in u and UNSUPPORTED not in u
     assert "PRIOR READ (another analyst's notes, unverified; not evidence, not to be quoted)" in u and "BASE RATES" in u and u.rstrip().endswith('"confidence": "low|medium|high"}')
     assert f"Return on new investment at which growth adds no value (code, after the company's leverage): {menu.neutral_ronic(b, C.R):.4f}" in u
@@ -203,6 +222,20 @@ PROBLEMS = [
     ("risks without a risk", {"biggest_risks": [{"input_hit": "op_margin"}]}, "biggest_risks must be"),
     ("not JSON", "not json at all", "not valid JSON"),
     ("a list", [1, 2], "the reply is not a JSON object"),
+    # WO_NC9a
+    ("tax flag not an object", {"situation.tax_rate_representative": "yes"}, "situation.tax_rate_representative must be"),
+    ("debt flag with a bad answer", {"situation.debt_level_representative": {"answer": "maybe", "why": "x"}}, "situation.debt_level_representative must be"),
+    ("cash without a quote that exists", {"cash_not_free": cash(quote="Cash was invented")}, "cash_not_free has no quote found word for word"),
+    ("cash digits not in the quote", {"cash_not_free": cash(value=3000)}, "cash_not_free: the number 3000 does not appear in any quote"),
+    ("cash above the cash counted as excess", {"cash_not_free": cash(value=9.0, scale="millions", quote=Q_RESTRICTED)}, "cash_not_free 9,000,000 is not above 0 and at most the cash and short-term investments counted as excess (7,000,000)"),
+    ("cash scale unknown", {"cash_not_free": cash(scale="lakhs")}, "cash_not_free.scale must be one of"),
+    ("cash value zero", {"cash_not_free": cash(value=0)}, "cash_not_free.value must be a number above 0"),
+    ("cash with no what", {"cash_not_free": dict(cash(), what="")}, "cash_not_free.what is missing"),
+    ("one-off sign unknown", {"base_year_one_offs": [one_off(1.2, "loss", Q_LOSS)]}, "base_year_one_offs[0].sign must be one of charge, gain"),
+    ("second one-off digits not in the quote", {"base_year_one_offs": [one_off(1.2, "charge", Q_LOSS), one_off(0.5, "gain", Q_GAIN)]}, "base_year_one_offs[1]: the number 0.5 does not appear"),
+    ("one-off quote not found", {"base_year_one_offs": [one_off(1.2, "charge", "A loss of $1.2 million that is not there")]}, "base_year_one_offs[0] has no quote found word for word"),
+    ("one-offs that leave no earnings base", {"base_year_one_offs": [one_off(50.0, "gain", Q_BIG)]}, "the adjustments leave no earnings base"),
+    ("one-offs not a list", {"base_year_one_offs": {"value": 1}}, "base_year_one_offs must be null or a list"),
 ]
 
 
@@ -472,3 +505,144 @@ def test_an_unknown_method_is_refused_before_a_name_is_claimed(monkeypatch):
         G.work(1, False)
     monkeypatch.setattr(G, "VALUE_METHOD", "decided")
     assert G.decided() is True
+
+
+# ---- WO_NC9a: cash that is not free, one-offs of the base year, two flags --------------------------------------------------------------------
+
+def adj_run(tmp_path, monkeypatch, over, **k):
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, [reply(**over)], **k)
+    return run(tmp_path, packet), b, bar, sent
+
+
+def hand_base(b, **upd):
+    """The base with the adjusted fields written out by hand (fixture: tau 0.2, bill rate 0.04, base cash 7.0 million, x0 10.176 million, k0 3.28 million)."""
+    return dict(b, **upd)
+
+
+def test_cash_not_free_reduces_excess_cash_and_returns_its_interest_to_the_earnings_base_and_both_stay_consistent(tmp_path, monkeypatch):
+    res, b, bar, sent = adj_run(tmp_path, monkeypatch, {"cash_not_free": cash()})
+    assert res["status"] == "ok" and len(sent) == 1
+    a = res["decided"]["adjustments"]
+    # N = 2,500 thousand = 2.5e6; interest on it at the bill rate 0.04 = 1.0e5 (pretax); tau 0.2
+    assert (b["excess_cash"], b["k0"], b["x0"], b["tau"], b["bill_rate"]) == (7.0e6, 3.28e6, 10.176e6, 0.2, 0.04)
+    assert a["excess_cash_before"] == 7.0e6 and a["excess_cash_after"] == pytest.approx(4.5e6)
+    assert a["k0_before"] == 3.28e6 and a["k0_after"] == pytest.approx(3.18e6) and a["k0_interest"] == b["k0_interest"] == 1.0e6
+    assert a["x0_before"] == 10.176e6 and a["x0_after"] == pytest.approx(10.256e6) and a["cash_interest_returned"] == pytest.approx(1.0e5)
+    assert a["cash_not_free"]["amount"] == 2.5e6 and a["cash_not_free"]["quotes"] == [{"id": "F2", "quote": Q_CASH}] and a["base_year_one_offs"] == []
+    assert a["stamps"] == ["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base", "ronic0_not_readjusted"]
+    # the value is the desk's on the hand-adjusted copy; bear and bull the same copy
+    hb = hand_base(b, excess_cash=4.5e6, k0=3.18e6, x0=10.256e6)
+    inp, rng = reply()["inputs"], reply()["ranges"]
+    assert res["values"]["base"] == pytest.approx(D.value_inputs(hb, C.R, inp)[0], rel=1e-12)
+    assert res["values"]["bear"] == pytest.approx(D.value_inputs(hb, C.R, D.scenario_inputs(inp, rng, 0))[0], rel=1e-12)
+    assert res["values"]["bull"] == pytest.approx(D.value_inputs(hb, C.R, D.scenario_inputs(inp, rng, 1))[0], rel=1e-12)
+    assert res["values"]["base"] != D.value_inputs(b, C.R, inp)[0]
+    # the pinned base is stored unchanged, the reference value is on the unadjusted base
+    assert res["base"] == b and res["decided"]["value_at_old_defaults"] == D.old_defaults(b, bar, C.R)[0]
+    # the bridge stays exact: the base-year operating margin bridges to the adjusted x0
+    ab, adj = D.adjust_base(b, a["cash_not_free"], [])
+    assert inputs.bridge_x_margin(ab, [b["op_margin0"]], [b["R0"]])[0] * b["R0"] == pytest.approx(ab["x0"], rel=1e-12) and ab["m0"] == pytest.approx(ab["x0"] / b["R0"])
+    assert ab["cash_interest_pretax"] == pytest.approx(b["cash_interest_pretax"] - 1.0e5) and adj == a
+
+
+def test_the_desk_value_moves_by_the_cash_taken_out_at_face_plus_the_earnings_change(tmp_path, monkeypatch):
+    """Value per share = (equity + excess cash) / shares: removing N of cash lowers it by N / shares at face; the return of the interest to the earnings raises the equity."""
+    res, b, bar, sent = adj_run(tmp_path, monkeypatch, {"cash_not_free": cash()})
+    inp = reply()["inputs"]
+    only_cash = D.value_inputs(hand_base(b, excess_cash=4.5e6), C.R, inp)[0]
+    assert only_cash == pytest.approx(D.value_inputs(b, C.R, inp)[0] - 2.5e6 / b["shares"], rel=1e-12)
+    assert res["values"]["base"] > only_cash                      # the interest on that cash is now earned in the operating base, not dropped
+
+
+def test_base_year_one_offs_are_taken_out_of_the_held_constant_and_not_its_interest_part(tmp_path, monkeypatch):
+    offs = [one_off(1.2, "charge", Q_LOSS), one_off(0.4, "gain", Q_GAIN)]
+    res, b, bar, sent = adj_run(tmp_path, monkeypatch, {"base_year_one_offs": offs})
+    a = res["decided"]["adjustments"]
+    # charges 1.2e6 less gains 0.4e6 = 0.8e6 of pretax earnings put back: k0 3.28e6 - 0.8e6; x0 10.176e6 + 0.8e6 x 0.8; excess cash untouched
+    assert res["status"] == "ok" and a["k0_before"] == 3.28e6 and a["k0_after"] == pytest.approx(2.48e6) and a["k0_interest"] == 1.0e6
+    assert a["x0_after"] == pytest.approx(10.816e6) and a["excess_cash_after"] == a["excess_cash_before"] == 7.0e6 and a["cash_interest_returned"] == 0.0
+    assert (a["one_offs_charge"], a["one_offs_gain"]) == (pytest.approx(1.2e6), pytest.approx(0.4e6)) and a["cash_not_free"] is None
+    assert [(o["sign"], o["amount"]) for o in a["base_year_one_offs"]] == [("charge", pytest.approx(1.2e6)), ("gain", pytest.approx(0.4e6))]
+    assert a["stamps"] == ["base_year_one_offs_taken_out_of_k0", "ronic0_not_readjusted"]
+    hb = hand_base(b, k0=2.48e6, x0=10.816e6)
+    assert res["values"]["base"] == pytest.approx(D.value_inputs(hb, C.R, reply()["inputs"])[0], rel=1e-12)
+    ab, _ = D.adjust_base(b, None, [dict(o, sign=s) for o, s in zip(a["base_year_one_offs"], ("charge", "gain"))])
+    assert inputs.bridge_x_margin(ab, [b["op_margin0"]], [b["R0"]])[0] * b["R0"] == pytest.approx(ab["x0"], rel=1e-12)
+
+
+def test_removing_a_charge_raises_the_value_and_removing_a_gain_lowers_it(tmp_path, monkeypatch):
+    base = D.value_inputs(arrange(tmp_path, monkeypatch)[1], C.R, reply()["inputs"])[0]
+    up = adj_run(tmp_path, monkeypatch, {"base_year_one_offs": [one_off(1.2, "charge", Q_LOSS)]})[0]["values"]["base"]
+    down = adj_run(tmp_path, monkeypatch, {"base_year_one_offs": [one_off(0.4, "gain", Q_GAIN)]})[0]["values"]["base"]
+    assert up > base > down
+
+
+def test_both_adjustments_together_add_up_on_the_one_copy(tmp_path, monkeypatch):
+    offs = [one_off(1.2, "charge", Q_LOSS), one_off(0.4, "gain", Q_GAIN)]
+    res, b, bar, sent = adj_run(tmp_path, monkeypatch, {"cash_not_free": cash(), "base_year_one_offs": offs})
+    a = res["decided"]["adjustments"]
+    assert a["k0_after"] == pytest.approx(3.28e6 - 1.0e5 - 0.8e6) and a["x0_after"] == pytest.approx(10.176e6 + 0.9e6 * 0.8) and a["excess_cash_after"] == pytest.approx(4.5e6)
+    assert a["stamps"] == ["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base", "base_year_one_offs_taken_out_of_k0", "ronic0_not_readjusted"]
+    hb = hand_base(b, excess_cash=4.5e6, k0=2.38e6, x0=10.896e6)
+    assert res["values"]["base"] == pytest.approx(D.value_inputs(hb, C.R, reply()["inputs"])[0], rel=1e-12)
+
+
+def test_null_and_empty_adjustments_leave_the_base_and_the_values_exactly_as_they_were(tmp_path, monkeypatch):
+    res, b, bar, sent = adj_run(tmp_path, monkeypatch, {})
+    a = res["decided"]["adjustments"]
+    assert a["cash_not_free"] is None and a["base_year_one_offs"] == [] and a["stamps"] == [] and a["k0_after"] == a["k0_before"] and a["excess_cash_after"] == a["excess_cash_before"]
+    assert res["values"]["base"] == D.value_inputs(b, C.R, reply()["inputs"])[0]
+    empty = adj_run(tmp_path, monkeypatch, {"base_year_one_offs": []})[0]
+    assert empty["status"] == "ok" and empty["values"] == res["values"]
+
+
+def test_a_reply_of_the_v1_shape_without_the_new_keys_is_invalid_then_repaired(tmp_path, monkeypatch):
+    v1 = reply()
+    for k in ("cash_not_free", "base_year_one_offs"):
+        del v1[k]
+    del v1["situation"]["tax_rate_representative"], v1["situation"]["debt_level_representative"]
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, [v1, reply()])
+    res = run(tmp_path, packet)
+    msg = sent[1][3]["content"]
+    assert res["status"] == "ok" and res["checked_attempt"] == 2
+    assert all(x in msg for x in ("cash_not_free is missing", "base_year_one_offs is missing", "situation.tax_rate_representative must be", "situation.debt_level_representative must be"))
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, [v1, v1])
+    assert run(tmp_path, packet)["reason"] == "decision_invalid"
+
+
+def test_a_cash_amount_equal_to_the_cash_counted_as_excess_is_allowed(tmp_path, monkeypatch):
+    res, b, *_ = adj_run(tmp_path, monkeypatch, {"cash_not_free": cash(value=7.0, scale="millions", quote="Cash held for customers was 7.0 million")},
+                         pk=dict(PK, evidence=[PK["evidence"][0], dict(PK["evidence"][1], text=F2_TEXT + " Cash held for customers was 7.0 million."), PK["evidence"][2]]))
+    assert res["status"] == "ok" and res["decided"]["adjustments"]["excess_cash_after"] == 0.0
+
+
+def test_the_tax_and_debt_flags_are_flags_and_move_no_number(tmp_path, monkeypatch):
+    plain = adj_run(tmp_path, monkeypatch, {})[0]
+    res = adj_run(tmp_path, monkeypatch, {"situation.tax_rate_representative": {"answer": "no", "why": "A one-time benefit lowered the rate."},
+                                          "situation.debt_level_representative": {"answer": "unclear", "why": "Not stated."}})[0]
+    fl = res["decided"]["flags"]
+    assert "tax_rate_representative_no: A one-time benefit lowered the rate." in fl and not any(x.startswith("debt_level_representative") for x in fl)
+    assert res["values"] == plain["values"] and res["decided"]["adjustments"] == plain["decided"]["adjustments"]
+    res = adj_run(tmp_path, monkeypatch, {"situation.debt_level_representative": {"answer": "no", "why": "Debt was repaid after year end."}})[0]
+    assert "debt_level_representative_no: Debt was repaid after year end." in res["decided"]["flags"] and res["values"] == plain["values"]
+    assert plain["decided"]["flags"] == ["quotes_verified: 7 of 7"]
+
+
+def test_the_second_tax_rate_uses_the_same_adjustments_on_its_own_base(tmp_path, monkeypatch):
+    offs = [one_off(1.2, "charge", Q_LOSS)]
+    res, b, bar, sent = adj_run(tmp_path, monkeypatch, {"cash_not_free": cash(), "base_year_one_offs": offs}, facts=TS.fb_facts())
+    tr, a = res["tax_range"], res["decided"]["adjustments"]
+    alt_b = D.vrun.alt_tax_base(TS.fb_facts(), b, 180e6)
+    alt_adj, _ = D.adjust_base(alt_b, a["cash_not_free"], [dict(a["base_year_one_offs"][0])])
+    assert tr["status_alt"] == "ok" and tr["values"] == res["values"] and tr["values_alt"]["base"] == D.value_inputs(alt_adj, C.R, reply()["inputs"])[0]
+    assert alt_adj["tau"] == b["tax_fallback"]["rate_alt"] and alt_adj["k0"] == pytest.approx(alt_b["k0"] - 1.0e5 - 1.2e6)
+    assert tr["values_alt"]["base"] != D.value_inputs(alt_b, C.R, reply()["inputs"])[0]
+
+
+def test_the_report_carries_the_adjustments_of_each_run(tmp_path, monkeypatch):
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, [reply(cash_not_free=cash()), reply()])
+    rs = {str(s): D.value(packet, "1", "Industrials", 180e6, family="operating", analysis=AN, seed=s, out_root=tmp_path / "runs", online=False) for s in (1000, 3000)}
+    rep = Q.report("TEST", "list", "2026-11-18T00:00:00Z", {}, N(packet), rs, "c")
+    runs = rep["decided"]["runs"]
+    assert runs["1000"]["adjustments"]["excess_cash_after"] == pytest.approx(4.5e6) and runs["3000"]["adjustments"]["cash_not_free"] is None
+    json.dumps(rep)

@@ -17,6 +17,12 @@ and the menu method are not touched.
     flags, not clamps     a margin or growth outside the company's own filed record, a long-run return above the base year's, a base year
                           judged not representative, a low confidence, quotes verified n of m
     reference number      the value at the code's old defaults (the record-neutral menu value), code only, kept beside the new one
+
+WO_NC9a (phase 2, decided.v2): the same call also states, each null where the filings do not say, the cash that is not free (restricted, held for
+customers, a minimum the company states) and the non-operating one-offs of the base year, each with exact quotes whose digits code checks (the rule
+of interest_from_filing.py); and two situation flags (tax rate and debt level representative). The valuation then uses a COPY of the base:
+excess_cash less that cash, the interest earned on it put back into the earnings base, and the one-offs taken out of the held constant k0; bear
+and bull use the same copy; the result keeps the pinned base and `decided.adjustments`. Nothing under qwen_c/ changes.
 """
 import json
 import math
@@ -29,8 +35,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from qwen_c import contract, runner, tasks  # noqa: E402
 from qwen_c.value import checks, coe, desk, facts, inputs, menu, run as vrun, task as vtask  # noqa: E402
+import interest_from_filing as IFF  # noqa: E402                    # WO_NC9a: the digit-in-quote rule and the scales
 
-DECIDED_VERSION = "decided.v1 2026-11-18 WO_NC7"
+DECIDED_VERSION = "decided.v2 2026-11-19 WO_NC9a"          # v2: cash not free, base-year one-offs, tax and debt flags (the method label stays decided.v1)
 METHOD = "decided.v1"
 FAMILIES = vrun.ROUTED                    # the financial route keeps the menu until it is tested the same way
 ALL_YEARS = 100                           # facts.build's `years`: every filed fiscal year the company facts hold, for the prompt's record only
@@ -40,6 +47,8 @@ SCALAR_KEYS = INPUT_KEYS[2:]
 RANGE_KEYS = ("long_run_op_margin", "rev_growth_y3", "terminal_growth")
 TRIPLE = ("yes", "no", "unclear")
 CONFIDENCE = ("low", "medium", "high")
+SIGNS = ("charge", "gain")                # WO_NC9a: a one-off of the base year
+SITUATION_FLAGS = ("tax_rate_representative", "debt_level_representative")      # WO_NC9a: flags only, no number moves
 FADE_YEARS = (1, 25)                      # the range the prompt states for fade_years (the reference test's own)
 
 SYSTEM = ("You are an equity analyst setting the inputs of a discounted cash flow valuation for one company, from its filings. Decide each "
@@ -56,11 +65,15 @@ TASK = """TASK. Decide the valuation inputs for this company and return ONE JSON
 Use fractions, not percents: 0.05 means 5%, 0.5059 means 50.59%. Operating margin is on the same GAAP basis as the operating margin in the FILED RECORD (operating income / revenue). Year 1 is the fiscal year after the base year in the FILED RECORD; years 1 to 5 are five consecutive fiscal years.
 What each input means: rev_growth = revenue growth of years 1..5 (list of 5); op_margin = operating margin of years 1..5 (list of 5); long_run_op_margin = the operating margin the company fades to over fade_years after year 5 and keeps for ever; terminal_growth = revenue growth for ever after that fade (growth fades linearly from year 5's to this); fade_years = the number of years (a whole number, 1 to 25) of that fade; return_on_new_investment_long_run = the after-tax return on tangible capital earned on new investment in the long run (same basis as the return on tangible capital in the FILED RECORD, which also prints the return at which growth adds no value); capex_to_revenue = capital expenditure / revenue, held in years 1..5.
 Ranges: for long_run_op_margin, rev_growth_y3 (the growth of year 3; code moves all five yearly growths together by the difference between your bound and your year-3 growth) and terminal_growth, give [low, high]: the values you judge have about a 1 in 4 chance of being undershot (low) and about a 1 in 4 chance of being overshot (high). Your own input lies between them.
+Two optional items for the earnings base; each is null where the filings do not say, and you do not estimate either. cash_not_free: cash and short-term investments the company cannot spend freely (restricted cash, cash held for customers, a minimum operating cash the company itself states); code counts all other cash as excess and adds it to the value at face. value = the amount as printed in the filing, digits only; scale = the unit the filing states for that line. base_year_one_offs: a list of NON-OPERATING items of the base year that will not recur, which sit between operating income and pretax income (for example a gain or loss on an investment, a debt extinguishment cost); code holds the base year's non-operating items for ever and removes these from that. sign = charge or gain; value = the pre-tax amount as printed. Do not list operating items here: your margins already set how they bear on operating income. Each item needs an exact quote that contains its number. Two further judgements, flags only (no number moves): tax_rate_representative = whether the tax rate in the FILED RECORD is one the company can keep paying; debt_level_representative = whether the total debt in the FILED RECORD is the level the company will keep relative to its size; each is yes, no or unclear with one sentence.
 Every reason needs at least one exact quote copied character for character from the evidence item it cites (id = the id in brackets at the head of the item, e.g. F1 or P2; the FILED RECORD has id REC and any reason may cite it). Do not quote the PRIOR READ: it is not evidence. biggest_risks: the largest risks to your inputs; bear_value = the number that input would have if the risk happened.
 Schema:
-{"situation": {"cyclical": "yes|no|unclear", "margin_position": "<plain words: why the margin is where it is>", "base_year_representative": "yes|no|unclear", "why": "<2-4 sentences>"},
+{"situation": {"cyclical": "yes|no|unclear", "margin_position": "<plain words: why the margin is where it is>", "base_year_representative": "yes|no|unclear", "why": "<2-4 sentences>",
+  "tax_rate_representative": {"answer": "yes|no|unclear", "why": "<one sentence>"}, "debt_level_representative": {"answer": "yes|no|unclear", "why": "<one sentence>"}},
  "inputs": {"rev_growth": [y1,y2,y3,y4,y5], "op_margin": [y1,y2,y3,y4,y5], "long_run_op_margin": x, "terminal_growth": x, "fade_years": n, "return_on_new_investment_long_run": x, "capex_to_revenue": x},
  "ranges": {"long_run_op_margin": [low, high], "rev_growth_y3": [low, high], "terminal_growth": [low, high]},
+ "cash_not_free": null or {"value": <as printed>, "scale": "units|thousands|millions|billions", "what": "<restricted cash, cash held for customers, ...>", "quotes": [{"id": "<evidence id>", "quote": "<exact text>"}]},
+ "base_year_one_offs": null or [{"value": <as printed>, "scale": "units|thousands|millions|billions", "sign": "charge|gain", "what": "<the item>", "quotes": [{"id": "<evidence id>", "quote": "<exact text>"}]}],
  "reasons": {"<each key of inputs>": {"why": "<1-3 sentences tied to this company>", "quotes": [{"id": "<evidence id>", "quote": "<exact text>"}]}},
  "biggest_risks": [{"risk": "...", "input_hit": "<key of inputs>", "bear_value": x}],
  "confidence": "low|medium|high"}"""
@@ -110,6 +123,8 @@ def record_text(f, f_all, b, r, prov):
     lines.append(f"Pooled over those years: capital expenditure / revenue {b['c_ratio']:.4f}; depreciation (without amortization of acquired intangibles) / revenue {b['d_ratio']:.4f}.")
     lines.append(f"Base year: return on tangible capital {b['ronic0']:.4f}; tax rate {b['tau']:.4f}; total debt {_money(b['debt0'])}; cash counted as excess {_money(b['excess_cash'])}; "
                  f"net debt (debt less that cash) {_money(b['debt0'] - b['excess_cash'])}.")
+    lines.append(f"Non-operating items that the valuation holds in dollars for ever (K_0 = base-year operating income less pretax income without the interest earned on cash and the minority share; positive = a net cost): "
+                 f"{_money(b['k0'])}, of which interest on debt {_money(b['k0_interest'])}.")             # WO_NC9a: what the one-offs would be taken out of
     lines.append(f"Return on new investment at which growth adds no value (code, after the company's leverage): {menu.neutral_ronic(b, r):.4f}.")
     lines.append(f"Cost of equity r {r:.4f}; long-run nominal growth anchor g_anchor {_f4(prov.get('g_anchor'))}.")
     return "\n".join(lines), {"margins": margins, "growths": growths}
@@ -145,6 +160,40 @@ def _num(x):
     return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
 
 
+def _item_shape(it, label, with_sign):
+    """WO_NC9a: the form of the cash_not_free object or of one base_year_one_offs item."""
+    if not isinstance(it, dict):
+        return [f"{label} must be an object"]
+    p, v = [], IFF._printed(it.get("value"))
+    if v is None or not v.is_finite() or not v > 0:
+        p.append(f"{label}.value must be a number above 0, as printed in the filing")
+    if it.get("scale") not in IFF.SCALES:
+        p.append(f"{label}.scale must be one of {', '.join(IFF.SCALES)}")
+    if with_sign and it.get("sign") not in SIGNS:
+        p.append(f"{label}.sign must be one of {', '.join(SIGNS)}")
+    if not (isinstance(it.get("what"), str) and it["what"].strip()):
+        p.append(f"{label}.what is missing")
+    if not isinstance(it.get("quotes"), list):
+        p.append(f"{label}.quotes must be a list")
+    return p
+
+
+def _adjustment_shape(obj):
+    """WO_NC9a: both keys must be present, each null or well formed (a reply of the v1 shape, without them, is invalid)."""
+    p = []
+    if "cash_not_free" not in obj:
+        p.append("cash_not_free is missing (null where the filings do not say)")
+    elif obj["cash_not_free"] is not None:
+        p += _item_shape(obj["cash_not_free"], "cash_not_free", False)
+    if "base_year_one_offs" not in obj:
+        p.append("base_year_one_offs is missing (null where the filings do not say)")
+    elif isinstance(obj["base_year_one_offs"], list):
+        p += [m for i, it in enumerate(obj["base_year_one_offs"]) for m in _item_shape(it, f"base_year_one_offs[{i}]", True)]
+    elif obj["base_year_one_offs"] is not None:
+        p.append("base_year_one_offs must be null or a list")
+    return p
+
+
 def shape_problems(obj):
     """What is wrong with the reply's form (names, types, counts), or []."""
     if not isinstance(obj, dict):
@@ -156,6 +205,10 @@ def shape_problems(obj):
     else:
         p += [f"situation.{k} must be one of {', '.join(TRIPLE)}" for k in ("cyclical", "base_year_representative") if sit.get(k) not in TRIPLE]
         p += [f"situation.{k} is missing" for k in ("margin_position", "why") if not (isinstance(sit.get(k), str) and sit[k].strip())]
+        for k in SITUATION_FLAGS:                                                                  # WO_NC9a
+            e = sit.get(k)
+            if not (isinstance(e, dict) and e.get("answer") in TRIPLE and isinstance(e.get("why"), str) and e["why"].strip()):
+                p.append(f"situation.{k} must be {{answer: one of {', '.join(TRIPLE)}, why: one sentence}}")
     inp = obj.get("inputs")
     if not isinstance(inp, dict):
         p.append("inputs is missing or not an object")
@@ -180,6 +233,7 @@ def shape_problems(obj):
             e = why.get(k)
             if not (isinstance(e, dict) and isinstance(e.get("why"), str) and e["why"].strip() and isinstance(e.get("quotes"), list)):
                 p.append(f"reasons.{k} must be {{why: text, quotes: a list}}")
+    p += _adjustment_shape(obj)
     risks = obj.get("biggest_risks")
     if not (isinstance(risks, list) and all(isinstance(x, dict) and isinstance(x.get("risk"), str) and x["risk"].strip() and x.get("input_hit") in INPUT_KEYS for x in risks)):
         p.append("biggest_risks must be a list of {risk: text, input_hit: a key of inputs, bear_value: a number}")
@@ -237,6 +291,71 @@ def quote_problems(verified):
     return [f"reasons.{k} has no quote found word for word in the item it cites" for k, (kept, n) in verified.items() if not kept]
 
 
+# ---------------------------------------------------------------- the adjusted base (WO_NC9a)
+def _checked_item(it, label, texts):
+    """(problems, record): the item's quotes found word for word in the item they cite, and the printed number in at least one of them."""
+    v, kept = IFF._printed(it["value"]), []
+    for q in it["quotes"]:
+        i, s = (q.get("id"), q.get("quote")) if isinstance(q, dict) else (None, None)
+        if isinstance(i, str) and isinstance(s, str) and i in texts and contract.quote_found(s, [texts[i]]):
+            kept.append({"id": i, "quote": s})
+    if not kept:
+        return [f"{label} has no quote found word for word in the item it cites"], None
+    carrying = [k for k in kept if IFF.digits_in_quote(v, [k["quote"]])]
+    if not carrying:
+        return [f"{label}: the number {it['value']!r} does not appear in any quote that was found word for word"], None
+    return [], {"printed": it["value"], "scale": it["scale"], "amount": float(v * IFF.SCALES[it["scale"]]), "what": it["what"].strip(),
+                "quotes": carrying + [k for k in kept if k not in carrying], "quotes_given": len(it["quotes"])}
+
+
+def adjust_base(b, cash, one_offs):
+    """(a copy of the base with the two adjustments, the record of them). cash = the checked cash_not_free record or None; one_offs = the checked
+    items (each with "sign"). With N the cash that is not free and bill the base's bill rate, inputs.base built excess_cash = C, i_pre = C x bill,
+    pt_ex = PT_0 - i_pre - NCI/(1 - tau), x0 = (pt_ex + A_0)(1 - tau), k0 = OI_0 - pt_ex. The earnings base before tax is higher by
+    d = N x bill + (charges - gains), so, OI_0 and every other part of the base being untouched:
+        excess_cash' = C - N      (the desk adds it at face)       cash_interest_pretax' = i_pre - N x bill
+        k0' = k0 - d              (k0_interest is not touched)     x0' = x0 + d (1 - tau)     m0' = x0' / R0
+    which keeps the bridge exact: (OI_0 - k0' + A_0)(1 - tau) = x0'. ronic0 stays the filed base year's return (its tangible capital is not stored
+    and is not rebuilt here), stamped. Raises DeskRefusal e0_not_positive when x0' is not above 0."""
+    n = cash["amount"] if cash is not None else 0.0
+    back = n * b["bill_rate"] if cash is not None else 0.0                 # a cash amount above 0 exists only where the base has a bill rate (excess_cash > 0)
+    charge = sum(o["amount"] for o in one_offs if o["sign"] == "charge")
+    gain = sum(o["amount"] for o in one_offs if o["sign"] == "gain")
+    d = back + (charge - gain)
+    a = dict(b, excess_cash=b["excess_cash"] - n, k0=b["k0"] - d, x0=b["x0"] + d * (1 - b["tau"]), cash_interest_pretax=b["cash_interest_pretax"] - back)
+    a["m0"] = a["x0"] / b["R0"]
+    if not a["x0"] > 0:
+        raise desk.DeskRefusal("e0_not_positive", f"X_0 = {a['x0']:.6g} after the adjustments: no earnings base")
+    stamps = (["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base"] if cash is not None else []) \
+        + (["base_year_one_offs_taken_out_of_k0"] if one_offs else []) + (["ronic0_not_readjusted"] if cash is not None or one_offs else [])
+    return a, {"cash_not_free": cash, "base_year_one_offs": list(one_offs), "excess_cash_before": b["excess_cash"], "excess_cash_after": a["excess_cash"],
+               "k0_before": b["k0"], "k0_after": a["k0"], "k0_interest": b["k0_interest"], "x0_before": b["x0"], "x0_after": a["x0"],
+               "cash_interest_returned": back, "one_offs_charge": charge, "one_offs_gain": gain, "stamps": stamps}
+
+
+def read_adjustments(obj, b, texts):
+    """(problems, the adjusted base, its record, the checked cash, the checked one-offs): the quotes and digits of both objects checked, the cash
+    above 0 and at most the cash counted as excess, the adjusted earnings base above 0. A null or an empty list leaves the base as it is."""
+    problems, cash, offs = [], None, []
+    if obj["cash_not_free"] is not None:
+        pr, cash = _checked_item(obj["cash_not_free"], "cash_not_free", texts)
+        problems += pr
+        if cash is not None and not 0 < cash["amount"] <= b["excess_cash"]:
+            problems.append(f"cash_not_free {cash['amount']:,.0f} is not above 0 and at most the cash and short-term investments counted as excess ({b['excess_cash']:,.0f})")
+    for i, it in enumerate(obj["base_year_one_offs"] if obj["base_year_one_offs"] is not None else []):
+        pr, rec = _checked_item(it, f"base_year_one_offs[{i}]", texts)
+        problems += pr
+        if rec is not None:
+            offs.append(dict(rec, sign=it["sign"]))
+    if problems:
+        return problems, b, None, None, []
+    try:
+        a, adj = adjust_base(b, cash, offs)
+    except desk.DeskRefusal as e:
+        return [f"the adjustments leave no earnings base: {e}"], b, None, None, []
+    return [], a, adj, cash, offs
+
+
 # ---------------------------------------------------------------- the numeric route
 def value_inputs(b, r, inp):
     """(value per share, desk result) from numeric inputs, through desk.value_operating on the pinned base: forecast.assemble's own arithmetic with
@@ -291,6 +410,7 @@ def flags_of(obj, b, rec, verified, vals):
         out.append(f"return_above_base_year: long-run {inp['return_on_new_investment_long_run']:.4f} against the base year's {b['ronic0']:.4f}")
     if obj["situation"]["base_year_representative"] == "no":
         out.append("base_year_not_representative")
+    out += [f"{k}_no: {obj['situation'][k]['why'].strip()}" for k in SITUATION_FLAGS if obj["situation"][k]["answer"] == "no"]       # WO_NC9a: flags only
     if obj["confidence"] == "low":
         out.append("confidence_low")
     n, m = sum(len(k) for k, _ in verified.values()), sum(t for _, t in verified.values())
@@ -300,12 +420,13 @@ def flags_of(obj, b, rec, verified, vals):
     return out
 
 
-def _tax_range(f, b, market_cap, inp, rng, r, vals):
-    """The same read valued at the second rate of a statutory tax fallback, in the shape of run._tax_range. The first values are never touched."""
+def _tax_range(f, b, market_cap, inp, rng, r, vals, cash=None, offs=()):
+    """The same read valued at the second rate of a statutory tax fallback, in the shape of run._tax_range. The first values are never touched.
+    The same checked adjustments (cash, one-offs) are made on the second rate's base (WO_NC9a)."""
     tf = b["tax_fallback"]
     tr = {"rate": tf["rate"], "rate_alt": tf["rate_alt"], "values": vals, "values_alt": None, "status_alt": None}
     try:
-        alt, problems, _ = values(vrun.alt_tax_base(f, b, market_cap), r, inp, rng)
+        alt, problems, _ = values(adjust_base(vrun.alt_tax_base(f, b, market_cap), cash, offs)[0], r, inp, rng)
     except desk.DeskRefusal as e:
         return dict(tr, status_alt=f"no_call: {e.code}: {e}")
     except AssertionError as e:
@@ -366,7 +487,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         content = ((resp or {}).get("message") or {}).get("content")
         obj, perr = runner.parse_reply(content)
         att = {"attempt": n, "seconds": secs, **{k: (resp or {}).get(k) for k in ("prompt_eval_count", "eval_count", "done_reason")}}
-        verified = vals = base_v = None
+        verified = vals = base_v = adj = cash = offs = None
         if perr:
             problems = [f"not valid JSON: {perr}"]
         else:
@@ -374,9 +495,11 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
             if not problems:
                 verified = verify_quotes(obj, texts)
                 problems = numeric_problems(obj, r) + quote_problems(verified)
+                ap, b_adj, adj, cash, offs = read_adjustments(obj, b, texts)           # WO_NC9a
+                problems += ap
             if not problems:
                 try:
-                    vals, problems, base_v = values(b, r, obj["inputs"], obj["ranges"])
+                    vals, problems, base_v = values(b_adj, r, obj["inputs"], obj["ranges"])
                 except AssertionError as e:                               # an engine defect is recorded, never a crash
                     att.update(outcome="engine_defect", problems=[str(e)])
                     attempts.append(att)
@@ -387,27 +510,27 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         attempts.append(att)
         runner._write_json(run_dir / "raw" / f"attempt_{n}.json", {"messages": msgs, "response": content, "problems": problems})
         if not problems:
-            out = (n, obj, verified, vals, base_v)
+            out = (n, obj, verified, vals, base_v, adj, cash, offs)
             break
         retry = (content or "", problems)
     result["attempts"] = attempts
     if out is None:
         result.update(status="no_call", reason="decision_invalid", detail="; ".join(attempts[-1]["problems"]))
         return _write(run_dir, result)
-    n, obj, verified, vals, base_v = out
+    n, obj, verified, vals, base_v, adj, cash, offs = out
     inp, rng = obj["inputs"], obj["ranges"]
     flags = flags_of(obj, b, rec, verified, vals)
     dec = {"situation": obj["situation"], "inputs": inp, "ranges": rng, "risks": obj["biggest_risks"], "confidence": obj["confidence"],
            "reasons": {k: {"why": obj["reasons"][k]["why"], "quotes": verified[k][0], "quotes_given": verified[k][1]} for k in INPUT_KEYS},
            "scenarios": {s: {k: v for k, v in scenario_inputs(inp, rng, side).items() if k in ("rev_growth", "long_run_op_margin", "terminal_growth")}
                          for s, side in (("bear", 0), ("bull", 1))},
-           "flags": flags, "value_at_old_defaults": old_value, "old_defaults_inputs": old_how,
+           "flags": flags, "adjustments": adj, "value_at_old_defaults": old_value, "old_defaults_inputs": old_how,
            "prior_read_claims": {"kept": n_kept, "dropped_unsupported": n_dropped},
            "diagnostics": {"equity_value": base_v["equity_value"], "tv_share": base_v["tv_pv"] / base_v["equity_value"] if base_v["equity_value"] else None,
                            "seam_ratio": base_v["seam_ratio"], "da_rule": base_v["da_rule"], "wedge_rate_5": base_v["wedge_rate_5"]}}
     result.update(status="ok", values=vals, checks={"prob": dict(checks.PROB), "version": DECIDED_VERSION}, inputs=obj, checked_attempt=n, decided=dec)
     if b.get("tax_fallback"):
-        result["tax_range"] = _tax_range(f, b, market_cap, inp, rng, r, vals)
+        result["tax_range"] = _tax_range(f, b, market_cap, inp, rng, r, vals, cash, offs)
     return _write(run_dir, result)
 
 
