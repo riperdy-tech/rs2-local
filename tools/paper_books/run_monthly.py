@@ -1,4 +1,5 @@
-"""The monthly paper-books run (task RS2-Paper-Books, days 1, 2 and 3 at 08:00 KST; register_paper_books_task.ps1).
+"""The paper-books run (task RS2-Paper-Books, daily at 09:00 KST since 2026-11-18, before that days 1 to 3 of the month;
+register_paper_books_task.ps1). The file keeps its name.
 
     python tools/paper_books/run_monthly.py
 
