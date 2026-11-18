@@ -656,6 +656,16 @@ def test_the_preflight_refuses_a_prompt_that_cannot_fit(env):
     assert rec["attempts"][0]["seconds"] == 0.0 and manifest(res)["options"]["chars_per_token"] == 2.5
 
 
+def test_the_reply_is_allowed_what_the_prompt_leaves_of_the_context(env):
+    res = run(env, num_ctx=20000)                    # a prompt of some thousand characters leaves under NUM_PREDICT and over MIN_PREDICT
+    assert res["status"] == "complete"
+    sent = [r["options"]["num_predict"] for r in posts_of("business_model")]
+    assert sent and all(runner.MIN_PREDICT <= n < min(20000, runner.NUM_PREDICT) for n in sent)
+    assert [r["options"]["num_predict"] for r in posts_of("business_model")] != [runner.NUM_PREDICT]
+    full = run(env)                                  # the default context leaves more than NUM_PREDICT: the allowance is NUM_PREDICT
+    assert posts_of("business_model")[-1]["options"]["num_predict"] == runner.NUM_PREDICT and full["status"] == "complete"
+
+
 def test_another_resident_model_refuses_the_run_and_writes_nothing(env):
     Stub.loaded = ["rs2-research:latest", runner.MODEL + ":latest"]
     with pytest.raises(runner.RunRefused, match=r"^gpu_busy: another model is loaded on the Ollama server: rs2-research:latest$"):

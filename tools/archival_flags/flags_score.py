@@ -327,14 +327,8 @@ def check_gates(now, open_slots, out_exists):
 
 
 def final_runs():
-    """{(ticker, T): (state, run_id)} for slots with a final run, found as flags_run.states() finds them (the newest in ledger order)."""
-    out = {}
-    for r in FRUN.runner.read_ledger(FRUN.OUT):
-        if r.get("run_id") and r.get("status") in ("complete", "failed"):
-            st = FRUN.FINAL.get(FRUN.task_status(r["run_id"]))
-            if st:
-                out[(r["ticker"], r["T"])] = (st, r["run_id"])
-    return out
+    """{(ticker, T): (state, run_id)} for slots with a final run: flags_run.final_runs (one owner of the rule)."""
+    return FRUN.final_runs()
 
 
 def load_rows(with_names):

@@ -305,3 +305,58 @@ def test_classify_command_writes_groups_without_prices(tmp_path):
     saved = json.loads((tmp_path / "classify.json").read_text())
     assert saved == json.loads(json.dumps(out)) and "excess" not in saved["rows"][0]
     assert saved["counts"]["2026-01-02"]["kept"] == 6 and saved["counts"]["2026-01-02"]["no_packet"] == 1
+
+
+def test_final_runs_ignore_another_thinking_level_and_close_a_slot_after_three_server_failures(tmp_path, monkeypatch):
+    import flags_run as FRUN
+    monkeypatch.setattr(FRUN, "OUT", tmp_path)
+    led = []
+
+    def add(run_id, ticker, status, think=FRUN.runner.THINK):
+        d = tmp_path / "runs" / run_id
+        d.mkdir(parents=True)
+        (d / "manifest.json").write_text(json.dumps({"options": {"think": think}, "tasks": {FRUN.TASK: {"status": status}}}), encoding="utf-8")
+        led.append({"run_id": run_id, "ticker": ticker, "T": "T", "status": "complete" if status == "ok" else "failed"})
+
+    monkeypatch.setattr(FRUN.runner, "read_ledger", lambda root: led)
+    add("a1", "AAA", "ok", think="medium")                       # a read at another level is no read
+    add("b1", "BBB", "timeout"), add("b2", "BBB", "infra_error")  # two server failures: still open
+    add("c1", "CCC", "timeout"), add("c2", "CCC", "timeout"), add("c3", "CCC", "infra_error")
+    add("d1", "DDD", "timeout"), add("d2", "DDD", "malformed")
+    add("e1", "EEE", "ok")
+    assert FRUN.final_runs() == {("CCC", "T"): ("no_read", "c3"), ("DDD", "T"): ("no_read", "d2"), ("EEE", "T"): ("read", "e1")}
+    assert FRUN.states() == {("CCC", "T"): "no_read", ("DDD", "T"): "no_read", ("EEE", "T"): "read"}
+
+
+def test_reread_reads_once_more_only_a_slot_cut_twice_at_the_allowance(tmp_path, monkeypatch):
+    import flags_run as FRUN
+    monkeypatch.setattr(FRUN, "OUT", tmp_path)
+    monkeypatch.setattr(FRUN, "LOCK", tmp_path / "run.lock")
+    monkeypatch.setattr(FRUN, "monitor_has_gpu", lambda: False)
+    monkeypatch.setattr(FRUN.FR, "formation_waiting", lambda: False)
+    monkeypatch.setattr(FRUN, "slots", lambda: [("T", t, tmp_path / f"{t}.json") for t in ("AAA", "BBB", "CCC")])
+    led, calls = [], []
+
+    def add(run_id, ticker, status, reasons, num_predict=FRUN.runner.NUM_PREDICT):
+        d = tmp_path / "runs" / run_id
+        (d / "raw").mkdir(parents=True), (d / "prompts").mkdir()
+        (d / "prompts" / f"{FRUN.TASK}.txt").write_text("x" * 1000, encoding="utf-8")
+        for i, why in enumerate(reasons, 1):
+            (d / "raw" / f"{FRUN.TASK}_{i}.json").write_text(json.dumps({"outcome": status, "response": {"done_reason": why}}), encoding="utf-8")
+        (d / "manifest.json").write_text(json.dumps({"options": {"think": FRUN.runner.THINK, "num_predict": num_predict},
+                                                      "tasks": {FRUN.TASK: {"status": status}}}), encoding="utf-8")
+        led.append({"run_id": run_id, "ticker": ticker, "T": "T", "status": "failed"})
+
+    def fake_run(packet, **kw):
+        calls.append((Path(packet).stem, kw["num_predict"]))
+        add("again_" + Path(packet).stem, Path(packet).stem, "malformed", ["length", "length"], num_predict=kw["num_predict"])
+        return {"run_id": "again_" + Path(packet).stem}
+
+    monkeypatch.setattr(FRUN.runner, "read_ledger", lambda root: led)
+    monkeypatch.setattr(FRUN.runner, "run", fake_run)
+    add("a1", "AAA", "malformed", ["length", "length"])          # cut twice: read once more
+    add("b1", "BBB", "malformed", ["length", "stop"])            # the second attempt ended by itself: not a cut
+    add("c1", "CCC", "malformed", ["length"])                    # one attempt only
+    assert FRUN.reread() == 0
+    assert calls == [("AAA", FRUN.runner.NUM_CTX - 400 - 2048)]
+    assert FRUN.reread() == 0 and len(calls) == 1                # still cut after the re-read: not read a third time

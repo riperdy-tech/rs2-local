@@ -13,8 +13,9 @@ then. The run is `complete` when every requested task is ok (`not_applicable_no_
 applicable (only thesis_change, with no prior) is `failed`, not complete.
 
 PER TASK (TASK_TIMEOUT_S per call; seed = the run's seed base + the task index in tasks.TASKS, 0-based):
-    PREFLIGHT (ruling 4.2): a rendered prompt whose characters / CHARS_PER_TOKEN + num_predict exceed num_ctx is not sent ->
-    `context_overflow` (this holds for a malformed-retry prompt too);
+    PREFLIGHT (ruling 4.2, 2026-11-19): the reply is allowed num_predict tokens, or what the rendered prompt (characters /
+    CHARS_PER_TOKEN) leaves of num_ctx when that is less; a prompt that leaves less than MIN_PREDICT (or num_predict when smaller) is not
+    sent -> `context_overflow` (this holds for a malformed-retry prompt too);
     a reply is parsed (parse_reply) and checked (contract.check_task) -> `ok`; a reply that does not parse or has the wrong shape (an
     empty reply, no claims and no unknowns, is one: ruling 4.1) gets one retry at seed + RETRY_SEED_OFFSET with tasks.RETRY_LINE
     appended, then `malformed`; the cause names done_reason "length" (the reply was cut at num_predict; ruling 4.6);
@@ -84,6 +85,8 @@ PACKET_CONTRACT = "m3m.packet.v1"
 NUM_CTX = 98304                               # ruling 4.2: the value rs2 already runs on this card
 CHARS_PER_TOKEN = 2.5                         # ruling 4.2: the preflight's estimate
 NUM_PREDICT = 32768                           # 2026-11-19: at high thinking a read measured 17,560 output tokens and 12288 cut both attempts before the answer; provisional (one name measured): a cut reply still shows as malformed, done_reason length
+MIN_PREDICT = 12288                           # 2026-11-19: the reply allowance the packet size bounds were sized for (NUM_PREDICT until that day). Raising
+#                                               NUM_PREDICT to 32768 had lowered the prompt ceiling from 215,040 to 163,840 characters and refused large monitor packets
 THINK = "high"                # operator, 2026-11-19, non-negotiable: Qwen reads at high thinking, always; run() refuses any other level (it was "medium" from 2026-10-29 to 2026-11-19: those runs are not evidence)
 SEED_BASE = 1000
 RETRY_SEED_OFFSET = 50000
@@ -433,13 +436,14 @@ def _run_task(task, idx, packet, prior, opts, url, run_dir, man_prompts, point_i
         pname = f"{task}_retry.txt" if retry else f"{task}.txt"
         if pname not in man_prompts:
             man_prompts[pname] = _write_json_text(run_dir / "prompts" / pname, prompt)
+        room = int(opts["num_ctx"] - len(prompt) / CHARS_PER_TOKEN)
+        allow = min(opts["num_predict"], room)             # the reply gets num_predict, or what the prompt leaves of the context when that is less
         body = {"model": MODEL, "stream": False, "think": opts["think"], "messages": msgs,
-                "options": {"num_ctx": opts["num_ctx"], "num_predict": opts["num_predict"], "seed": seed}}
-        estimate = len(prompt) / CHARS_PER_TOKEN + opts["num_predict"]
-        if estimate > opts["num_ctx"]:
+                "options": {"num_ctx": opts["num_ctx"], "num_predict": allow, "seed": seed}}
+        if allow < min(MIN_PREDICT, opts["num_predict"]):
             kind, resp, secs = "context_overflow", None, 0.0
-            detail = (f"preflight: {len(prompt)} prompt characters / {CHARS_PER_TOKEN} + num_predict {opts['num_predict']} = "
-                      f"{estimate:.0f} > num_ctx {opts['num_ctx']}: not sent")
+            detail = (f"preflight: {len(prompt)} prompt characters / {CHARS_PER_TOKEN} leave {room} of num_ctx {opts['num_ctx']} for the reply, "
+                      f"under the least allowed {min(MIN_PREDICT, opts['num_predict'])}: not sent")
         else:
             t0 = time.monotonic()
             with turn_log.logging_to(run_dir / "turns", task):
@@ -457,9 +461,9 @@ def _run_task(task, idx, packet, prior, opts, url, run_dir, man_prompts, point_i
                 outcome = "malformed"
                 detail = perr or "; ".join(last_check["shape_errors"])
                 if (resp or {}).get("done_reason") == "length":
-                    detail += f"; done_reason is length: the reply was cut at num_predict {opts['num_predict']}"
+                    detail += f"; done_reason is length: the reply was cut at num_predict {allow}"
         raw = {"task": task, "attempt": n, "seed": seed, "retry_line": retry, "prompt_file": f"prompts/{pname}",
-               "outcome": outcome, "detail": detail, "seconds": secs, "response": resp}
+               "outcome": outcome, "detail": detail, "seconds": secs, "num_predict": allow, "response": resp}
         raw_name = f"{task}_{n}.json"
         raw_sha = _write_json(run_dir / "raw" / raw_name, raw)
         att = {"attempt": n, "seed": seed, "retry_line": retry, "prompt_file": f"prompts/{pname}", "outcome": outcome,
