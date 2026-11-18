@@ -1,6 +1,6 @@
 """runner.py - one `qwen_c` run over one frozen packet: its tasks, their errors and their records (SPEC_m3m_qwen_pipeline.md section 6).
 
-    python -m qwen_c.runner <packet.json> [--num-predict N] [--think low|medium|high] [--url ...] [--tasks a,b] [--seed-base N]
+    python -m qwen_c.runner <packet.json> [--num-predict N] [--think high] [--url ...] [--tasks a,b] [--seed-base N]
 
 The model is called through ollama_raw.chat directly (config.json `depth_provider` is not read or changed), with our own SYSTEM
 message (tasks.SYSTEM) and `think` passed as the pinned template expects (ollama_raw.think_kwargs).
@@ -84,7 +84,7 @@ PACKET_CONTRACT = "m3m.packet.v1"
 NUM_CTX = 98304                               # ruling 4.2: the value rs2 already runs on this card
 CHARS_PER_TOKEN = 2.5                         # ruling 4.2: the preflight's estimate
 NUM_PREDICT = 12288
-THINK = "medium"
+THINK = "high"                # operator, 2026-11-19, non-negotiable: Qwen reads at high thinking, always; run() refuses any other level (it was "medium" from 2026-10-29 to 2026-11-19: those runs are not evidence)
 SEED_BASE = 1000
 RETRY_SEED_OFFSET = 50000
 TASK_TIMEOUT_S = 1800
@@ -510,8 +510,8 @@ def _check_opts(num_ctx, num_predict, think, seed):
     for name, v in (("num_ctx", num_ctx), ("num_predict", num_predict), ("seed", seed)):
         if not isinstance(v, int) or isinstance(v, bool) or v < 0:
             raise RunRefused(f"{name} must be a non-negative integer, got {v!r}")
-    if think not in ollama_raw.EFFORTS:
-        raise RunRefused(f"think must be one of {ollama_raw.EFFORTS}, got {think!r}")
+    if think != THINK:
+        raise RunRefused(f"think must be {THINK!r} (operator ruling 2026-11-19), got {think!r}")
 
 
 def _check_tasks(task_ids):
@@ -683,7 +683,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m qwen_c.runner", description="One qwen_c run over one m3m.packet.v1 packet.")
     ap.add_argument("packet")
     ap.add_argument("--num-predict", type=int, default=NUM_PREDICT)
-    ap.add_argument("--think", choices=("low", "medium", "high"), default=THINK)
+    ap.add_argument("--think", choices=(THINK,), default=THINK)
     ap.add_argument("--url", default=llm_provider.OLLAMA_URL)
     ap.add_argument("--tasks", help="comma list of the tasks to run (default: all of %s), run in that order" % ", ".join(tasks.TASKS))
     ap.add_argument("--seed-base", type=int, default=SEED_BASE, help="a task's seed is this plus its index in the task list")

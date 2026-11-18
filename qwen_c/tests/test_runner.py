@@ -234,7 +234,7 @@ def test_a_clean_run_is_complete_and_every_record_recomputes(env):
     assert man["contract"] == "m3m.analysis.v3" and man["prompt_version"] == "m3m.prompt.v3" and man["builder_version"] == "fixture_b.1"
     assert man["ollama_version"] == "0.40.3" and man["kis_halt"] == "not_resolvable_in_rs2"
     assert man["qwen_c"] == {"git_commit": "a" * 40, "dirty": False}
-    assert man["options"]["num_ctx"] == 98304 and man["options"]["num_predict"] == 12288 and man["options"]["think"] == "medium"
+    assert man["options"]["num_ctx"] == 98304 and man["options"]["num_predict"] == 12288 and man["options"]["think"] == "high"
     assert man["options"]["seeds"] == {t: 1000 + i for i, t in enumerate(tasks.TASKS)} and man["options"]["differs_from_defaults"] == []
     assert man["started_at"] and man["finished_at"] and man["status"] == "complete"
     assert man["tasks"]["thesis_change"]["status"] == "not_applicable_no_prior" and posts_of("thesis_change") == []
@@ -249,9 +249,9 @@ def test_the_requests_carry_the_fixed_options_our_system_and_think(env):
         assert req["raw"] is True and req["model"] == runner.MODEL
         assert req["options"] == {"num_ctx": 98304, "num_predict": 12288, "seed": 1000 + i}      # sampling is the Modelfile's
         msgs = tasks.messages(t, json.loads(env["packet"].read_text(encoding="utf-8")))
-        assert req["prompt"] == ollama_raw.render_prompt(msgs, None, "medium")
-        assert req["prompt"] != ollama_raw.render_prompt(msgs, None, "high") and tasks.SYSTEM in req["prompt"]
-        assert "Reasoning effort is set to" not in req["prompt"]          # the pinned template prints no effort line for medium
+        assert req["prompt"] == ollama_raw.render_prompt(msgs, None, "high")
+        assert req["prompt"] != ollama_raw.render_prompt(msgs, None, "medium") and tasks.SYSTEM in req["prompt"]
+        assert "Reasoning effort is set to xhigh" in req["prompt"]         # high, always (operator 2026-11-19): the pinned template maps it to its xhigh line
     first = [p["req"]["prompt"] for p in generate_posts()]
     head = tasks.render_packet(json.loads(env["packet"].read_text(encoding="utf-8")))
     cut = [p.index(head) + len(head) for p in first]
@@ -418,12 +418,15 @@ def test_a_wrong_packet_is_refused_and_nothing_is_written(env):
 
 
 def test_the_cli(env, capsys):
-    assert runner.main([str(env["packet"]), "--url", env["url"], "--num-predict", "8192", "--think", "low"]) == 0
+    assert runner.main([str(env["packet"]), "--url", env["url"], "--num-predict", "8192", "--think", "high"]) == 0
     res = json.loads(capsys.readouterr().out)
     man = manifest(res)
-    assert man["options"]["num_predict"] == 8192 and man["options"]["think"] == "low"
-    assert man["options"]["differs_from_defaults"] == ["num_predict", "think"]
-    assert "Reasoning effort is set to low" in generate_posts()[0]["req"]["prompt"]
+    assert man["options"]["num_predict"] == 8192 and man["options"]["think"] == "high"
+    assert man["options"]["differs_from_defaults"] == ["num_predict"]
+    assert "Reasoning effort is set to xhigh" in generate_posts()[0]["req"]["prompt"]
+    with pytest.raises(SystemExit):                      # the command line offers no other level
+        runner.main([str(env["packet"]), "--url", env["url"], "--think", "medium"])
+    capsys.readouterr()
     bad = env["tmp"] / "bad.json"
     bad.write_text("{")
     assert runner.main([str(bad), "--url", env["url"]]) == 2
@@ -784,3 +787,10 @@ def test_the_cli_takes_tasks_and_seed_base(env, capsys):
     assert [p["req"]["options"]["seed"] for p in generate_posts()] == [3004, 3007]
     assert runner.main([str(env["packet"]), "--url", env["url"], "--tasks", "risks,nope"]) == 2
     assert capsys.readouterr().err.startswith("refused: unknown task id(s) ['nope']")
+
+
+def test_any_level_but_high_is_refused(env):
+    for level in ("medium", "low"):                      # operator 2026-11-19: Qwen reads at high thinking, always
+        with pytest.raises(runner.RunRefused):
+            run(env, think=level)
+    assert runner.THINK == "high"
