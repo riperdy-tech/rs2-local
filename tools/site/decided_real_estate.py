@@ -46,11 +46,12 @@ TASK = (_HEAD + "\n" + PARAGRAPH + _SEP
 
 
 def routes(fam):
-    """True when the family record of value_family (family_not_built, a real-estate SIC) is a name this variant values: not a mortgage REIT by the
-    balance-sheet route test, which stays refused."""
+    """True when the family record of value_family (family_not_built, a real-estate SIC, or WO_UV3 the filings' own evidence of a real estate investment
+    trust under another SIC) is a name this variant values: not a mortgage REIT by the balance-sheet route test, which stays refused."""
     sic = str(fam.get("sic") or "").strip()
     code = int(sic) if sic.isdigit() else None
-    return (fam.get("family") == "family_not_built" and code is not None and any(a <= code <= b for a, b in SIC_RANGES) and fam.get("route") != "financial")
+    return (fam.get("family") == "family_not_built" and ((code is not None and any(a <= code <= b for a, b in SIC_RANGES)) or bool(fam.get("reit_evidence")))
+            and fam.get("route") != "financial")
 
 
 # ---------------------------------------------------------------- derived FFO

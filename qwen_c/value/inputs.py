@@ -21,8 +21,9 @@ from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
 from qwen_c.value.facts import (DA_EXCLUDES_AMORTIZATION, ITEM_SUBSTITUTES, PRETAX_DERIVED, PRETAX_FROM_NI, SUBSTITUTE_PREFIX, SUBSTITUTE_SCOPE_PREFIX,
                                   has_stamp, taxonomy_of)
+from qwen_c.value.ix_figures import SHARES_STAMP, STAMP as IX_STAMP
 
-INPUTS_VERSION = "m3q.inputs.v17"   # v17 2026-11-19 WO_UV2: senior-notes debt tags where no debt tag resolves (parts reconciled), cash interest also supplies the base year's interest where operating income is derived, an unclassified balance sheet gives working capital 0 for every family (flag working_capital_unclassified_balance_sheet), partnership units with per-unit EPS as the diluted count, a filed 0.0 preferred balance is a value and preferred dividends are taken as 0 where EPS x shares reconciles (financial route), derived-pretax and redeemable-NCI flags; names that passed before are unchanged   # v16 2026-11-19 WO_NC9c: base() takes real_estate (the decided method's real-estate family: an unclassified balance sheet gives working capital 0, a stale operating-income tag gives pretax plus interest, each stamped; False is byte-identical)   # v15 2026-11-18 WO_NC8: base() takes interest_override (the interest on borrowings stated from the filing text) where the tagged figure gives a cost of debt outside the band; stamped interest_from_filing_text, base["interest_from_filing"], the lease and financing-interest additions are not made for it, a kd_out_of_band refusal carries .figures   # v14 2026-11-18 WO_NC3: tax_rate's last rung is the statutory rate the company files for the base year (stamped tax_rate_statutory_fallback), base() carries it with a second rate (tax_fallback) and takes tau_override for the value at that rate   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v18"   # v18 2026-11-19 WO_UV3: diluted shares from class-of-stock members (proven against the member EPS by check_shares, no rescaling) where no other count resolves; every ix_read stamp of a figure the base uses reaches base["stamps"]; names that passed before are unchanged   # v17 2026-11-19 WO_UV2: senior-notes debt tags where no debt tag resolves (parts reconciled), cash interest also supplies the base year's interest where operating income is derived, an unclassified balance sheet gives working capital 0 for every family (flag working_capital_unclassified_balance_sheet), partnership units with per-unit EPS as the diluted count, a filed 0.0 preferred balance is a value and preferred dividends are taken as 0 where EPS x shares reconciles (financial route), derived-pretax and redeemable-NCI flags; names that passed before are unchanged   # v16 2026-11-19 WO_NC9c: base() takes real_estate (the decided method's real-estate family: an unclassified balance sheet gives working capital 0, a stale operating-income tag gives pretax plus interest, each stamped; False is byte-identical)   # v15 2026-11-18 WO_NC8: base() takes interest_override (the interest on borrowings stated from the filing text) where the tagged figure gives a cost of debt outside the band; stamped interest_from_filing_text, base["interest_from_filing"], the lease and financing-interest additions are not made for it, a kd_out_of_band refusal carries .figures   # v14 2026-11-18 WO_NC3: tax_rate's last rung is the statutory rate the company files for the base year (stamped tax_rate_statutory_fallback), base() carries it with a second rate (tax_fallback) and takes tau_override for the value at that rate   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
@@ -90,8 +91,40 @@ def _verified_shares(f, e0, numer, substitutes, stamps, what):
             raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}; the diluted partnership units are filed but do not reconcile with the filed per-unit EPS ({e})")
         stamps.append("shares_from_partnership_units_reconciled_with_per_unit_eps")
         return n, False
-    shares, sub = _shares_or_substitute(f, e0, substitutes)
+    try:
+        shares, sub = _shares_or_substitute(f, e0, substitutes)
+    except DeskRefusal as e:
+        if e.code != "shares_unavailable":
+            raise
+        got = _ix_shares(f, e0, numer, stamps, what)                      # WO_UV3: only where the base would be refused for the count
+        if got is None:
+            raise
+        return got, False
     return check_shares(f, e0, numer, shares, stamps, what, strict=sub), sub
+
+
+def _ix_shares(f, e0, numer, stamps, what):
+    """WO_UV3: the diluted count of the fiscal year `e0` from the class-of-stock members of the newest annual filing's inline XBRL (ix_figures.
+    share_candidates), or None. Each candidate (one member, or the sum of members that file one EPS) is proven against ITS OWN filed diluted EPS
+    with check_shares, strict, and is used only at the scale the tag states (a count that only reconciles after check_shares' thousands
+    rescale is not used). Exactly one count may reconcile: none, or two different ones, and nothing is read."""
+    ix = f.get("_ix_shares")
+    if not ix or ix["end"] != e0:
+        return None
+    ok = {}
+    for c in ix["candidates"]:
+        try:
+            n = check_shares(f, e0, numer, c["shares"], [], what, strict=True, eps=c["eps"])
+        except DeskRefusal:
+            continue
+        if n == c["shares"]:
+            ok[n] = c
+    if len(ok) != 1:
+        return None
+    n, c = next(iter(ok.items()))
+    stamps.append(f"{SHARES_STAMP}:{ix['accession']}:{'+'.join(m.split(':')[-1] for m in c['members'])}")
+    stamps.append("shares_reconciled_with_class_eps")
+    return n
 
 
 def _eps_reconciles(f, e, numer):
@@ -269,6 +302,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
     marks = {x for c in ("revenue", *ITEM_SUBSTITUTES) for v in (f.get(c) or {}).get("values", []) for x in (v.get("stamp") or "").split(";")}
     stamps = ["rou_depreciation_not_separated", "leases_not_modeled"] + sorted(x for x in marks if x.startswith(SUBSTITUTE_SCOPE_PREFIX))     # WO_NC2
     substitutes = sorted(x for x in marks if x.startswith(SUBSTITUTE_PREFIX))
+    stamps += _ix_marks(f, ends)                                           # WO_UV3: figures read from the filing's inline XBRL
     if real_estate:
         stamps.append("real_estate_base")                                    # WO_NC9c
     if any((v.get("form") or "").startswith(("20-F", "40-F")) for v in f["revenue"]["values"]):
@@ -492,6 +526,20 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
                        "rev_growth": {c[i]: rev[c[i]] / rev[c[i - 1]] - 1 for c in [_year_chain(ends)] for i in range(1, len(c))}}}  # F_SPEC §2.1
 
 
+def _ix_marks(f, ends):
+    """WO_UV3: the ix_read stamps (document, tag or member) of every figure the base uses, one per figure, sorted: the facts' values of the fiscal
+    years `ends`. Where a pooled series (capex, D&A) holds both years read from the filing and years companyfacts filed under its own tag, that is
+    stamped too (ix_series_mixed:<concept>:<years from companyfacts>_of_<years used>): the two may not cover the same lines, a flag and no gate."""
+    marks = {x for c, d in f.items() if not c.startswith("_") for v in d["values"] if v["end"] in ends for x in (v.get("stamp") or "").split(";")
+             if x.startswith(IX_STAMP + ":")}
+    for c in ("capex", "da"):
+        vals = [v for v in (f.get(c) or {}).get("values", []) if v["end"] in ends]
+        read = [v for v in vals if any(x.startswith(IX_STAMP + ":") for x in (v.get("stamp") or "").split(";"))]
+        if read and len(read) < len(vals):
+            marks.add(f"ix_series_mixed:{c}:{len(vals) - len(read)}_of_{len(vals)}")
+    return sorted(marks)
+
+
 def _ytd(f, e0):
     """F11: the facts' year-to-date pair of year 1 when it is measured against this base year (else not available, with why)."""
     y = f.get("_ytd")
@@ -558,7 +606,7 @@ def base_financial(f):
         if v["end"] in ends[1:] and v.get("stamp") == "profitloss_basis_unverified":           # Q3b N4: ends[0] is the opening balance
             raise DeskRefusal("profitloss_basis_unverified", f"ProfitLoss for {v['end']} reconciles with diluted EPS on neither basis")
     substitutes = []
-    stamps = ["financial_driver_book_equity", "shares_weighted_average_diluted", "financial_classification_unverified"]
+    stamps = ["financial_driver_book_equity", "shares_weighted_average_diluted", "financial_classification_unverified"] + _ix_marks(f, ends)
     if any((v.get("form") or "").startswith(("20-F", "40-F")) for v in f["equity"]["values"]):
         stamps.append("per_share_basis_unverified")                         # ruling 18: no ADS ratio is applied
     else:

@@ -36,11 +36,16 @@ if str(ROOT) not in sys.path:
 from qwen_c import packet  # noqa: E402
 from qwen_c.value import facts, inputs  # noqa: E402
 
-FAMILY_VERSION = "f10.family.v1"
+FAMILY_VERSION = "f10.family.v2"      # v2 2026-11-19 WO_UV3: a company whose filings show a real estate investment trust is real estate whatever its SIC (reit_evidence)
 
 PRE_PROFIT_WINDOW, PRE_PROFIT_MIN_LOSS_YEARS = 4, 3
 INSURANCE_RESERVE_SHARE, LENDING_BOOK_SHARE, FUNDING_SHARE, DEPOSITS_SHARE = 0.10, 0.50, 0.50, 0.50
 REPO_SHARE, INVEST_SHARE = 0.20, 0.50
+# WO_UV3 (RR_UV3 part A): two filed facts, from different statements, that a real estate investment trust shows and no other stored company does (measured on the
+# 174 stored names: 17 of 19 real-estate-SIC names show both, one name with another SIC shows both and is a REIT by its own filing, no other shows both): the
+# real-estate schedule (Reg S-X 12-28: gross carrying amount and accumulated depreciation of the properties) and the balance sheet's real estate investment property
+SCHEDULE_III_TAGS = ("RealEstateGrossAtCarryingValue", "RealEstateAccumulatedDepreciation")
+BALANCE_SHEET_TAG = "RealEstateInvestmentPropertyNet"
 
 INSURANCE_TAGS = ("LiabilityForFuturePolicyBenefits", "LiabilityForUnpaidClaimsAndClaimsAdjustmentExpense", "UnearnedPremiums")
 LOAN_TAGS = ("LoansAndLeasesReceivableNetReportedAmount", "LoansAndLeasesReceivableNetOfDeferredIncome",
@@ -155,6 +160,13 @@ def family(cf, subs, f, T):
     ins_test = t["insurance_reserve_share"] is not None and t["insurance_reserve_share"] >= INSURANCE_RESERVE_SHARE
 
     fam_sic, note = sic_family(sic)                                       # the classification
+    reit = None
+    if fam_sic != "family_not_built" and end:                             # WO_UV3: the filings show a REIT whatever the SIC: the real-estate classification and route
+        vals = [at(tg, end) for tg in SCHEDULE_III_TAGS + (BALANCE_SHEET_TAG,)]
+        if all(v is not None and v > 0 for v in vals):
+            reit = {"fiscal_year_end": end, "schedule_iii": dict(zip(SCHEDULE_III_TAGS, vals[:2])), "balance_sheet": {BALANCE_SHEET_TAG: vals[2]}}
+            out["reit_evidence"] = reit
+            fam_sic, note = "family_not_built", "filed evidence of a real estate investment trust (real-estate schedule and balance-sheet property)"
     if fam_sic == "family_not_built":
         cls, why = "family_not_built", f"SIC {sic}: {note}; family not built"
     elif ins_test or lending_test:
@@ -183,7 +195,7 @@ def family(cf, subs, f, T):
     funding = _share(debt, liab) if (debt and liab) else None
     repo = _share(at("SecuritiesSoldUnderAgreementsToRepurchase", end), ta) if (end and ta) else None
     invest = _share(at("Investments", end), ta) if (end and ta) else None
-    route, rwhy = _route(sic, t["insurance_reserve_share"], t["deposits_share"], lend, funding, repo, invest, cls)
+    route, rwhy = _route(sic, t["insurance_reserve_share"], t["deposits_share"], lend, funding, repo, invest, cls, reit=reit is not None)
     out["route"], out["route_evidence"] = route, rwhy
 
     if cls in ("financial", "operating") and route == "financial":
@@ -196,16 +208,16 @@ def family(cf, subs, f, T):
     return out
 
 
-def _route(sic, ins, dep, lend, funding, repo, invest, cls):
-    """census_1a_addendum.route: (route, evidence)."""
+def _route(sic, ins, dep, lend, funding, repo, invest, cls, reit=False):
+    """census_1a_addendum.route: (route, evidence). `reit` (WO_UV3): the filings show a real estate investment trust, so a real-estate SIC's route applies."""
     code = int(sic) if sic and str(sic).strip().isdigit() else None
     ins, dep, lb = ins or 0.0, dep or 0.0, lend or 0.0
-    if code is not None and (6500 <= code <= 6599 or code == 6798):
+    if reit or (code is not None and (6500 <= code <= 6599 or code == 6798)):
         if lb >= LENDING_BOOK_SHARE:
             return "financial", "mortgage REIT: lending book >= 50% of assets"
         if (repo or 0) >= REPO_SHARE:
             return "financial", f"mortgage REIT: repurchase-agreement funding {repo:.0%} of assets"
-        return "operating_real_estate", "real-estate SIC"
+        return "operating_real_estate", "filed evidence of a real estate investment trust" if reit else "real-estate SIC"
     if ins >= INSURANCE_RESERVE_SHARE or lb >= LENDING_BOOK_SHARE or dep >= DEPOSITS_SHARE:
         return "financial", ("insurance reserves >= 10% of assets" if ins >= INSURANCE_RESERVE_SHARE else
                              "lending book >= 50% of assets" if lb >= LENDING_BOOK_SHARE else "deposits >= 50% of liabilities")

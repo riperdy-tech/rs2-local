@@ -86,6 +86,14 @@ def test_routes_only_a_real_estate_sic_that_is_not_a_mortgage_reit_by_the_balanc
     assert not RE.routes(dict(fam, family="operating")) and not RE.routes(dict(fam, family="financial")) and not RE.routes({"family": None})
 
 
+def test_routes_a_reit_by_its_filed_evidence_under_any_sic_but_not_a_mortgage_reit_or_a_name_without_the_evidence():
+    """WO_UV3: value_family records reit_evidence for a company whose filings show a REIT; its SIC then does not matter."""
+    fam = {"family": "family_not_built", "sic": "7011", "route": "operating_real_estate", "reit_evidence": {"fiscal_year_end": "2025-12-31"}}
+    assert RE.routes(fam) and RE.routes(dict(fam, sic=None))
+    assert not RE.routes(dict(fam, route="financial"))                                    # the mortgage-REIT test applies to these too
+    assert not RE.routes(dict(fam, reit_evidence=None)) and not RE.routes(dict(fam, family="operating"))
+
+
 # ---- the record ------------------------------------------------------------------------------------------------------------------------
 
 def test_derived_ffo_by_hand():
