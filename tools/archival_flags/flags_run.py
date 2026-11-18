@@ -1,6 +1,6 @@
 """PREREG B3b v1.0 with amendment 1 (stocks-workspace docs/review_2026-11-03/PREREG_flags_b3b_v1.0.md and ..._amendment1.md): the
-material_events read of every selected name of the four archival cohorts, one run per packet, into its own root cache/m3m_flags (the
-live cache/m3m gains no archival run).
+material_events read of every selected name of the four archival cohorts, one run per packet, into its own root cache/m3m_flags_high
+(amendment 3: at high thinking, runner.THINK; the live cache/m3m gains no archival run).
 
     python tools/archival_flags/flags_run.py run [--limit N]     the reads, cohort after cohort; resumable
     python tools/archival_flags/flags_run.py status              slots by state, counted from the runs themselves
@@ -12,7 +12,7 @@ cohort valuation run is opened. A name is a SLOT (ticker, T). Its state comes fr
   malformed, context_overflow  no_read: the model answered and the answer cannot be used. Never read again (same seeds, same answer)
   timeout, infra_error         not a read (the server or the connection): the pass STOPS, exit 7, and the slot is read again next pass
 A crashed run (no finished manifest) is read again. The pass also stops when the tree of qwen_c/ at HEAD changes under it (exit 6), when
-cache/flags_stop.flag exists (exit 5), or when another pass holds cache/m3m_flags/run.lock (exit 4). Before each slot it waits while the
+cache/flags_stop.flag exists (exit 5), or when another pass holds the root's run.lock (exit 4). Before each slot it waits while the
 holdings monitor could have the GPU (05:40 to 10:30 local, or its executor lock is held by a live process), while a live formation waits
 (formation_run.formation_waiting), and through a runner refusal such as gpu_busy (up to an hour). Paper research only.
 """
@@ -36,7 +36,8 @@ from qwen_c import runner  # noqa: E402
 COHORTS = ("2025-10-01", "2025-11-20", "2026-05-20", "2026-08-20")
 TASK = "material_events"
 SEED = 1000
-OUT = ROOT / "cache" / "m3m_flags"
+OUT = ROOT / "cache" / "m3m_flags_high"      # amendment 3 (2026-11-19): the pass is read at high thinking into a fresh root; cache/m3m_flags holds the
+#                                             240 reads made at medium before the level was fixed: void, kept, never scored
 PACKETS = ROOT / "cache" / "m3m" / "packets"
 STOP = ROOT / "cache" / "flags_stop.flag"
 LOCK = OUT / "run.lock"

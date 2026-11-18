@@ -338,7 +338,7 @@ def final_runs():
 
 
 def load_rows(with_names):
-    """(rows, open slots) from the pool files, the packets and the final runs of cache/m3m_flags."""
+    """(rows, open slots) from the pool files, the packets and the final runs of flags_run.OUT."""
     type_to_class = {v: k for k, v in json.loads(E.PREREG_M3O.read_bytes())["rules"]["Q1"]["event_types"].items()}
     compiled, final, rows, open_slots = baseline_b.rules(), final_runs(), [], []
     for T, ticker, path in FRUN.slots():
