@@ -20,7 +20,8 @@ NY = ZoneInfo("America/New_York")
 FIRST_T = date(2026, 9, 30)  # first month-end with the dual-door engine live (first run 2026-09-22)
 NYSE_HOLIDAYS = {date(2026, 1, 1), date(2026, 1, 19), date(2026, 2, 16), date(2026, 4, 3), date(2026, 5, 25),
                  date(2026, 6, 19), date(2026, 7, 3), date(2026, 9, 7), date(2026, 11, 26), date(2026, 12, 25),
-                 date(2027, 1, 1)}
+                 date(2027, 1, 1), date(2027, 1, 18), date(2027, 2, 15), date(2027, 3, 26), date(2027, 5, 31),
+                 date(2027, 6, 18), date(2027, 7, 5), date(2027, 9, 6), date(2027, 11, 25), date(2027, 12, 24)}      # 2027 added 2026-11-18; extend before 2028
 OPERATOR_EXCLUDED = book_paths.operator_excluded()
 COSTS_BP = (0, 20, 60)
 
