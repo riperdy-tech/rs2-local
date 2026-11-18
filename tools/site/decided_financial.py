@@ -315,7 +315,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         return D._write(run_dir, result)
     n, obj, verified, vals, base_v = out
     inp, rng = obj["inputs"], obj["ranges"]
-    flags = flags_of(obj, rec, verified, vals)
+    flags = flags_of(obj, rec, verified, vals) + D.surfaced_stamps(b)          # WO_UV2
     dec = {"route": ROUTE, "situation": obj["situation"], "inputs": inp, "ranges": rng, "risks": obj["biggest_risks"], "confidence": obj["confidence"],
            "reasons": {k: {"why": obj["reasons"][k]["why"], "quotes": verified[k][0], "quotes_given": verified[k][1]} for k in INPUT_KEYS},
            "scenarios": {s: {k: v for k, v in scenario_inputs(inp, rng, side).items() if k in ("book_growth", "long_run_roe", "terminal_growth")}

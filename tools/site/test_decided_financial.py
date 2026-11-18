@@ -42,7 +42,7 @@ def reply(**over):
 
 
 def arrange(tmp_path, monkeypatch, replies=(), facts=None, pk=PK):
-    f = facts or F.bank_facts()
+    f = facts or dict(F.bank_facts(), eps_diluted={"values": [{"end": F.ENDS[-1], "value": 1.28, "tag": "T", "form": "10-K"}]})      # WO_UV2: a filed EPS proves the count, so no unproven-count stamp rides in the flags
     b = dict(inputs.base_financial(f), stub_days=0, g_anchor=0.04)
     bar = forecast_fin.record_bar(b["record"]["roe"])
     packet = tmp_path / "packet.json"
@@ -305,6 +305,11 @@ def test_flags_are_stamps_not_clamps(tmp_path, monkeypatch):
     assert any(x.startswith("growth_above_roe_in_the_long_run") for x in fl)
     assert "base_year_not_representative" in fl and "confidence_low" in fl and "quotes_verified: 5 of 6" in fl
     assert res["decided"]["inputs"]["roe"][0] == 0.30 and res["decided"]["reasons"]["roe"]["quotes"] == [{"id": "F1", "quote": QUOTE}]
+
+
+def test_a_share_count_with_no_filed_eps_to_prove_it_shows_in_the_flags(tmp_path, monkeypatch):
+    packet, *_ = arrange(tmp_path, monkeypatch, [reply()], facts=F.bank_facts())                  # WO_UV2: no filed EPS
+    assert run(tmp_path, packet)["decided"]["flags"] == ["quotes_verified: 5 of 5", "shares_unreconciled_no_eps"]
 
 
 def test_a_flag_free_reply_has_only_the_quote_count(tmp_path, monkeypatch):

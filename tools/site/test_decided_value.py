@@ -90,7 +90,7 @@ def stub(monkeypatch, replies):
 
 
 def arrange(tmp_path, monkeypatch, replies=(), facts=None, pk=PK):
-    f = facts or C.facts()
+    f = facts or dict(C.facts(), eps_diluted=C.series([1.0] * 5))              # WO_UV2: with a filed EPS the share count is proven, so no stamp of an unproven count rides in the flags
     b = dict(inputs.base(f, market_cap=180e6, bill_rate=0.04), stub_days=0, g_anchor=0.03, bill_source="test")
     bar = forecast.record_bar(b["record"]["op_margin"])
     packet = tmp_path / "packet.json"
@@ -338,6 +338,16 @@ def test_flags_are_stamps_not_clamps(tmp_path, monkeypatch):
 def test_a_flag_free_reply_has_only_the_quote_count(tmp_path, monkeypatch):
     packet, *_ = arrange(tmp_path, monkeypatch, [reply()])
     assert run(tmp_path, packet)["decided"]["flags"] == ["quotes_verified: 7 of 7"]
+
+
+def test_a_base_stamp_of_a_reading_made_without_a_filed_figure_reaches_the_flags(tmp_path, monkeypatch):
+    """WO_UV2: no filed EPS to prove the share count, and the readings of the stage-1 recovery, are stamps of the base that the run's flags repeat."""
+    packet, b, *_ = arrange(tmp_path, monkeypatch, [reply()], facts=C.facts())                  # no filed EPS
+    assert "shares_unreconciled_no_eps" in b["stamps"]
+    fl = run(tmp_path, packet)["decided"]["flags"]
+    assert fl == ["shares_unreconciled_no_eps", "quotes_verified: 7 of 7"]
+    assert D.surfaced_stamps({"stamps": ["a", "working_capital_unclassified_balance_sheet", "preferred_balance_not_filed_taken_as_0:2025-12-31", "x:y"]}) == [
+        "working_capital_unclassified_balance_sheet", "preferred_balance_not_filed_taken_as_0:2025-12-31"]
 
 
 def test_a_value_order_that_is_not_monotone_is_annotated(tmp_path, monkeypatch):

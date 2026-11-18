@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
 
-FACTS_VERSION = "m3q.facts.v12"   # v12 2026-11-19 WO_NC9c: re_gain_on_sales and re_impairment (auxiliary, the real-estate record block; no existing concept moves)   # v11 2026-11-18 WO_NC3: statutory_tax_rate, the rate the company files for the base year in its own rate reconciliation (auxiliary; inputs.tax_rate reads it only as the last rung)   # v10 2026-11-18 WO_NC2: labelled substitutes for equity, capex, D&A, current items and pretax income (ITEM_SUBSTITUTES), consulted only where the exact concept lacks a needed year, one tag for every year   # v9 2026-11-17 WO_NC1: labelled fact substitutes (revenue: the largest narrower revenue line; aux period-end share counts and interest paid), consulted only where the exact concept is absent   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v13"   # v13 2026-11-19 WO_UV2: cash interest paid also under us-gaap:InterestPaid; auxiliary senior-notes, line-of-credit, partnership-unit, redeemable-NCI, total assets and total liabilities concepts (read by inputs only where the exact figure cannot be read); the ProfitLoss basis also less the redeemable NCI income; pretax income derived from net income, NCI income and the tax provision where its tag is absent or stale and no discontinued operation is filed for the year (no existing series moves)   # v12 2026-11-19 WO_NC9c: re_gain_on_sales and re_impairment (auxiliary, the real-estate record block; no existing concept moves)   # v11 2026-11-18 WO_NC3: statutory_tax_rate, the rate the company files for the base year in its own rate reconciliation (auxiliary; inputs.tax_rate reads it only as the last rung)   # v10 2026-11-18 WO_NC2: labelled substitutes for equity, capex, D&A, current items and pretax income (ITEM_SUBSTITUTES), consulted only where the exact concept lacks a needed year, one tag for every year   # v9 2026-11-17 WO_NC1: labelled fact substitutes (revenue: the largest narrower revenue line; aux period-end share counts and interest paid), consulted only where the exact concept is absent   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -123,7 +123,8 @@ CONCEPTS = {
     "shares_period_end": ("instant", [("us-gaap", "CommonStockSharesOutstanding", "shares"), ("ifrs-full", "NumberOfSharesOutstanding", "shares")]),
     "shares_cover": ("instant", [("dei", "EntityCommonStockSharesOutstanding", "shares")]),
     "interest_paid": ("flow", [("us-gaap", "InterestPaidNet", "USD"), ("ifrs-full", "InterestPaidClassifiedAsOperatingActivities", "USD"),
-                               ("ifrs-full", "InterestPaidClassifiedAsFinancingActivities", "USD")]),
+                               ("ifrs-full", "InterestPaidClassifiedAsFinancingActivities", "USD"),
+                               ("us-gaap", "InterestPaid", "USD")]),       # WO_UV2: the gross cash interest, last, so that no company that has a listed tag changes
     # WO_NC3: the statutory rate the company states in its own rate reconciliation (a fraction); read by inputs.tax_rate only, as the last rung
     "statutory_tax_rate": ("flow", [("us-gaap", "EffectiveIncomeTaxRateReconciliationAtFederalStatutoryIncomeTaxRate", "pure"),
                                     ("ifrs-full", "ApplicableTaxRate", "pure")]),
@@ -134,6 +135,16 @@ CONCEPTS = {
                                   ("us-gaap", "GainLossOnDispositionOfAssets1", "USD"), ("us-gaap", "GainsLossesOnSalesOfOtherRealEstate", "USD")]),
     "re_impairment": ("flow", [("us-gaap", "ImpairmentOfRealEstate", "USD"), ("us-gaap", "AssetImpairmentCharges", "USD"),
                                ("us-gaap", "ImpairmentOfLongLivedAssetsHeldForUse", "USD")]),
+    # WO_UV2: read by inputs only where the exact figure cannot be read (never part of an exact series)
+    "debt_senior_total": ("instant", [("us-gaap", "SeniorNotes", "USD")]),
+    "debt_senior_noncurrent": ("instant", [("us-gaap", "SeniorLongTermNotes", "USD")]),
+    "debt_senior_current": ("instant", [("us-gaap", "SeniorNotesCurrent", "USD")]),
+    "line_of_credit_noncurrent": ("instant", [("us-gaap", "LongTermLineOfCredit", "USD")]),
+    "lp_units_diluted": ("flow", [("us-gaap", "WeightedAverageLimitedPartnershipUnitsOutstandingDiluted", "shares")]),
+    "eps_lp_diluted": ("flow", [("us-gaap", "NetIncomeLossNetOfTaxPerOutstandingLimitedPartnershipUnitDiluted", "USD/shares")]),
+    "nci_redeemable_income": ("flow", [("us-gaap", "NetIncomeLossAttributableToRedeemableNoncontrollingInterest", "USD")]),
+    "assets_total": ("instant", [("us-gaap", "Assets", "USD"), ("ifrs-full", "Assets", "USD")]),
+    "liabilities_total": ("instant", [("us-gaap", "Liabilities", "USD"), ("ifrs-full", "Liabilities", "USD")]),
 }
 # WO_NC1: the narrower revenue lines, consulted only when no total-revenue tag resolves for any year
 REVENUE_SUBSTITUTES = [("ifrs-full", "RevenueFromRenderingOfServices", "USD"), ("ifrs-full", "RevenueFromRenderingOfTransportServices", "USD"),
@@ -162,13 +173,17 @@ SUBSTITUTE_WINDOW, SUBSTITUTE_MIN_POOL = 5, 3     # inputs.POOL_YEARS and MIN_PO
 AUX_CONCEPTS = {"income_continuing", "income_discontinued", "profit_loss_consolidated", "basic_shares_ifrs", "dilutive_effect_ifrs",
                 "equity_incl_nci", "nci_equity", "cost_excl_da", "lease_interest_ifrs16", "lease_liabilities_ifrs16", "lease_liabilities_current_ifrs16",
                 "financing_interest",
-                "shares_period_end", "shares_cover", "interest_paid", "statutory_tax_rate", "re_gain_on_sales", "re_impairment"}
+                "shares_period_end", "shares_cover", "interest_paid", "statutory_tax_rate", "re_gain_on_sales", "re_impairment",
+                "debt_senior_total", "debt_senior_noncurrent", "debt_senior_current", "line_of_credit_noncurrent", "lp_units_diluted", "eps_lp_diluted",
+                "nci_redeemable_income", "assets_total", "liabilities_total"}
 # F6: the cost-of-sales D&A line is D&A only where the same year's cost of sales is filed EXCLUDING D&A (the face statement then shows
 # D&A as its own line, which this tag carries); without that companion the year's value is dropped. Stamped da_from_cost_of_sales_line
 DA_COST_LINE = "CostOfGoodsAndServicesSoldDepreciationAndAmortization"
 # F6: a USD fact under any tag naming an income tax, in an annual form effective by T, means the company reports income taxes
 TAX_FACT_RX = re.compile(r"IncomeTax|TaxExpense|CurrentTax|DeferredTax|TaxesPaid")
 PRETAX_FROM_NI = "pretax_from_net_income_no_tax_filed"
+PRETAX_DERIVED = "pretax_derived_from_net_income_nci_tax"      # WO_UV2: net income + NCI income + the filed provision; no discontinued operation filed for the year
+DISCONTINUED_RX = re.compile(r"Discontinued")
 EPS_TOL, EPS_ROUNDING = 0.01, 0.006        # the ProfitLoss reconciliation's 1%; diluted EPS is filed to the cent (inputs.EPS_ROUNDING)
 
 
@@ -284,6 +299,7 @@ def annual_facts(cf, subs, T, years=8, substitute_revenue=False, substitute_item
     nci = {v["end"]: v["value"] for v in out.get("nci_income", {}).get("values", [])}
     eps = {v["end"]: v["value"] for v in out.get("eps_diluted", {}).get("values", [])}
     sh = {v["end"]: v["value"] for v in out.get("diluted_shares", {}).get("values", [])}
+    red = {v["end"]: v for v in out.get("nci_redeemable_income", {}).get("values", [])}
     for v in out.get("net_income", {}).get("values", []):
         if v["tag"] != "ProfitLoss":
             continue
@@ -294,6 +310,14 @@ def annual_facts(cf, subs, T, years=8, substitute_revenue=False, substitute_item
         if v["end"] in nci:
             options.append((v["value"] - nci[v["end"]], "profitloss_less_nci"))
         fits = [o for o in options if implied and abs(o[0] / implied - 1) <= 0.01]
+        if not fits and v["end"] in red:
+            # WO_UV2: only where neither basis above reconciles: the filed redeemable NCI income is also taken out (alone, or with the plain NCI)
+            options = ([(v["value"] - nci[v["end"]] - red[v["end"]]["value"], "profitloss_less_nci_and_redeemable_nci")] if v["end"] in nci
+                       else [(v["value"] - red[v["end"]]["value"], "profitloss_less_redeemable_nci")])
+            fits = [o for o in options if implied and abs(o[0] / implied - 1) <= 0.01]
+            if fits:
+                _add_nci(out, v["end"], red[v["end"]], nci)
+                absent.pop("nci_income", None)
         if fits:
             v["value"], v["stamp"] = min(fits, key=lambda o: abs(o[0] / implied - 1))
         else:
@@ -308,6 +332,19 @@ def annual_facts(cf, subs, T, years=8, substitute_revenue=False, substitute_item
     out["_latest_annual_period"] = latest_annual_period(subs, T)
     out["_ytd"] = ytd(cf, eligible, known, T, (out.get("revenue") or {}).get("values", [])[-1:])
     return out
+
+
+def _add_nci(out, end, red, nci):
+    """WO_UV2: the redeemable NCI income of `end` joins the NCI income series (added to the plain NCI income where that is filed for the year),
+    stamped, so the earnings base takes out the same NCI that the ProfitLoss basis took out. `nci` is the loop's {end: value}, kept in step."""
+    d = out.setdefault("nci_income", {"tags": [], "values": []})
+    cur = next((x for x in d["values"] if x["end"] == end), None)
+    if cur is None:
+        d["values"] = sorted(d["values"] + [dict(red, stamp=_stamp(red.get("stamp"), "nci_income_includes_redeemable_nci"))], key=lambda x: x["end"])
+    else:
+        cur.update(value=cur["value"] + red["value"], tag=f"{cur['tag']}+{red['tag']}", stamp=_stamp(cur.get("stamp"), "nci_income_includes_redeemable_nci"))
+    nci[end] = next(x["value"] for x in d["values"] if x["end"] == end)
+    d["tags"] = sorted({x["tag"] for x in d["values"]})
 
 
 def taxonomy_of(concept, tag):
@@ -484,6 +521,18 @@ def _reports_income_tax(cf, eligible, known, T):
     return False
 
 
+def _reports_discontinued(cf, eligible, known, T, end):
+    """WO_UV2: whether any us-gaap or ifrs-full flow fact under a tag naming a discontinued operation (DISCONTINUED_RX), for the period ending
+    `end`, in an annual form effective by T, has a value other than 0."""
+    for tax in ("us-gaap", "ifrs-full"):
+        for tag, d in ((cf.get("facts") or {}).get(tax) or {}).items():
+            if DISCONTINUED_RX.search(tag) and any(
+                    f.get("form") in ANNUAL_FORMS and f.get("end") == end and "start" in f and isinstance(f.get("val"), (int, float)) and f["val"] != 0
+                    and _eligible(f, eligible, known, T)[0] for rows in (d.get("units") or {}).values() for f in rows):
+                return True
+    return False
+
+
 def _derive(out, absent, cf, eligible, known, T, years):
     """F6: series derived from filed facts by one rule each, for every company, each value stamped and tagged with its sources (so a
     switch from a filed tag to a derived value stays visible). Only facts already eligible at T enter (they come from `out`)."""
@@ -564,6 +613,26 @@ def _derive(out, absent, cf, eligible, known, T, years):
         else:
             del out["da"]
             absent["da"] = f"only {DA_COST_LINE}, without cost of sales filed excluding D&A"
+    # (5) WO_UV2: pretax income where its tag is absent, or ends before this fiscal year: net income + NCI income + the filed tax provision of
+    # the year, only when no discontinued operation is filed for it. Net income plus NCI income is the consolidated profit: where NCI income is
+    # not filed for the year, the filed consolidated ProfitLoss is that sum; with neither, NCI counts as none only where no NCI income and no NCI
+    # balance is filed in any year (as step 3). A year without a filed provision, or whose ProfitLoss basis is unverified, is not derived
+    last_pt = max(by["pretax_income"], default=None)
+    for e, v in by["net_income"].items():
+        if (last_pt is not None and e <= last_pt) or e not in by["tax_provision"] or v.get("stamp") == "profitloss_basis_unverified":
+            continue
+        nci_v, plc = by["nci_income"].get(e), by["profit_loss_consolidated"].get(e)
+        if _reports_discontinued(cf, eligible, known, T, e):
+            continue
+        if nci_v is not None:
+            profit, tag = v["value"] + nci_v["value"], f"{v['tag']}+{nci_v['tag']}"
+        elif plc is not None:
+            profit, tag = plc["value"], plc["tag"]
+        elif not by["nci_income"] and not by["nci_equity"]:
+            profit, tag = v["value"], f"{v['tag']}+no_nci_filed"
+        else:
+            continue
+        put("pretax_income", e, profit + by["tax_provision"][e]["value"], f"{tag}+{by['tax_provision'][e]['tag']}", PRETAX_DERIVED, v)
 
 
 def fetch(cik, T, *, online, root=None):

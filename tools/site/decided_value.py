@@ -50,6 +50,10 @@ TRIPLE = ("yes", "no", "unclear")
 CONFIDENCE = ("low", "medium", "high")
 SIGNS = ("charge", "gain")                # WO_NC9a: a one-off of the base year
 SITUATION_FLAGS = ("tax_rate_representative", "debt_level_representative")      # WO_NC9a: flags only, no number moves
+# WO_UV2: stamps of the base that the run's flags also carry, so a reader of the site sees them: no EPS to prove the share count, and each reading made where a figure was not filed
+SURFACED_STAMPS = ("shares_unreconciled_no_eps", "working_capital_unclassified_balance_sheet", "pretax_derived_from_net_income_nci_tax", "nci_income_includes_redeemable_nci",
+                   "debt_from_senior_notes_tags_parts_reconciled", "oi_interest_from_cash_interest_paid", "shares_from_partnership_units_reconciled_with_per_unit_eps")
+SURFACED_PREFIXES = ("preferred_dividends_taken_as_0_eps_times_shares_reconciles:", "preferred_balance_not_filed_taken_as_0:")
 FADE_YEARS = (1, 25)                      # the range the prompt states for fade_years (the reference test's own)
 
 SYSTEM = ("You are an equity analyst setting the inputs of a discounted cash flow valuation for one company, from its filings. Decide each "
@@ -399,6 +403,11 @@ def old_defaults(b, bar, r):
         return None, f"unavailable: {type(e).__name__}: {e}"
 
 
+def surfaced_stamps(b):
+    """WO_UV2: the stamps of the base `b` that the flags of a run repeat (SURFACED_STAMPS, SURFACED_PREFIXES), in the base's order."""
+    return [s for s in b["stamps"] if s in SURFACED_STAMPS or s.startswith(SURFACED_PREFIXES)]
+
+
 def flags_of(obj, b, rec, verified, vals):
     """The stamps of one run: flags and annotations, never a clamp or a gate."""
     inp, out = obj["inputs"], []
@@ -414,6 +423,7 @@ def flags_of(obj, b, rec, verified, vals):
     out += [f"{k}_no: {obj['situation'][k]['why'].strip()}" for k in SITUATION_FLAGS if obj["situation"][k]["answer"] == "no"]       # WO_NC9a: flags only
     if obj["confidence"] == "low":
         out.append("confidence_low")
+    out += surfaced_stamps(b)
     n, m = sum(len(k) for k, _ in verified.values()), sum(t for _, t in verified.values())
     out.append(f"quotes_verified: {n} of {m}")
     if not vals["bear"] <= vals["base"] <= vals["bull"]:
