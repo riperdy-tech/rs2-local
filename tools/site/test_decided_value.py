@@ -179,7 +179,7 @@ def test_a_valid_reply_is_valued_at_base_bear_and_bull_and_nothing_the_read_gave
     assert d["value_at_old_defaults"] == D.old_defaults(b, bar, C.R)[0] and d["old_defaults_inputs"]
     assert d["reasons"]["fade_years"] == {"why": "Because of fade_years.", "quotes": [{"id": "F1", "quote": QUOTE}], "quotes_given": 1}
     assert "quotes_verified: 7 of 7" in d["flags"] and d["prior_read_claims"] == {"kept": 1, "dropped_unsupported": 1} and "tax_range" not in res
-    assert set(d["diagnostics"]) == {"equity_value", "tv_share", "seam_ratio", "da_rule", "wedge_rate_5"}
+    assert set(d["diagnostics"]) == {"equity_value", "tv_share", "seam_ratio", "da_rule", "wedge_rate_5", "depreciation_kept_rate"}
     (path,) = (tmp_path / "runs").glob("TEST_20261118T000000Z_*_decided_1000/result.json")
     assert json.loads(path.read_text(encoding="utf-8"))["values"] == v and (path.parent / "raw" / "attempt_1.json").exists()
 

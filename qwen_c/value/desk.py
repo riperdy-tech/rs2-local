@@ -11,6 +11,13 @@ The equity frame, per year t:
   terminal      TV = X_{N+1} (1 - g_T / RONIC_T) / (r - g_T), N = 5 + max(F, H); plus the PV of the amortization shield left after N
   financial     Flow_t = E_t (1 - g_{t+1} / ROE_t) from year 1 (O3)
 RONIC_t moves on 1/RONIC from RONIC_0 to RONIC_T; returns on capital become equity returns by O5. There is no sustaining charge s (O8).
+
+Real estate only (inp["real_estate"], the decided method's real-estate family; absent or False: every number as before). There capex is the
+upkeep spending alone, and book depreciation of property above it is not a loss of capital: debt is not repaid out of it and the assets do
+not run down. So K_t = max(0, D&A_org,t - capex_t) goes to equity whole in years 1..5+H (the frame above gives it 1 - delta of it), and
+from the next year on it stays, at year 5+H's share of revenue k = K / R, in every flow and in the terminal (TV += k R_{N+1} / (r - g_T));
+the fading gap w is then measured without it, so it phases in the charge for growth only. Measured 2026-11-19 on four stored names
+(stocks-workspace STATE.md, "REIT gap reviewed").
 """
 import math
 
@@ -165,19 +172,23 @@ def value_operating(inp):
     for t in range(1, e_end + 1):
         levels.append(d2_flow(x[t - 1], cx[t - 1], da[t - 1], w * (rev[t] - rev[t - 1]), float(inp["p_ratio"]) * rev[t],
                               float(inp["rou_ratio"]) * rev[t], amort[t - 1], delta, tau))
+    kept = [max(0.0, da[t] - cx[t]) if inp.get("real_estate") else 0.0 for t in range(e_end)]      # real estate: depreciation above upkeep
+    levels = [f + delta * k for f, k in zip(levels, kept)]                                         # d2_flow gave equity (1 - delta) of it
     tail = _tail(levels, x, rev, mg, amort, delta, kd, tau, r, gt, f_years, h, float(inp["ronic0"]), float(inp["ronic_T"]),
-                 float(inp["m_long"]))
+                 float(inp["m_long"]), kept[-1])
     pv_levels = sum(f / (1 + r) ** t for t, f in enumerate(levels[:5], 1))
     shield = shield_after(left, amort[-1] if amort else 0.0, tau, r, n)
     equity = pv_levels + tail["pv_flows"] + tail["tv_pv"] + shield
     factor = (1 + r) ** (float(inp["stub_days"]) / 365.0)          # ruling 7: valued at the fiscal-year end, rolled forward to T at r
     return dict(tail, route="operating", desk=DESK_VERSION, fade_convention=FADE_CONVENTION, da_rule=da_rule, pv_levels=pv_levels,
+                depreciation_kept=kept,
                 shield_after_n_pv=shield, equity_value=equity, rollforward_factor=factor, stub_days=inp["stub_days"], da_path=da,
                 amort_path=amort, value_per_share=(equity * factor + float(inp["excess_cash"])) / float(inp["shares"]))
 
 
-def _tail(levels, x, rev, margin, amort, delta, kd, tau, r, gt, f_years, h, ronic0, ronic_t, m_long):
-    """Years 6..N and the terminal (1dcb3b2 d2_value). pv_flows covers the flows of years 6..N only."""
+def _tail(levels, x, rev, margin, amort, delta, kd, tau, r, gt, f_years, h, ronic0, ronic_t, m_long, kept=0.0):
+    """Years 6..N and the terminal (1dcb3b2 d2_value). pv_flows covers the flows of years 6..N only. `kept` (real estate): the depreciation
+    above upkeep of the last levels year, already whole in that year's flow; 0.0 leaves every number as before."""
     e_end = 5 + h
     n = max(5 + f_years, e_end)
     fr = n - e_end
@@ -192,7 +203,8 @@ def _tail(levels, x, rev, margin, amort, delta, kd, tau, r, gt, f_years, h, roni
         return equity_ronic(ronic_at(ronic0, ronic_t, frac), delta, kd, tau)
 
     flows, xs = list(levels), list(x)
-    i5 = x[4] - (levels[4] - tau * amort[4])
+    keep = kept / rev[e_end]
+    i5 = x[4] - (levels[4] - tau * amort[4]) + (kept if e_end == 5 else 0.0)      # the gap is measured without the kept depreciation
     i5_star = g6_def / ron_eq(0.0) * x[4]
     w5 = (i5 - i5_star) / rev[5]
     wedge_on = h == 0
@@ -203,19 +215,19 @@ def _tail(levels, x, rev, margin, amort, delta, kd, tau, r, gt, f_years, h, roni
         rt *= 1.0 + g_at(t)
         xt = rt * (m_e + (m_long - m_e) * frac)
         ron = ron_eq(min(1.0, frac0 + (1.0 - frac0) * frac))
-        f = xt * (1.0 - g_at(t + 1) / ron) + tau * amort[t - 1]
+        f = xt * (1.0 - g_at(t + 1) / ron) + tau * amort[t - 1] + keep * rt
         if wedge_on:
             f -= w5 * max(0.0, 1.0 - (t - 5) / f_years) * rt
         flows.append(f)
         xs.append(xt)
     x_n1 = rt * (1.0 + gt) * m_long
     ron_t_eq = equity_ronic(ronic_t, delta, kd, tau)
-    tv = x_n1 * (1.0 - gt / ron_t_eq) / (r - gt)
+    tv = (x_n1 * (1.0 - gt / ron_t_eq) + keep * rt * (1.0 + gt)) / (r - gt)
     tv_pv = tv / (1 + r) ** n
     pv_flows = sum(f / (1 + r) ** (t + 1) for t, f in enumerate(flows) if t + 1 >= 6)
     seam = flows[5] / flows[4] if len(flows) > 5 and flows[4] else None
     return {"n_years": n, "flows_all": flows, "x_all": xs, "pv_flows": pv_flows, "tv": tv, "tv_pv": tv_pv, "i5": i5, "i5_star": i5_star,
-            "wedge_rate_5": w5, "wedge_applied": wedge_on, "levels_years": e_end, "seam_ratio": seam}
+            "wedge_rate_5": w5, "wedge_applied": wedge_on, "levels_years": e_end, "seam_ratio": seam, "depreciation_kept_rate": keep}
 
 
 def value_financial(inp):

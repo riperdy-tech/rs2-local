@@ -372,7 +372,7 @@ def value_inputs(b, r, inp):
          "amort_schedule": b["amort_schedule"], "amort_thereafter": b["amort_thereafter"], "delta": b["delta"], "kd": b["kd"], "tau": b["tau"],
          "r": float(r), "g_T": float(inp["terminal_growth"]), "F": int(inp["fade_years"]), "H": 0, "ronic0": b["ronic0"],
          "ronic_T": float(inp["return_on_new_investment_long_run"]), "m_long": m_long, "shares": b["shares"], "excess_cash": b["excess_cash"],
-         "stub_days": b["stub_days"], "ppe": b.get("ppe")}
+         "stub_days": b["stub_days"], "ppe": b.get("ppe"), "real_estate": bool(b.get("real_estate"))}
     v = desk.value_operating(d)
     checks._recompute(d, v)
     return v["value_per_share"], v
@@ -541,7 +541,8 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
            "flags": flags, "adjustments": adj, "value_at_old_defaults": old_value, "old_defaults_inputs": old_how,
            "prior_read_claims": {"kept": n_kept, "dropped_unsupported": n_dropped},
            "diagnostics": {"equity_value": base_v["equity_value"], "tv_share": base_v["tv_pv"] / base_v["equity_value"] if base_v["equity_value"] else None,
-                           "seam_ratio": base_v["seam_ratio"], "da_rule": base_v["da_rule"], "wedge_rate_5": base_v["wedge_rate_5"]}}
+                           "seam_ratio": base_v["seam_ratio"], "da_rule": base_v["da_rule"], "wedge_rate_5": base_v["wedge_rate_5"],
+                           "depreciation_kept_rate": base_v["depreciation_kept_rate"]}}
     if V:
         dec[V.KEY] = extra["record"]
     result.update(status="ok", values=vals, checks={"prob": dict(checks.PROB), "version": DECIDED_VERSION}, inputs=obj, checked_attempt=n, decided=dec)

@@ -68,7 +68,7 @@ def run(tmp_path, packet, seed=1000):
 def test_the_real_estate_task_text_is_pinned_and_is_the_generic_text_with_additions_only():
     """Changing what the model is told is a versioned decision (non-negotiable 7): re-pin this hash and bump RE.VERSION together."""
     assert hashlib.sha256(RE.TASK.encode()).hexdigest() == "8f1bd856bd223a75b6963cd6fac55c948b054787874583be2aff1e8d45f35816"
-    assert RE.VERSION.startswith("decided.real_estate.v1") and RE.FAMILY == "real_estate" and D.VARIANTS["real_estate"] is RE
+    assert RE.VERSION.startswith("decided.real_estate.v2") and RE.FAMILY == "real_estate" and D.VARIANTS["real_estate"] is RE
     head, sep, tail = D.TASK.partition("\nSchema:\n")
     assert RE.TASK.startswith(head) and RE.PARAGRAPH in RE.TASK and "recurring capital expenditure, tenant improvements and leasing costs, the hotel renewal and replacement reserve" in RE.TASK
     assert "NOT acquisitions or development" in RE.TASK and '"property_business": "owns_or_operates|lends|unclear"' in RE.TASK and '"reported_ffo": {' in RE.TASK
@@ -320,3 +320,44 @@ def test_the_menu_and_a_mortgage_reit_and_other_not_built_families_stay_refused(
         seeds, reports, prepared, calls = switch(tmp_path / str(i), monkeypatch, method, fam)
         G.analyze("TEST", "list")
         assert calls == [] and seeds == [1000, 3000] and all(k["family"] == "family_not_built" and "real_estate" not in k for k in prepared)
+
+
+# ---- the desk keeps depreciation above upkeep for equity (real estate only; 2026-11-19, the REIT gap review) ----
+
+def _desk_inp(capex_ratio, **over):
+    rev = [1000.0 * 1.03 ** t for t in range(6)]
+    d = {"revenue": rev, "margin": [0.12] * 5, "capex": [capex_ratio * R for R in rev[1:]], "d_ratio": 0.10, "w": 0.0, "p_ratio": 0.0, "rou_ratio": 0.0,
+         "amort_schedule": [0.0] * 5, "amort_thereafter": 0.0, "delta": 0.4, "kd": 0.05, "tau": 0.05, "r": 0.09, "g_T": 0.03, "F": 10, "H": 0,
+         "ronic0": 0.09, "ronic_T": 0.08, "m_long": 0.12, "shares": 100.0, "excess_cash": 0.0, "stub_days": 0}
+    return dict(d, **over)
+
+
+def test_without_the_real_estate_key_and_with_upkeep_at_or_above_depreciation_the_desk_is_unchanged():
+    from qwen_c.value import checks, desk
+    plain = desk.value_operating(_desk_inp(0.04))
+    assert plain["depreciation_kept"] == [0.0] * 5 and plain["depreciation_kept_rate"] == 0.0
+    above = _desk_inp(0.10)                                           # capex = pooled D&A: nothing above upkeep
+    a, b = desk.value_operating(above), desk.value_operating(dict(above, real_estate=True))
+    assert a["value_per_share"] == b["value_per_share"] and a["flows_all"] == b["flows_all"]
+    checks._recompute(dict(above, real_estate=True), b)
+
+
+def test_real_estate_keeps_the_depreciation_above_upkeep_whole_every_year_and_in_the_terminal():
+    from qwen_c.value import checks, desk
+    inp = _desk_inp(0.04)
+    a, b = desk.value_operating(inp), desk.value_operating(dict(inp, real_estate=True))
+    kept = b["depreciation_kept"]
+    assert all(abs(k - 0.06 * R) < 1e-9 for k, R in zip(kept, inp["revenue"][1:]))
+    for t in range(5):                                                # years 1..5: the frame gave 1 - delta of it; the rest is added
+        assert abs(b["flows_all"][t] - a["flows_all"][t] - 0.4 * kept[t]) < 1e-9
+    assert abs(b["depreciation_kept_rate"] - 0.06) < 1e-12
+    n, rN = b["n_years"], inp["revenue"][5]
+    g5 = inp["revenue"][5] / inp["revenue"][4] - 1.0
+    for t in range(6, n + 1):
+        rN *= 1.0 + g5 + (0.03 - g5) * (t - 5) / (n - 5)
+    x_term = lambda v: v["tv"] * (0.09 - 0.03)                        # noqa: E731  the terminal year's flow
+    assert abs(x_term(b) - x_term(a) - 0.06 * rN * 1.03) < 1e-6
+    # the fading gap no longer carries the depreciation: at the last fade year the flow is the funded-growth flow plus the kept share
+    assert abs(b["flows_all"][n - 1] - (b["x_all"][n - 1] * (1 - 0.03 / desk.equity_ronic(0.08, 0.4, 0.05, 0.05)) + 0.06 * rN)) < 1e-6
+    assert b["value_per_share"] > a["value_per_share"]
+    checks._recompute(dict(inp, real_estate=True), b)
