@@ -389,6 +389,14 @@ def test_screener_refusals(world, ticker, code):
     assert e.value.code == code
 
 
+def test_a_name_without_a_profile_is_built_for_a_single_request_and_the_header_says_so(world):
+    full = packet._resolve_commit(world["repo"], world["commit"])
+    _, header, cik = packet._screener(world["repo"], full, "NOPROF", require_profile=False)
+    assert header["factor_profile"] is False and cik == "0000000789"
+    _, header, _ = packet._screener(world["repo"], full, "TEST", require_profile=False)
+    assert "factor_profile" not in header                       # a name with a profile: the header is what it was
+
+
 def test_a_screener_commit_dated_after_T_is_refused(world):
     record = [dict(world["record"][1], run_updated_at="2026-09-30T00:00:00Z")]     # the run-time check passes; the commit date does not
     with pytest.raises(packet.PacketRefused) as e:

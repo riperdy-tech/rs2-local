@@ -288,7 +288,7 @@ def analyze(t, source):
     commit, record = Q.verified_commit()
     T = Q.now_z()
     r = subprocess.run([PY, "-m", "qwen_c.packet", "--ticker", t, "--T", T, "--commit", commit, "--verified-record", record,
-                        "--screener-repo", str(Q.book_paths.screener_repo()), "--online"], cwd=ROOT, capture_output=True, text=True,
+                        "--screener-repo", str(Q.book_paths.screener_repo()), "--online", "--no-profile-ok"], cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
     pk = Q._json_tail(r.stdout)
     if r.returncode or not pk.get("packet"):
