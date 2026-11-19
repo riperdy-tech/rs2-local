@@ -847,6 +847,21 @@ def store_402(w, name, docs, extra_rows=(), extra_docs=None):
                      docs_extra={f"{base(A402)}/{A402}.txt": eightk_txt(A402, docs), **(extra_docs or {})})
 
 
+def test_an_eight_k_over_the_size_cap_is_left_out_and_annotated_and_the_name_is_still_built(world, monkeypatch):
+    store = store_402(world, "big402", [("8-K", "f402.htm", BODY_402)])
+    big, get = f"{base(A402)}/{A402}.txt", packet.sec_store.get
+
+    def capped(url, **kw):
+        if url == big:
+            raise packet.sec_store.TooLarge(200, f"{url} larger than {packet.sec_store.MAX_BYTES} bytes")
+        return get(url, **kw)
+    monkeypatch.setattr(packet.sec_store, "get", capped)
+    pk = build(world, store=store)
+    assert not other(pk, A402) and not [e for e in pk["evidence"] if e["kind"] == "release"]
+    assert {f"filing_too_large_not_read: release {A402}", f"filing_too_large_not_read: other_8k {A402}"} <= set(pk["annotations"])
+    assert big not in [r["url"] for r in pk["raw_inputs"]]
+
+
 def test_builder_v5_constants():
     assert "7.01" in packet.OTHER_8K_ITEMS and "2.02" not in packet.OTHER_8K_ITEMS
 

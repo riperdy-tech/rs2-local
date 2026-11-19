@@ -66,6 +66,8 @@ the verified record; a verified row without a readable GitHub `run_updated_at`, 
 a ticker missing from that commit's stocks.json or from its factor profiles; no CIK; a screener commit dated after T; a T older than the
 oldest row of the submissions' filings.recent (older filings are in filings.files, which v1 does not read).
 A document that cannot be had (NotInStore offline, FetchFailed online, StoreCorrupt) raises too.
+One exception (2026-11-19): an 8-K or 6-K whose full submission text is over the store's size cap (sec_store.TooLarge) is left out and
+annotated `filing_too_large_not_read: <slot> <accession>`; the name is still built. Annual and quarterly reports still raise.
 
 TWO REGIMES (SPEC_m3n_event_validation.md section 2; `regime` is a top-level field of every packet). `verified` (the default) is all of the
 above. `archival_sec_acceptance_v1` builds a packet for a historical T from SEC documents under the same acceptance rule and the screener
@@ -731,12 +733,25 @@ def _release_docs(docs):
     return [d for _, d in sorted(((n, d) for n, d in enumerate(docs) if d["type"].upper().startswith("EX-99") and "raw" in d), key=key)]
 
 
+def _submission(fetch, url, row, notes, slot):
+    """The full submission text of an 8-K or 6-K, or None where it is over the store's size cap: the filing is then left out of the packet and
+    annotated filing_too_large_not_read (one oversized exhibit file no longer refuses the whole name; the annual and quarterly reports are
+    read from their primary documents, not from here, and still refuse)."""
+    try:
+        return fetch(url)
+    except sec_store.TooLarge:
+        notes.append(f"filing_too_large_not_read: {slot} {row['accession']}")
+        return None
+
+
 def _release(cik, row, fetch, notes):
     """The release item: every EX-99.x exhibit (_release_docs) read as one document, to RELEASE_CAP by sec_primary.select_text. The title names
     the exhibits the kept text reaches: those with a selection unit whose first 40 characters are in it (every exhibit, when the
     text fits). A filing with no readable EX-99.x exhibit is annotated release_exhibit_not_found."""
     url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
-    raw = fetch(url)
+    raw = _submission(fetch, url, row, notes, "release")
+    if raw is None:
+        return []
     docs = _release_docs(_eight_k_docs(raw))
     blocks = [(d, blocks_of(d["raw"])) for d in docs]
     text = canonical(select_text([b for _, bs in blocks for b in bs], RELEASE_CAP))
@@ -752,7 +767,9 @@ def _six_k(cik, row, fetch, notes, kind, cap):
     document to `cap` by sec_primary.select_text. Nothing is chosen by content: the interim slot by the period-of-report gap, the
     event slots by date. A filing with no readable text is annotated six_k_text_not_found."""
     url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
-    raw = fetch(url)
+    raw = _submission(fetch, url, row, notes, kind)
+    if raw is None:
+        return []
     all_docs = _eight_k_docs(raw)
     docs = _release_docs(all_docs) or [d for d in all_docs if d["type"].upper() in SIX_K_FORMS]
     blocks = [(d, blocks_of(d["raw"])) for d in docs]
@@ -815,7 +832,9 @@ def _other_8k(cik, row, fetch, notes):
     longer cuts off the Item 2.04 after it); a body with no heading of such an item is read from its first listed Item heading, as in v5.
     The exhibits fill what the body leaves. No other exhibit is read: contracts (EX-1, EX-3, EX-4, EX-10) and everything else are never used."""
     url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
-    raw = fetch(url)
+    raw = _submission(fetch, url, row, notes, "other_8k")
+    if raw is None:
+        return []
     docs = _eight_k_docs(raw)
     its = _items_list(row["items"])
     parts = []                                                  # (label, canonical text)
