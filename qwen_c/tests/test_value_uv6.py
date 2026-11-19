@@ -39,3 +39,33 @@ def test_a_company_with_a_debt_tag_is_unchanged_by_finance_lease_facts():
     f = ti.facts()
     f["finance_lease_total"] = series([5, 5])
     assert base(f) == base(ti.facts())
+
+
+# ---- available-for-sale debt securities maturing within one year as the short-term investments -------------------------------------------
+
+def afs_facts(within=(4, 6), total=(9, 9), sti=None):
+    f = ti.facts()
+    f.pop("st_investments", None)
+    if sti is not None:
+        f["st_investments"] = series(list(sti))
+    if within is not None:
+        f["afs_debt_within_one_year"] = series(list(within))
+    if total is not None:
+        f["afs_debt_total"] = series(list(total))
+    return f
+
+
+def test_afs_debt_maturing_within_one_year_is_the_short_term_investment_where_no_tag_is_filed():
+    plain, b = base(afs_facts(within=None, total=None)), base(afs_facts())
+    assert "st_investments_not_filed_taken_as_0" in plain["stamps"] and "st_investments_not_filed_taken_as_0" not in b["stamps"]
+    assert "st_investments_from_afs_debt_maturing_within_one_year" in b["stamps"]
+    assert b["excess_cash"] == plain["excess_cash"] + 6
+
+
+def test_the_within_one_year_figure_is_capped_at_the_filed_total_and_a_total_alone_is_not_read():
+    assert base(afs_facts(within=(4, 12)))["excess_cash"] == base(afs_facts(within=None, total=None))["excess_cash"] + 9
+    assert base(afs_facts(within=None)) == base(afs_facts(within=None, total=None))
+
+
+def test_a_company_with_a_short_term_investment_tag_is_unchanged_by_the_afs_figures():
+    assert base(afs_facts(sti=(1, 2))) == base(afs_facts(within=None, total=None, sti=(1, 2)))

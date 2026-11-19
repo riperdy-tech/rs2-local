@@ -534,4 +534,4 @@ def test_share_candidates_reach_the_facts_only_where_the_base_year_has_no_dilute
 
 
 def test_the_versions_are_bumped():
-    assert facts.FACTS_VERSION == "m3q.facts.v16" and inputs.INPUTS_VERSION == "m3q.inputs.v20" and ix_figures.IX_FIGURES_VERSION.startswith("m3q.ix_figures.v2")
+    assert facts.FACTS_VERSION == "m3q.facts.v17" and inputs.INPUTS_VERSION == "m3q.inputs.v21" and ix_figures.IX_FIGURES_VERSION.startswith("m3q.ix_figures.v2")
