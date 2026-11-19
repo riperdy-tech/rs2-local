@@ -584,6 +584,78 @@ def ytd(cf, eligible, known, T, base):
     return out
 
 
+# WO_NC10 Part A: what happened to the balance sheet between the base fiscal year's end and the newest interim, from the cash-flow statement of the
+# latest 10-Q (its year-to-date period). Auxiliary: called by nothing in the menu path; no existing concept or series moves.
+CAPITAL_EVENT_CONCEPTS = {
+    "acquisitions_paid": [("us-gaap", "PaymentsToAcquireBusinessesNetOfCashAcquired"), ("us-gaap", "PaymentsToAcquireBusinessesGross"),
+                          ("ifrs-full", "CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities")],
+    "buybacks_paid": [("us-gaap", "PaymentsForRepurchaseOfCommonStock"), ("ifrs-full", "PaymentsToAcquireOrRedeemEntitysShares")],
+    "shares_issued_proceeds": [("us-gaap", "ProceedsFromIssuanceOfCommonStock"), ("ifrs-full", "ProceedsFromIssuingShares")],
+    "disposals_received": [("us-gaap", "ProceedsFromDivestitureOfBusinesses"), ("us-gaap", "ProceedsFromDivestitureOfBusinessesNetOfCashDivested"),
+                           ("ifrs-full", "CashFlowsFromLosingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities")],
+}
+CAPITAL_EVENT_GROSS_TAG = "PaymentsToAcquireBusinessesGross"
+CAPITAL_SHARES_COVER = ("dei", "EntityCommonStockSharesOutstanding")
+
+
+def capital_events(cf, T, fy0, subs=None):
+    """The year-to-date capital events of the latest 10-Q effective at T whose year to date starts the day after `fy0` (the filing rule of
+    ytd(): the latest year-to-date end of the revenue concept, then the latest filed date and accession). `subs` (the submissions) gives the
+    acceptance times that decide what was effective at T; without it the facts' own filed dates do (_eligible).
+    Returns {"fy0", "found": bool, "absent": None or why no such filing, the filing (accn, form, filed, start, end, quarter),
+    "events": {event: {"value", "tag", "accn", "start", "end", "form", "filed", "stamp"} or None}, "absent_events": {event: why},
+    "shares_outstanding": {"value", "tag", "accn", "end", ...} or None, "shares_absent": None or why}. A concept the filing does not hold is
+    absent with its reason, never a default: the caller decides that absent means no event, and stamps it."""
+    eligible = eligible_accessions(subs, T) if subs else {}
+    known = {r["accession"] for r in packet._filing_rows(subs)} if subs else set()
+    facts = cf.get("facts") or {}
+    y1_start = (date.fromisoformat(fy0) + timedelta(days=1)).isoformat()
+    out = {"fy0": fy0, "found": False, "absent": None, "year1_start": y1_start, "events": {}, "absent_events": {}, "shares_outstanding": None,
+           "shares_absent": None}
+
+    def rows(tax, tag, unit="USD"):
+        return [f for f in (((facts.get(tax) or {}).get(tag) or {}).get("units") or {}).get(unit) or []
+                if f.get("form") in YTD_FORMS and isinstance(f.get("val"), (int, float)) and not isinstance(f.get("val"), bool)
+                and _eligible(f, eligible, known, T)[0]]
+    current = [f for tax, tag, unit in CONCEPTS["revenue"][1] for f in rows(tax, tag, unit)
+               if f.get("start") == y1_start and f.get("end") and _quarter(f["start"], f["end"])]
+    if not current:
+        return dict(out, absent="no 10-Q of year 1 effective at T")
+    pick = max(current, key=lambda f: (f["end"], f.get("filed") or "", f["accn"]))
+    accn, end = pick["accn"], pick["end"]
+    out.update(found=True, accn=accn, form=pick.get("form"), filed=pick.get("filed"), start=y1_start, end=end, quarter=_quarter(y1_start, end))
+    for event, tags in CAPITAL_EVENT_CONCEPTS.items():
+        why = []
+        for tax, tag in tags:
+            got = [f for f in rows(tax, tag) if f["accn"] == accn and f.get("start") == y1_start and f.get("end") == end]
+            vals = {float(f["val"]) for f in got}
+            if not got:
+                continue
+            if len(vals) > 1:
+                why.append(f"{tag}: two different values {sorted(vals)} in {accn}")
+                continue
+            f, v = max(got, key=lambda f: (f.get("filed") or "", f["accn"])), next(iter(vals))
+            stamp = _stamp(_eligible(f, eligible, known, T)[1], "acquisitions_paid_gross_of_cash_acquired" if tag == CAPITAL_EVENT_GROSS_TAG else None,
+                           f"{event}_negative_as_filed" if v < 0 else None)
+            out["events"][event] = {"value": v, "tag": f"{tax}:{tag}", "accn": accn, "start": y1_start, "end": end, "form": f.get("form"), "filed": f.get("filed"),
+                                    "stamp": stamp}
+            break
+        else:
+            out["events"][event] = None
+            out["absent_events"][event] = "; ".join(why) or f"no year-to-date {tags[0][1]} (or its alternates) in {accn}"
+    tax, tag = CAPITAL_SHARES_COVER
+    cover = [f for f in rows(tax, tag, "shares") if f["accn"] == accn and not f.get("start")]
+    vals = {float(f["val"]) for f in cover}
+    if not cover:
+        out["shares_absent"] = f"no cover-page share count in {accn}"
+    elif len(vals) > 1:
+        out["shares_absent"] = f"the cover page of {accn} gives {len(vals)} different counts (classes of stock): {sorted(vals)}"
+    else:
+        f = max(cover, key=lambda f: (f.get("filed") or "", f["accn"]))
+        out["shares_outstanding"] = {"value": next(iter(vals)), "tag": f"{tax}:{tag}", "accn": accn, "end": f.get("end"), "form": f.get("form"), "filed": f.get("filed")}
+    return out
+
+
 def _stamp(*stamps):
     return ";".join(s for s in stamps if s) or None
 
