@@ -2,6 +2,7 @@
 
     python tools/site/gemini_ondemand.py [--arm gemini|opus] work [--max-names N] [--no-publish]   # one worker per arm, no GPU
     python tools/site/gemini_ondemand.py [--arm gemini|opus] build | publish | status | meter
+    python tools/site/gemini_ondemand.py check-filings      # NC10b: queue every name whose SEC list holds a filing newer than its report (run daily)
 
 A name is analysed exactly as qwen_ondemand analyses it (the same packet builder, reading run, family, valuation at seeds
 1000 and 3000, value of record and report), with one thing replaced in this process: the function that sends a request to
@@ -21,6 +22,12 @@ on its own account's meter. The opus arm leaves a small margin for the coordinat
 Requests come first: the site's Analyze button and Telegram /analyze write qwen_ondemand's queue (cache/site/queue.jsonl of
 the repository's main working tree); while the Qwen site worker is on hold these workers take them, oldest first, whatever
 the name's age (operator 2026-11-16: the analysis is the cloud models' job).
+
+Filings (WO_NC10 part B): every report records `based_on`, the newest periodic or interim filing in its packet and the packet's decision
+time. check_filings() reads SEC's submissions list of each name with a report (sec_store, online) and queues the name in
+filing_queue.jsonl (beside the operators' queue; qwen_ondemand's worker never reads it) when a 10-Q, 10-K, 20-F, 40-F, an interim 6-K
+(period of report ends packet.SIX_K_PERIODIC_DAYS or more before acceptance) or an 8-K with item 2.02 became effective after that decision
+time. next_name() order: operator requests, then these, then the list. The cloud arms build packets with a 60,000 character release cap.
 
 List: research_now then watchlist by rank, operator-excluded names left out, a name re-analysed when its newest Gemini
 analysis is older than REFRESH_DAYS (30: the backstop when nothing happened; operator 2026-11-16).
@@ -55,7 +62,7 @@ import qwen_ondemand as Q  # noqa: E402
 import qwen_site  # noqa: E402
 import why_losses  # noqa: E402
 import interest_from_filing  # noqa: E402
-from qwen_c import runner  # noqa: E402
+from qwen_c import packet as P, runner, sec_store  # noqa: E402
 from qwen_c.value import desk, run as vrun  # noqa: E402
 
 PY = sys.executable
@@ -83,6 +90,10 @@ AGY_CWD = SITE / "agy_cwd"
 CLAIM_STALE_HOURS = 3
 SCHEMA = "gemini_c_site_v1"
 REFRESH_DAYS = 30
+CLOUD_RELEASE_CAP = 60_000                       # NC10b: characters of an earnings release or interim 6-K the cloud arms read (Qwen's packets keep P.RELEASE_CAP)
+FILING_QUEUE = "filing_queue.jsonl"
+FILING_CHECK_STATE = SITE / "filing_check.json"
+FILING_CHECK_MIN_HOURS = 2                       # the check before a name runs at most this often (each online read of a submissions list is a new store receipt)
 RETRY_REFUSED_HOURS = 24
 FLOORS = ARMS[ARM]["floors"]
 SITE_FILES = ("public/data/gemini_c_overlay.json", "public/data/gemini_c_reports")
@@ -288,7 +299,7 @@ def analyze(t, source):
     commit, record = Q.verified_commit()
     T = Q.now_z()
     r = subprocess.run([PY, "-m", "qwen_c.packet", "--ticker", t, "--T", T, "--commit", commit, "--verified-record", record,
-                        "--screener-repo", str(Q.book_paths.screener_repo()), "--online", "--no-profile-ok"], cwd=ROOT, capture_output=True, text=True,
+                        "--screener-repo", str(Q.book_paths.screener_repo()), "--online", "--no-profile-ok", "--release-cap", str(CLOUD_RELEASE_CAP)], cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
     pk = Q._json_tail(r.stdout)
     if r.returncode or not pk.get("packet"):
@@ -349,6 +360,10 @@ def analyze(t, source):
         results["loss_record"] = {"status": "no_call", "reason": why_reason}
     rep = Q.report(t, source, T, q1, n, results, commit, **ov)
     rep["model"] = GEM_MODEL
+    rep["based_on"] = based_on(pkj)                                        # NC10b
+    rep["release_truncated"] = [a.split()[1] for a in pkj.get("annotations") or [] if a.startswith("release_truncated:")]
+    if source.startswith("new_filing:"):
+        rep["source"] = f"new filing ({source})"
     if why:
         rep["loss_record"] = why
     if ifl:
@@ -358,12 +373,36 @@ def analyze(t, source):
 
 
 def refusal(t, source, T, why):
-    _write_report({"ticker": t, "date": T, "source": "screener list refresh" if source == "list" else f"on request ({source})",
+    _write_report({"ticker": t, "date": T, "source": "screener list refresh" if source == "list" else f"new filing ({source})" if source.startswith("new_filing:") else f"on request ({source})",
+                   "based_on": None, "release_truncated": [],
                    "model": GEM_MODEL, "analysis": "not run", "claims": None, "claims_supported": None, "in_code_book": False,
                    "qwen_book": None, "flags": [], "valued": False, "no_value_reason": why, "family": None, "tasks": {},
                    "valuation": None, "authority": "diagnostic: paper only, not investment advice"})
     log(f"{t} refused: {why}")
     return "refused"
+
+
+def _dt(z):
+    return datetime.fromisoformat(z.replace("Z", "+00:00"))
+
+
+def based_on(pk):
+    """NC10b: the newest periodic or interim filing in a packet (a 10-Q, 10-K, 20-F or 40-F item, or the six_k_interim item) by acceptance, as
+    {form, accession, period, accepted, accepted_utc, decision_time}; the filing fields are None when the packet holds none."""
+    best = None
+    for e in pk.get("evidence") or []:
+        if e.get("form") in P.PERIODIC_FORMS or e.get("kind") == "six_k_interim":
+            try:
+                acc = P.accepted_at(e.get("accepted_raw"))
+            except (ValueError, TypeError):
+                continue
+            if best is None or (acc, e["source"]["accession"]) > (best[0], best[1]["source"]["accession"]):
+                best = (acc, e)
+    out = {"form": None, "accession": None, "period": None, "accepted": None, "accepted_utc": None, "decision_time": pk["decision_time_utc"]}
+    if best:
+        acc, e = best
+        out.update(form=e["form"], accession=e["source"]["accession"], period=e.get("period"), accepted=e["accepted_raw"], accepted_utc=P._z(acc))
+    return out
 
 
 def _write_report(rep):
@@ -624,11 +663,18 @@ def queue_file():
 
 
 def next_name():
-    """(ticker, source, from_queue) claimed for this arm, or None: a queued request first (oldest first), then the next due list
-    name: gemini from the top of the list, any other arm from the bottom."""
+    """(ticker, source, from_queue) claimed for this arm, or None: a queued request first (oldest first; from_queue True), then a name with
+    a new filing (from_queue "filing", source its reason; an entry whose name was analysed since it was queued is dropped), then the next
+    due list name: gemini from the top of the list, any other arm from the bottom."""
     for q in Q._jsonl(queue_file()):
         if claim(q["ticker"]):
             return q["ticker"], q.get("source") or "web", True
+    for q in Q._jsonl(filing_queue_file()):
+        p = ONDEMAND / f"{q['ticker']}.json"
+        if p.exists() and _dt(decision_time(json.loads(p.read_text(encoding="utf-8")))) > _dt(q["queued_at"]):
+            drop_filing(q["ticker"])
+        elif claim(q["ticker"]):
+            return q["ticker"], q["reason"], "filing"
     cutoff = (datetime.now(timezone.utc) - timedelta(days=REFRESH_DAYS)).isoformat()
     seen = last_analysed()
     names = Q.list_names()
@@ -636,6 +682,105 @@ def next_name():
         if seen.get(t, "") < cutoff and claim(t):
             return t, "list", False
     return None
+
+
+def filing_queue_file():
+    """The filings' queue: beside the operators' queue and shared by the arms, in a file the Qwen worker never reads."""
+    return queue_file().with_name(FILING_QUEUE)
+
+
+def drop_filing(t):
+    f = filing_queue_file()
+    keep = [q for q in Q._jsonl(f) if q["ticker"] != t]
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text("".join(json.dumps(q) + "\n" for q in keep), encoding="utf-8")
+    os.replace(tmp, f)
+
+
+def decision_time(rep):
+    """When the filings a report read stopped: its packet's decision time (`based_on`), else the report's own date (older reports, refusals)."""
+    return (rep.get("based_on") or {}).get("decision_time") or rep["date"]
+
+
+def triggering_filing(subs, since, now):
+    """(form, accession) of the newest filing on a submissions list (bytes) that became effective after `since` and by `now` and re-values
+    the name, or None: a 10-Q, 10-K, 20-F or 40-F; a 6-K that is an interim report (P._six_k_periodic); an 8-K with item 2.02. Effective
+    is the packet's own rule (P.effective_at): a filing accepted before `since` but effective after it was left out of that packet. One
+    not yet effective at `now` cannot be in a packet yet and is taken at the check after it is."""
+    best = None
+    for r in P._filing_rows(json.loads(subs)):
+        if r["accepted"] is None or not since < r["effective"] <= now:
+            continue
+        f = r["form"]
+        if f in P.PERIODIC_FORMS or (f == "6-K" and P._six_k_periodic(r)) or (f == "8-K" and P._has_item_202(r["items"])):
+            if best is None or (r["effective"], r["accession"]) > (best["effective"], best["accession"]):
+                best = r
+    return None if best is None else (best["form"], best["accession"])
+
+
+def enqueue_filing(t, form, accession):
+    """Queues t for re-valuation (one entry per name, none where an operator request already waits); True when added."""
+    f = filing_queue_file()
+    if any(q["ticker"] == t for q in Q._jsonl(f) + Q._jsonl(queue_file())):
+        return False
+    f.parent.mkdir(parents=True, exist_ok=True)
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"ticker": t, "source": "new_filing", "reason": f"new_filing:{form}:{accession}", "queued_at": Q.now_z()}) + "\n")
+    return True
+
+
+def _ciks(names):
+    """{ticker: 10-digit CIK} from the screener's cik_map.json at the commit the packets use."""
+    commit, _ = Q.verified_commit()
+    blob = subprocess.run(["git", "-C", str(Q.book_paths.screener_repo()), "show", f"{commit}:{P.CIK_MAP_PATH}"], capture_output=True, check=True).stdout
+    return {t: P._map_cik(blob, t) for t in names}
+
+
+def check_filings(get=None, now=None, names=None, ciks=None):
+    """Reads the SEC submissions list of every list name that has a report (valued or refused) and queues each name with a filing newer
+    than its report (triggering_filing). `get(url)` defaults to sec_store online. Returns {checked, stale, queued, errors}; a name whose
+    list cannot be read is an error, logged, never a reason to stop."""
+    get = get or (lambda url: sec_store.get(url, online=True))
+    now = now or datetime.now(timezone.utc)
+    names = Q.list_names() if names is None else names
+    reps = {}
+    for p in ONDEMAND.glob("*.json") if ONDEMAND.exists() else []:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        reps[d["ticker"]] = d
+    names = [t for t in names if t in reps]
+    ciks = _ciks(names) if ciks is None else ciks
+    out = {"checked": 0, "stale": 0, "queued": [], "errors": []}
+    for t in names:
+        try:
+            if not ciks.get(t):
+                raise ValueError("no CIK in cik_map.json")
+            hit = triggering_filing(get(f"https://data.sec.gov/submissions/CIK{ciks[t]}.json"), _dt(decision_time(reps[t])), now)
+            out["checked"] += 1
+        except Exception as e:  # noqa: BLE001
+            out["errors"].append(t)
+            log(f"check-filings {t}: {type(e).__name__}: {str(e)[:120]}")
+            continue
+        if hit:
+            out["stale"] += 1
+            if enqueue_filing(t, *hit):
+                out["queued"].append(t)
+                log(f"check-filings {t}: queued, new_filing:{hit[0]}:{hit[1]}")
+    FILING_CHECK_STATE.parent.mkdir(parents=True, exist_ok=True)
+    FILING_CHECK_STATE.write_text(json.dumps({"at": Q.now_z(), **{k: out[k] for k in ("checked", "stale", "queued", "errors")}}), encoding="utf-8")
+    log(f"check-filings: {out['checked']} checked, {out['stale']} with a newer filing, {len(out['queued'])} newly queued, {len(out['errors'])} errors")
+    return out
+
+
+def maybe_check_filings():
+    """The check before a name, at most every FILING_CHECK_MIN_HOURS; a failure is logged and the worker goes on."""
+    try:
+        if FILING_CHECK_STATE.exists():
+            at = _dt(json.loads(FILING_CHECK_STATE.read_text(encoding="utf-8"))["at"])
+            if datetime.now(timezone.utc) - at < timedelta(hours=FILING_CHECK_MIN_HOURS):
+                return
+        check_filings()
+    except Exception as e:  # noqa: BLE001
+        log(f"check-filings failed: {type(e).__name__}: {str(e)[:160]}")
 
 
 def take_lock():
@@ -662,6 +807,7 @@ def work(max_names, do_publish):
         done = 0
         while max_names is None or done < max_names:
             choose_arm(home)
+            maybe_check_filings()
             before = wait_for_quota()       # before the name is claimed: a claim held through a long quota wait is taken over by another arm, and the name was then read twice (2026-11-18)
             nxt = next_name()
             if nxt is None:
@@ -673,7 +819,9 @@ def work(max_names, do_publish):
                 st = analyze(t, source)
             except Exception as e:  # noqa: BLE001  one name's failure is logged and the worker moves on
                 st = refusal(t, source, Q.now_z(), f"pipeline error: {type(e).__name__}: {str(e)[:160]}")
-            if queued:
+            if queued == "filing":
+                drop_filing(t)
+            elif queued:
                 Q.QUEUE = queue_file()
                 Q.pop(t)
             (CLAIMS / f"{t}.json").unlink(missing_ok=True)
@@ -698,7 +846,7 @@ if __name__ == "__main__":
     wk = sub.add_parser("work")
     wk.add_argument("--max-names", type=int)
     wk.add_argument("--no-publish", action="store_true")
-    for c in ("build", "publish", "status", "meter"):
+    for c in ("build", "publish", "status", "meter", "check-filings"):
         sub.add_parser(c)
     a = ap.parse_args()
     set_arm(a.arm)
@@ -709,6 +857,10 @@ if __name__ == "__main__":
         build()
     elif a.cmd == "publish":
         publish()
+    elif a.cmd == "check-filings":
+        r = check_filings()
+        print(json.dumps(r, indent=1))
+        sys.exit(1 if r["errors"] else 0)
     elif a.cmd == "meter":
         print(json.dumps(meter(), indent=1))
     else:
