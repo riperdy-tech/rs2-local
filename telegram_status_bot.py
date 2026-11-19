@@ -105,7 +105,10 @@ def _qwen_request(ticker, source):
     import qwen_ondemand
     qwen_ondemand.request(ticker, source)
     pos = [q["ticker"] for q in qwen_ondemand._jsonl(qwen_ondemand.QUEUE)].index(ticker) + 1
-    return (f"{ticker}: queued for Qwen analysis (position {pos}, about 20 minutes per name once the GPU is free). "
+    if (qwen_ondemand.SITE / "GPU_HOLD").exists():          # Qwen's site worker is on hold: the cloud worker (Gemini, Sonnet when Gemini is out) takes requests
+        return (f"{ticker}: queued (position {pos}). Qwen's site worker is on hold, so the cloud worker takes it at its next "
+                f"15-minute check; a read takes about 15 to 25 minutes. The result appears on stockpeak.net/t/{ticker}.")
+    return (f"{ticker}: queued for Qwen analysis (position {pos}, about 75 minutes per name at high thinking once the GPU is free). "
             f"The result appears on stockpeak.net/t/{ticker}.")
 
 
