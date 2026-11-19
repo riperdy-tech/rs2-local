@@ -23,9 +23,17 @@ customers, a minimum the company states) and the non-operating one-offs of the b
 of interest_from_filing.py); and two situation flags (tax rate and debt level representative). The valuation then uses a COPY of the base:
 excess_cash less that cash, the interest earned on it put back into the earnings base, and the one-offs taken out of the held constant k0; bear
 and bull use the same copy; the result keeps the pinned base and `decided.adjustments`. Nothing under qwen_c/ changes.
+
+WO_NC10a (decided.v3): the balance sheet moves to the newest interim by CAPITAL EVENTS only (the flows stay on the base year): acquisitions paid, buybacks, share
+issues, special distributions (a disposal with the other sign) since the base year end, and the share count at the interim. Code reads them first from the latest
+10-Q's year-to-date XBRL (facts.capital_events); the reply's optional `since_base_year` gives the same from the newest interim in the packet (quotes and digits
+checked as above), is the source where code found none, and where the packet holds an interim and the read gives null it is a repair turn. Code wins where both
+give a figure (a disagreement over 2% is a flag). adjust_base applies them on the same copy after the cash-not-free step; `decided.adjustments.capital_events`
+records source, figures, before and after. No interim and no filed 10-Q: nothing changes from v2.
 """
 import json
 import math
+import re
 import sys
 import time
 from datetime import date
@@ -33,11 +41,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from qwen_c import contract, runner, tasks  # noqa: E402
+from qwen_c import contract, runner, sec_store, tasks  # noqa: E402
 from qwen_c.value import checks, coe, desk, facts, inputs, menu, run as vrun, task as vtask  # noqa: E402
 import interest_from_filing as IFF  # noqa: E402                    # WO_NC9a: the digit-in-quote rule and the scales
 
-DECIDED_VERSION = "decided.v2 2026-11-19 WO_NC9a"          # v2: cash not free, base-year one-offs, tax and debt flags (the method label stays decided.v1)
+DECIDED_VERSION = "decided.v3 2026-11-20 WO_NC10a"         # v3: the capital events since the base year (v2: cash not free, base-year one-offs, tax and debt flags; the method label stays decided.v1)
 METHOD = "decided.v1"
 FAMILIES = vrun.ROUTED                    # the financial route keeps the menu until it is tested the same way
 VARIANTS = {}                             # WO_NC9c: family -> the module that registered itself here (decided_real_estate): record text, task text, extra checks
@@ -49,6 +57,12 @@ RANGE_KEYS = ("long_run_op_margin", "rev_growth_y3", "terminal_growth")
 TRIPLE = ("yes", "no", "unclear")
 CONFIDENCE = ("low", "medium", "high")
 SIGNS = ("charge", "gain")                # WO_NC9a: a one-off of the base year
+EVENT_KEYS = ("acquisitions_paid", "buybacks_paid", "shares_issued_proceeds", "special_distributions", "disposals_received")     # WO_NC10a: capital events since the base year
+SINCE_KEYS = EVENT_KEYS + ("shares_outstanding",)
+EVENT_DIFF_TOL = 0.02                     # the read and the filed XBRL figure may differ by this much (of the XBRL figure) before the disagreement is flagged
+SHARES_REPLACE_TOL = 0.01                 # the interim share count replaces the base count only where it differs by more than this
+EVENTS_MATERIAL = 0.05                    # events summing to this share of the market cap are flagged
+INTERIM_FORMS = ("10-Q", "10-Q/A")        # evidence of kind six_k_interim is an interim report too
 SITUATION_FLAGS = ("tax_rate_representative", "debt_level_representative")      # WO_NC9a: flags only, no number moves
 # WO_UV2: stamps of the base that the run's flags also carry, so a reader of the site sees them: no EPS to prove the share count, and each reading made where a figure was not filed
 SURFACED_STAMPS = ("shares_unreconciled_no_eps", "working_capital_unclassified_balance_sheet", "pretax_derived_from_net_income_nci_tax", "nci_income_includes_redeemable_nci",
@@ -71,7 +85,7 @@ TASK = """TASK. Decide the valuation inputs for this company and return ONE JSON
 Use fractions, not percents: 0.05 means 5%, 0.5059 means 50.59%. Operating margin is on the same GAAP basis as the operating margin in the FILED RECORD (operating income / revenue). Year 1 is the fiscal year after the base year in the FILED RECORD; years 1 to 5 are five consecutive fiscal years.
 What each input means: rev_growth = revenue growth of years 1..5 (list of 5); op_margin = operating margin of years 1..5 (list of 5); long_run_op_margin = the operating margin the company fades to over fade_years after year 5 and keeps for ever; terminal_growth = revenue growth for ever after that fade (growth fades linearly from year 5's to this); fade_years = the number of years (a whole number, 1 to 25) of that fade; return_on_new_investment_long_run = the after-tax return on tangible capital earned on new investment in the long run (same basis as the return on tangible capital in the FILED RECORD, which also prints the return at which growth adds no value); capex_to_revenue = capital expenditure / revenue, held in years 1..5.
 Ranges: for long_run_op_margin, rev_growth_y3 (the growth of year 3; code moves all five yearly growths together by the difference between your bound and your year-3 growth) and terminal_growth, give [low, high]: the values you judge have about a 1 in 4 chance of being undershot (low) and about a 1 in 4 chance of being overshot (high). Your own input lies between them.
-Two optional items for the earnings base; each is null where the filings do not say, and you do not estimate either. cash_not_free: cash and short-term investments the company cannot spend freely (restricted cash, cash held for customers, a minimum operating cash the company itself states); code counts all other cash as excess and adds it to the value at face. value = the amount as printed in the filing, digits only; scale = the unit the filing states for that line. base_year_one_offs: a list of NON-OPERATING items of the base year that will not recur, which sit between operating income and pretax income (for example a gain or loss on an investment, a debt extinguishment cost); code holds the base year's non-operating items for ever and removes these from that. sign = charge or gain; value = the pre-tax amount as printed. Do not list operating items here: your margins already set how they bear on operating income. Each item needs an exact quote that contains its number. Two further judgements, flags only (no number moves): tax_rate_representative = whether the tax rate in the FILED RECORD is one the company can keep paying; debt_level_representative = whether the total debt in the FILED RECORD is the level the company will keep relative to its size; each is yes, no or unclear with one sentence.
+Two optional items for the earnings base; each is null where the filings do not say, and you do not estimate either. cash_not_free: cash and short-term investments the company cannot spend freely (restricted cash, cash held for customers, a minimum operating cash the company itself states); code counts all other cash as excess and adds it to the value at face. value = the amount as printed in the filing, digits only; scale = the unit the filing states for that line. base_year_one_offs: a list of NON-OPERATING items of the base year that will not recur, which sit between operating income and pretax income (for example a gain or loss on an investment, a debt extinguishment cost); code holds the base year's non-operating items for ever and removes these from that. sign = charge or gain; value = the pre-tax amount as printed. Do not list operating items here: your margins already set how they bear on operating income. Each item needs an exact quote that contains its number. since_base_year: the capital events from the end of the base year to the newest interim report in the evidence (a 10-Q, or a 6-K interim report), read from that report; null only where the evidence holds no interim report dated after the base year. interim_date = that report's period end, YYYY-MM-DD. Each figure is {value, scale, quotes} (value = the amount as printed, digits only, a positive number in the currency of the FILED RECORD; null for a figure the filings do not state): acquisitions_paid = cash paid for businesses net of cash acquired, plus debt assumed; buybacks_paid = cash paid to repurchase shares; shares_issued_proceeds = cash received from issuing shares; special_distributions = distributions to shareholders beyond the regular dividend; disposals_received = cash received from selling businesses; shares_outstanding = the shares outstanding at the interim date or on its cover page. Acquired businesses belong in your forecast inputs, and code takes their price off the value from these figures, so you neither leave an acquisition out of your inputs nor lower them for its cost. Ordinary earnings, capital spending and regular dividends of the period are not events: year 1 already holds them. Two further judgements, flags only (no number moves): tax_rate_representative = whether the tax rate in the FILED RECORD is one the company can keep paying; debt_level_representative = whether the total debt in the FILED RECORD is the level the company will keep relative to its size; each is yes, no or unclear with one sentence.
 Every reason needs at least one exact quote copied character for character from the evidence item it cites (id = the id in brackets at the head of the item, e.g. F1 or P2; the FILED RECORD has id REC and any reason may cite it). Do not quote the PRIOR READ: it is not evidence. biggest_risks: the largest risks to your inputs; bear_value = the number that input would have if the risk happened.
 Schema:
 {"situation": {"cyclical": "yes|no|unclear", "margin_position": "<plain words: why the margin is where it is>", "base_year_representative": "yes|no|unclear", "why": "<2-4 sentences>",
@@ -80,6 +94,7 @@ Schema:
  "ranges": {"long_run_op_margin": [low, high], "rev_growth_y3": [low, high], "terminal_growth": [low, high]},
  "cash_not_free": null or {"value": <as printed>, "scale": "units|thousands|millions|billions", "what": "<restricted cash, cash held for customers, ...>", "quotes": [{"id": "<evidence id>", "quote": "<exact text>"}]},
  "base_year_one_offs": null or [{"value": <as printed>, "scale": "units|thousands|millions|billions", "sign": "charge|gain", "what": "<the item>", "quotes": [{"id": "<evidence id>", "quote": "<exact text>"}]}],
+ "since_base_year": null or {"interim_date": "YYYY-MM-DD", "acquisitions_paid": null or {"value": <as printed>, "scale": "units|thousands|millions|billions", "quotes": [{"id": "<evidence id>", "quote": "<exact text>"}]}, "buybacks_paid": <same>, "shares_issued_proceeds": <same>, "special_distributions": <same>, "disposals_received": <same>, "shares_outstanding": <same>},
  "reasons": {"<each key of inputs>": {"why": "<1-3 sentences tied to this company>", "quotes": [{"id": "<evidence id>", "quote": "<exact text>"}]}},
  "biggest_risks": [{"risk": "...", "input_hit": "<key of inputs>", "bear_value": x}],
  "confidence": "low|medium|high"}"""
@@ -200,6 +215,27 @@ def _adjustment_shape(obj):
     return p
 
 
+def _valid_date(x):
+    try:
+        return isinstance(x, str) and date.fromisoformat(x) is not None
+    except ValueError:
+        return False
+
+
+def _since_shape(obj):
+    """WO_NC10a: since_base_year is optional (absent or null); an object has an interim_date and, for each figure, null (or absent) or {value, scale, quotes}."""
+    sby = obj.get("since_base_year")
+    if sby is None:
+        return []
+    if not isinstance(sby, dict):
+        return ["since_base_year must be null or an object"]
+    p = [] if _valid_date(sby.get("interim_date")) else ["since_base_year.interim_date must be a date, YYYY-MM-DD"]
+    for k in SINCE_KEYS:
+        if sby.get(k) is not None:
+            p += _item_shape(dict(sby[k], what=k) if isinstance(sby[k], dict) else sby[k], f"since_base_year.{k}", False)
+    return p
+
+
 def shape_problems(obj):
     """What is wrong with the reply's form (names, types, counts), or []."""
     if not isinstance(obj, dict):
@@ -240,6 +276,7 @@ def shape_problems(obj):
             if not (isinstance(e, dict) and isinstance(e.get("why"), str) and e["why"].strip() and isinstance(e.get("quotes"), list)):
                 p.append(f"reasons.{k} must be {{why: text, quotes: a list}}")
     p += _adjustment_shape(obj)
+    p += _since_shape(obj)                                                                         # WO_NC10a
     risks = obj.get("biggest_risks")
     if not (isinstance(risks, list) and all(isinstance(x, dict) and isinstance(x.get("risk"), str) and x["risk"].strip() and x.get("input_hit") in INPUT_KEYS for x in risks)):
         p.append("biggest_risks must be a list of {risk: text, input_hit: a key of inputs, bear_value: a number}")
@@ -314,7 +351,7 @@ def _checked_item(it, label, texts):
                 "quotes": carrying + [k for k in kept if k not in carrying], "quotes_given": len(it["quotes"])}
 
 
-def adjust_base(b, cash, one_offs):
+def adjust_base(b, cash, one_offs, events=None):
     """(a copy of the base with the two adjustments, the record of them). cash = the checked cash_not_free record or None; one_offs = the checked
     items (each with "sign"). With N the cash that is not free and bill the base's bill rate, inputs.base built excess_cash = C, i_pre = C x bill,
     pt_ex = PT_0 - i_pre - NCI/(1 - tau), x0 = (pt_ex + A_0)(1 - tau), k0 = OI_0 - pt_ex. The earnings base before tax is higher by
@@ -322,7 +359,12 @@ def adjust_base(b, cash, one_offs):
         excess_cash' = C - N      (the desk adds it at face)       cash_interest_pretax' = i_pre - N x bill
         k0' = k0 - d              (k0_interest is not touched)     x0' = x0 + d (1 - tau)     m0' = x0' / R0
     which keeps the bridge exact: (OI_0 - k0' + A_0)(1 - tau) = x0'. ronic0 stays the filed base year's return (its tangible capital is not stored
-    and is not rebuilt here), stamped. Raises DeskRefusal e0_not_positive when x0' is not above 0."""
+    and is not rebuilt here), stamped. Raises DeskRefusal e0_not_positive when x0' is not above 0.
+    events (WO_NC10a, from resolve_events; None = none, and then nothing below is done and the result is as v2's): applied on the same copy after the
+    cash step, on the balance sheet only (excess cash and the share count; no flow of the base year moves):
+        excess_cash'' = excess_cash' - acquisitions - buybacks - special distributions + shares issued + disposals
+        shares' replaces the base share count only where |shares' / shares - 1| > SHARES_REPLACE_TOL.
+    The record of them is `capital_events` (before and after, each figure's source, the flags)."""
     n = cash["amount"] if cash is not None else 0.0
     back = n * b["bill_rate"] if cash is not None else 0.0                 # a cash amount above 0 exists only where the base has a bill rate (excess_cash > 0)
     charge = sum(o["amount"] for o in one_offs if o["sign"] == "charge")
@@ -330,16 +372,48 @@ def adjust_base(b, cash, one_offs):
     d = back + (charge - gain)
     a = dict(b, excess_cash=b["excess_cash"] - n, k0=b["k0"] - d, x0=b["x0"] + d * (1 - b["tau"]), cash_interest_pretax=b["cash_interest_pretax"] - back)
     a["m0"] = a["x0"] / b["R0"]
+    ce = apply_events(b, a, events) if events is not None else None
     if not a["x0"] > 0:
         raise desk.DeskRefusal("e0_not_positive", f"X_0 = {a['x0']:.6g} after the adjustments: no earnings base")
     stamps = (["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base"] if cash is not None else []) \
-        + (["base_year_one_offs_taken_out_of_k0"] if one_offs else []) + (["ronic0_not_readjusted"] if cash is not None or one_offs else [])
+        + (["base_year_one_offs_taken_out_of_k0"] if one_offs else []) + (["ronic0_not_readjusted"] if cash is not None or one_offs else [])         + (ce["stamps"] if ce else [])
     return a, {"cash_not_free": cash, "base_year_one_offs": list(one_offs), "excess_cash_before": b["excess_cash"], "excess_cash_after": a["excess_cash"],
                "k0_before": b["k0"], "k0_after": a["k0"], "k0_interest": b["k0_interest"], "x0_before": b["x0"], "x0_after": a["x0"],
-               "cash_interest_returned": back, "one_offs_charge": charge, "one_offs_gain": gain, "stamps": stamps}
+               "cash_interest_returned": back, "one_offs_charge": charge, "one_offs_gain": gain, "capital_events": ce, "stamps": stamps}
 
 
-def read_adjustments(obj, b, texts):
+def apply_events(b, a, ev):
+    """Applies the resolved capital events `ev` (resolve_events) to the adjusted copy `a` of the base `b`, in place; returns their record."""
+    amt = {k: ev["figures"][k]["amount"] for k in EVENT_KEYS}
+    net = -amt["acquisitions_paid"] - amt["buybacks_paid"] - amt["special_distributions"] + amt["shares_issued_proceeds"] + amt["disposals_received"]
+    before = a["excess_cash"]
+    a["excess_cash"] = before + net
+    stamps, flags = list(ev["stamps"]), list(ev["flags"])
+    sh = ev["shares_outstanding"]
+    sh_rec = {"before": b["shares"], "interim": sh["amount"] if sh else None, "source": sh["source"] if sh else None, "replaced": False, "after": b["shares"]}
+    if sh is not None and abs(sh["amount"] / b["shares"] - 1) > SHARES_REPLACE_TOL:
+        a["shares"] = sh["amount"]
+        sh_rec.update(replaced=True, after=sh["amount"])
+        stamps.append("shares_from_latest_interim")
+        price = ev.get("price")
+        if price is not None and price > 0:                    # what the events explain, at any price from half to double the price at T (the interim's range is not known to code)
+            expl = sorted((amt["shares_issued_proceeds"] - amt["buybacks_paid"]) / (price * m) for m in (0.5, 2.0))
+            slack, d = SHARES_REPLACE_TOL * b["shares"], sh["amount"] - b["shares"]
+            sh_rec.update(change=d, explained_range=expl, price_used=price)
+            if not expl[0] - slack <= d <= expl[1] + slack:
+                flags.append(f"share_count_change_unexplained: shares {b['shares']:,.0f} to {sh['amount']:,.0f} ({d:+,.0f}); issuing and buying back at "
+                             f"{price:.2f} (half to double) explains {expl[0]:+,.0f} to {expl[1]:+,.0f}")
+        else:
+            stamps.append("share_change_not_assessed_no_price")
+    gross = sum(abs(x) for x in amt.values())
+    mc = ev.get("market_cap")
+    if mc is not None and mc > 0 and gross >= EVENTS_MATERIAL * mc:
+        flags.append(f"capital_events_over_5pct_of_market_cap: events sum to {gross:,.0f}, {gross / mc:.1%} of the market cap {mc:,.0f}")
+    return {"interim_end": ev["interim_end"], "figures": ev["figures"], "net_effect_on_excess_cash": net, "gross_events": gross, "market_cap": mc,
+            "excess_cash_before": before, "excess_cash_after": a["excess_cash"], "shares": sh_rec, "flags": flags, "stamps": stamps}
+
+
+def read_adjustments(obj, b, texts, events=None):
     """(problems, the adjusted base, its record, the checked cash, the checked one-offs): the quotes and digits of both objects checked, the cash
     above 0 and at most the cash counted as excess, the adjusted earnings base above 0. A null or an empty list leaves the base as it is."""
     problems, cash, offs = [], None, []
@@ -356,10 +430,111 @@ def read_adjustments(obj, b, texts):
     if problems:
         return problems, b, None, None, []
     try:
-        a, adj = adjust_base(b, cash, offs)
+        a, adj = adjust_base(b, cash, offs, events)
     except desk.DeskRefusal as e:
         return [f"the adjustments leave no earnings base: {e}"], b, None, None, []
     return [], a, adj, cash, offs
+
+
+# ---------------------------------------------------------------- the capital events since the base year (WO_NC10a)
+def interim_in_packet(packet, fy0):
+    """The newest period end (YYYY-MM-DD) of an interim report in the packet dated after the base year `fy0`: a 10-Q item (statements or sections) or a
+    six_k_interim item. None where the packet holds none."""
+    ends = [e.get("period") for e in packet.get("evidence") or []
+            if (e.get("kind") == "six_k_interim" or e.get("form") in INTERIM_FORMS) and _valid_date(e.get("period")) and e["period"] > fy0]
+    return max(ends, default=None)
+
+
+def packet_price(packet):
+    """The price at T in the packet's screener row (`price: x`), or None. Used only to size what issuing and buying back shares explains."""
+    for e in packet.get("evidence") or []:
+        if e.get("kind") == "screener_row":
+            m = re.search(r"^price:\s*([0-9]+(?:\.[0-9]+)?)\s*$", e.get("text") or "", re.M)
+            if m:
+                return float(m.group(1))
+    return None
+
+
+def code_capital_events(cik, T, fy0, root=None):
+    """facts.capital_events on the stored companyfacts and submissions (the files prepare() already read); {"found": False, "absent": why} where they are not stored."""
+    try:
+        cf, subs, _ = facts.fetch(cik, T, online=False, root=root)
+    except sec_store.StoreError as e:
+        return {"fy0": fy0, "found": False, "absent": f"companyfacts_not_stored: {type(e).__name__}"}
+    return facts.capital_events(cf, T, fy0, subs)
+
+
+def read_events(obj, b, texts, interim):
+    """(problems, the checked reading or None). `interim` = interim_in_packet. A reply with no since_base_year (or null) where the packet holds an
+    interim report dated after the base year is a problem (one repair turn); each figure is checked as an item is (quote found word for word, its digits in a
+    found quote) and must be above 0; interim_date must fall after the base year."""
+    sby = obj.get("since_base_year")
+    if sby is None:
+        if interim:
+            return [f"since_base_year is null, but the evidence holds an interim report for the period ended {interim}, after the base year ended {b['fy0']}: "
+                    "give it from that report (null only for a single figure the filings do not state)"], None
+        return [], None
+    problems, figs = [], {}
+    if sby["interim_date"] <= b["fy0"]:
+        problems.append(f"since_base_year.interim_date {sby['interim_date']} is not after the base year's end {b['fy0']}")
+    for k in SINCE_KEYS:
+        if sby.get(k) is None:
+            continue
+        pr, rec = _checked_item(dict(sby[k], what=k), f"since_base_year.{k}", texts)
+        problems += pr
+        if rec is not None:
+            figs[k] = rec
+    if problems:
+        return problems, None
+    return [], {"interim_date": sby["interim_date"], "figures": {k: v for k, v in figs.items() if k != "shares_outstanding"}, "shares_outstanding": figs.get("shares_outstanding")}
+
+
+def _differs(code, read):
+    return abs(read - code) > EVENT_DIFF_TOL * abs(code)
+
+
+def resolve_events(code, read, market_cap=None, price=None):
+    """The capital events to apply, or None where there are none to apply (no 10-Q of year 1 in the filed data and no interim reading: the value is as v2's).
+    Per figure: the filed XBRL figure where code has it (a disagreement of the read over EVENT_DIFF_TOL of it is flagged, the number is code's); else the
+    read's checked figure; else 0 with the stamp `<event>_not_filed_taken_as_0`. The share count the same way. {"interim_end", "figures": {event: {"amount",
+    "source": xbrl|read|none, ...}}, "shares_outstanding": {"amount", "source", ...} or None, "stamps", "flags", "market_cap", "price"}."""
+    found = bool(code and code.get("found"))
+    if not found and read is None:
+        return None
+    figs, stamps, flags = {}, [], []
+    for k in EVENT_KEYS:
+        c = (code.get("events") or {}).get(k) if found else None
+        r = (read["figures"] if read else {}).get(k)
+        if c is not None:
+            fig = {"amount": c["value"], "source": "xbrl", "tag": c["tag"], "accn": c["accn"], "start": c["start"], "end": c["end"], "form": c["form"], "filed": c["filed"]}
+            if c.get("stamp"):
+                stamps.append(f"{k}: {c['stamp']}")
+            if r is not None:
+                fig["read_amount"] = r["amount"]
+                if _differs(c["value"], r["amount"]):
+                    flags.append(f"capital_event_read_differs_from_xbrl: {k} xbrl {c['value']:,.0f}, read {r['amount']:,.0f}")
+        elif r is not None:
+            fig = {"amount": r["amount"], "source": "read", "quotes": r["quotes"], "printed": r["printed"], "scale": r["scale"]}
+        else:
+            fig = {"amount": 0.0, "source": "none"}
+            stamps.append(f"{k}_not_filed_taken_as_0")
+        figs[k] = fig
+    cs, rs = (code.get("shares_outstanding") if found else None), (read or {}).get("shares_outstanding")
+    sh = None
+    if cs is not None:
+        sh = {"amount": cs["value"], "source": "xbrl", "tag": cs["tag"], "accn": cs["accn"], "end": cs["end"]}
+        if rs is not None:
+            sh["read_amount"] = rs["amount"]
+            if _differs(cs["value"], rs["amount"]):
+                flags.append(f"capital_event_read_differs_from_xbrl: shares_outstanding xbrl {cs['value']:,.0f}, read {rs['amount']:,.0f}")
+    elif rs is not None:
+        sh = {"amount": rs["amount"], "source": "read", "quotes": rs["quotes"], "printed": rs["printed"], "scale": rs["scale"]}
+    if sh is None:
+        stamps.append("shares_outstanding_at_interim_not_found_base_count_kept")
+    interim_end = code["end"] if found else read["interim_date"]
+    if found and read is not None and read["interim_date"] != code["end"]:
+        flags.append(f"capital_event_interim_date_differs: xbrl {code['end']}, read {read['interim_date']}")
+    return {"interim_end": interim_end, "figures": figs, "shares_outstanding": sh, "stamps": stamps, "flags": flags, "market_cap": market_cap, "price": price}
 
 
 # ---------------------------------------------------------------- the numeric route
@@ -432,13 +607,13 @@ def flags_of(obj, b, rec, verified, vals):
     return out
 
 
-def _tax_range(f, b, market_cap, inp, rng, r, vals, cash=None, offs=()):
+def _tax_range(f, b, market_cap, inp, rng, r, vals, cash=None, offs=(), events=None):
     """The same read valued at the second rate of a statutory tax fallback, in the shape of run._tax_range. The first values are never touched.
-    The same checked adjustments (cash, one-offs) are made on the second rate's base (WO_NC9a)."""
+    The same checked adjustments (cash, one-offs, capital events) are made on the second rate's base (WO_NC9a, WO_NC10a)."""
     tf = b["tax_fallback"]
     tr = {"rate": tf["rate"], "rate_alt": tf["rate_alt"], "values": vals, "values_alt": None, "status_alt": None}
     try:
-        alt, problems, _ = values(adjust_base(vrun.alt_tax_base(f, b, market_cap), cash, offs)[0], r, inp, rng)
+        alt, problems, _ = values(adjust_base(vrun.alt_tax_base(f, b, market_cap), cash, offs, events)[0], r, inp, rng)
     except desk.DeskRefusal as e:
         return dict(tr, status_alt=f"no_call: {e.code}: {e}")
     except AssertionError as e:
@@ -486,6 +661,8 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         return _write(run_dir, result)
     result.update(family=family, base=b, bar=bar, cost_of_equity=r, coe=prov, facts_provenance=f.get("_provenance"), stamps=b["stamps"] + prov.get("stamps", []))
     old_value, old_how = old_defaults(b, bar, r)                       # code only: before any call
+    interim, price = interim_in_packet(packet, b["fy0"]), packet_price(packet)          # WO_NC10a
+    code_ev = code_capital_events(cik, runner._parse_t(packet["decision_time_utc"]), b["fy0"], root)
     f_all = facts.build(cik, runner._parse_t(packet["decision_time_utc"]), online=False, root=root, years=ALL_YEARS, substitute_revenue=True, substitute_items=True)
     rec_text, rec = (V.record_text if V else record_text)(f, f_all, b, r, prov)
     texts = contract.evidence_texts(vtask.mask_price(packet))
@@ -502,7 +679,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         content = ((resp or {}).get("message") or {}).get("content")
         obj, perr = runner.parse_reply(content)
         att = {"attempt": n, "seconds": secs, **{k: (resp or {}).get(k) for k in ("prompt_eval_count", "eval_count", "done_reason")}}
-        verified = vals = base_v = adj = cash = offs = None
+        verified = vals = base_v = adj = cash = offs = ev = None
         if perr:
             problems = [f"not valid JSON: {perr}"]
         else:
@@ -517,8 +694,10 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
             if not problems:
                 verified = verify_quotes(obj, texts)
                 problems = numeric_problems(obj, r) + quote_problems(verified)
-                ap, b_adj, adj, cash, offs = read_adjustments(obj, b, texts)           # WO_NC9a
-                problems += ap
+                ep, read_ev = read_events(obj, b, texts, interim)                        # WO_NC10a
+                ev = None if ep else resolve_events(code_ev, read_ev, market_cap, price)
+                ap, b_adj, adj, cash, offs = read_adjustments(obj, b, texts, ev)       # WO_NC9a
+                problems += ep + ap
                 if V:
                     vp, extra = V.check(obj, texts, f, b)                 # WO_NC9c: the variant's own fields; its problems go to the repair turn with the others
                     problems += vp
@@ -535,16 +714,18 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         attempts.append(att)
         runner._write_json(run_dir / "raw" / f"attempt_{n}.json", {"messages": msgs, "response": content, "problems": problems})
         if not problems:
-            out = (n, obj, verified, vals, base_v, adj, cash, offs)
+            out = (n, obj, verified, vals, base_v, adj, cash, offs, ev)
             break
         retry = (content or "", problems)
     result["attempts"] = attempts
     if out is None:
         result.update(status="no_call", reason="decision_invalid", detail="; ".join(attempts[-1]["problems"]))
         return _write(run_dir, result)
-    n, obj, verified, vals, base_v, adj, cash, offs = out
+    n, obj, verified, vals, base_v, adj, cash, offs, ev = out
     inp, rng = obj["inputs"], obj["ranges"]
     flags = flags_of(obj, b, rec, verified, vals) + (extra["flags"] if V else [])
+    if adj["capital_events"]:                                                    # WO_NC10a: what was taken from the interim, and what is doubtful in it
+        flags += adj["capital_events"]["flags"] + adj["capital_events"]["stamps"]
     dec = {"situation": obj["situation"], "inputs": inp, "ranges": rng, "risks": obj["biggest_risks"], "confidence": obj["confidence"],
            "reasons": {k: {"why": obj["reasons"][k]["why"], "quotes": verified[k][0], "quotes_given": verified[k][1]} for k in INPUT_KEYS},
            "scenarios": {s: {k: v for k, v in scenario_inputs(inp, rng, side).items() if k in ("rev_growth", "long_run_op_margin", "terminal_growth")}
@@ -558,7 +739,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         dec[V.KEY] = extra["record"]
     result.update(status="ok", values=vals, checks={"prob": dict(checks.PROB), "version": DECIDED_VERSION}, inputs=obj, checked_attempt=n, decided=dec)
     if b.get("tax_fallback"):
-        result["tax_range"] = _tax_range(f, b, market_cap, inp, rng, r, vals, cash, offs)
+        result["tax_range"] = _tax_range(f, b, market_cap, inp, rng, r, vals, cash, offs, ev)
     return _write(run_dir, result)
 
 
