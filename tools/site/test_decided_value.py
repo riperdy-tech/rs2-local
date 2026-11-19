@@ -110,7 +110,7 @@ def run(tmp_path, packet, seed=1000, family="operating", **k):
 
 def test_the_prompt_text_is_pinned():
     """Changing what the model is told is a versioned decision (non-negotiable 7): re-pin this hash and bump DECIDED_VERSION together."""
-    assert hashlib.sha256((D.SYSTEM + "\n" + D.BASE_RATES + "\n" + D.TASK).encode()).hexdigest() == "9af2b3ead931c63c8a3446cd9cfa9feba7819bf712efa3f0f3cab5270fa1d807"
+    assert hashlib.sha256((D.SYSTEM + "\n" + D.BASE_RATES + "\n" + D.TASK).encode()).hexdigest() == "04802d490ef5677e7bc87f60802b28b42c292ca88cd7a08c0c5ceeae49f7bf3d"
     assert "1 in 4 chance of being undershot" in D.TASK and "1 in 4 chance of being overshot" in D.TASK and "Do not quote the PRIOR READ" in D.TASK
     assert D.METHOD == "decided.v1" and D.DECIDED_VERSION.startswith("decided.v3")        # WO_NC10a: the label stays, the prompt version moves
     assert "cash_not_free" in D.TASK and "base_year_one_offs" in D.TASK and "tax_rate_representative" in D.TASK and "debt_level_representative" in D.TASK
@@ -969,3 +969,14 @@ def test_code_capital_events_reads_the_stored_facts_and_a_store_miss_is_not_foun
 
 def test_packet_price_reads_the_screener_row():
     assert D.packet_price(PK) == 12.5 and D.packet_price({"evidence": []}) is None
+
+
+def test_interim_cash_flow_in_packet():
+    """A figure absent because the interim's cash-flow statement is absent is flagged, not taken silently as a zero."""
+    ev = lambda kind, period, text, form=None: {"kind": kind, "period": period, "text": text, "form": form}
+    with_cf = {"evidence": [ev("six_k_interim", "2026-09-30", "Cash flows from investing activities | (1,000)")]}
+    cut = {"evidence": [ev("six_k_interim", "2026-09-30", "Revenue rose; outlook updated")]}
+    old = {"evidence": [ev("six_k_interim", "2025-09-30", "Cash flows from investing activities")]}
+    assert D.interim_cash_flow_in_packet(with_cf, "2025-12-31")
+    assert not D.interim_cash_flow_in_packet(cut, "2025-12-31")
+    assert not D.interim_cash_flow_in_packet(old, "2025-12-31")
