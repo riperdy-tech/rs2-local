@@ -98,6 +98,7 @@ def arrange(tmp_path, monkeypatch, replies=(), facts=None, pk=PK):
     prepared = []
     monkeypatch.setattr(D.vrun, "prepare", lambda *a, **k: prepared.append(k) or (f, b, bar, forecast.record_items(f), C.R, dict(C.PROV), C.ENDS))
     monkeypatch.setattr(D.facts, "build", lambda *a, **k: f_all())
+    monkeypatch.setattr(D, "code_capital_events", lambda *a, **k: {"found": False, "absent": "test: no filed data"})      # WO_NC10a: hermetic; the tests of the events set their own
     return packet, b, bar, stub(monkeypatch, list(replies)), prepared
 
 
@@ -109,10 +110,11 @@ def run(tmp_path, packet, seed=1000, family="operating", **k):
 
 def test_the_prompt_text_is_pinned():
     """Changing what the model is told is a versioned decision (non-negotiable 7): re-pin this hash and bump DECIDED_VERSION together."""
-    assert hashlib.sha256((D.SYSTEM + "\n" + D.BASE_RATES + "\n" + D.TASK).encode()).hexdigest() == "c8d2745276ceafe7de06d6b9d9f21aa83e5f39b5cb3c12ae42cecbd9852bfbb3"
+    assert hashlib.sha256((D.SYSTEM + "\n" + D.BASE_RATES + "\n" + D.TASK).encode()).hexdigest() == "9af2b3ead931c63c8a3446cd9cfa9feba7819bf712efa3f0f3cab5270fa1d807"
     assert "1 in 4 chance of being undershot" in D.TASK and "1 in 4 chance of being overshot" in D.TASK and "Do not quote the PRIOR READ" in D.TASK
-    assert D.METHOD == "decided.v1" and D.DECIDED_VERSION.startswith("decided.v2")        # WO_NC9a: the label stays, the prompt version moves
+    assert D.METHOD == "decided.v1" and D.DECIDED_VERSION.startswith("decided.v3")        # WO_NC10a: the label stays, the prompt version moves
     assert "cash_not_free" in D.TASK and "base_year_one_offs" in D.TASK and "tax_rate_representative" in D.TASK and "debt_level_representative" in D.TASK
+    assert "since_base_year" in D.TASK and "you neither leave an acquisition out of your inputs nor lower them for its cost" in D.TASK        # WO_NC10a
 
 
 def test_the_message_carries_the_packet_masked_the_record_of_every_year_the_supported_read_and_the_base_rates(tmp_path, monkeypatch):
@@ -715,3 +717,255 @@ def test_the_overlay_row_keeps_only_the_marker_of_the_decided_method():
     assert "runs" in row["decided"]                                  # the report's own object is not touched
     plain = {"valued": True, "decided": None}
     assert G.overlay_row(plain) is plain
+
+
+# ---- WO_NC10a: the capital events since the base year ------------------------------------------------------------------------------------
+
+F3_TEXT = ("Cash paid for acquisitions, net of cash acquired, was $3.0 million. Repurchases of common stock were $500 thousand. Proceeds from the issuance of common stock "
+           "were $0.1 million. A special dividend of $0.4 million was paid. Proceeds from the sale of a business were $0.2 million. There were 10,500,000 shares outstanding "
+           "at June 30. Cash paid for acquisitions was $3.1 million in the release.")
+QE = {"acquisitions_paid": "Cash paid for acquisitions, net of cash acquired, was $3.0 million", "buybacks_paid": "Repurchases of common stock were $500 thousand",
+      "shares_issued_proceeds": "Proceeds from the issuance of common stock were $0.1 million", "special_distributions": "A special dividend of $0.4 million was paid",
+      "disposals_received": "Proceeds from the sale of a business were $0.2 million", "shares_outstanding": "There were 10,500,000 shares outstanding"}
+PKQ = dict(PK, evidence=PK["evidence"] + [{"fact_id": "F3", "kind": "quarterly_section", "title": "t3", "form": "10-Q", "period": "2026-06-30",
+                                          "effective_at": "2026-08-01T00:00:00Z", "source": None, "text": F3_TEXT}])
+Q3END = "2026-06-30"
+
+
+def fig(key, value, scale="millions", quote=None):
+    return {"value": value, "scale": scale, "quotes": [{"id": "F3", "quote": quote or QE[key]}]}
+
+
+def since(**figs):
+    """A since_base_year object: the keys given as (value, scale) or a ready object; the rest null."""
+    o = {"interim_date": Q3END, **{k: None for k in D.SINCE_KEYS}}
+    o.update({k: (fig(k, *v) if isinstance(v, tuple) else v) for k, v in figs.items()})
+    return o
+
+
+FULL = dict(acquisitions_paid=(3.0, "millions"), buybacks_paid=(500, "thousands"), shares_issued_proceeds=(0.1, "millions"), special_distributions=(0.4, "millions"),
+            disposals_received=(0.2, "millions"), shares_outstanding=(10_500_000, "units"))
+
+
+def xb(events=None, shares=10_500_000.0):
+    """What facts.capital_events returns for a 10-Q of the year after the base year (events: {event: value}; an event not given is absent)."""
+    ev = {k: None for k in ("acquisitions_paid", "buybacks_paid", "shares_issued_proceeds", "disposals_received")}
+    ev.update({k: {"value": v, "tag": f"us-gaap:{k}", "accn": "0001-26-000002", "start": "2026-01-01", "end": Q3END, "form": "10-Q", "filed": "2026-08-05", "stamp": None}
+               for k, v in (events or {}).items()})
+    out = {"fy0": "2025-12-31", "found": True, "absent": None, "accn": "0001-26-000002", "form": "10-Q", "filed": "2026-08-05", "start": "2026-01-01", "end": Q3END,
+           "quarter": 2, "events": ev, "absent_events": {k: "no year-to-date value" for k, v in ev.items() if v is None}, "shares_outstanding": None, "shares_absent": None}
+    if shares is not None:
+        out["shares_outstanding"] = {"value": shares, "tag": "dei:EntityCommonStockSharesOutstanding", "accn": "0001-26-000002", "end": "2026-07-24", "form": "10-Q", "filed": "2026-08-05"}
+    return out
+
+
+XB_ALL = {"acquisitions_paid": 3.0e6, "buybacks_paid": 0.5e6, "shares_issued_proceeds": 0.1e6, "disposals_received": 0.2e6}
+
+
+def ev_run(tmp_path, monkeypatch, replies, code=None, pk=PKQ, **k):
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, replies, pk=pk, **k)
+    if code is not None:
+        monkeypatch.setattr(D, "code_capital_events", lambda *a, **kw: code)
+    return run(tmp_path, packet), b, bar, sent
+
+
+def ce_of(res):
+    return res["decided"]["adjustments"]["capital_events"]
+
+
+def test_each_event_from_the_xbrl_is_taken_off_the_excess_cash_and_the_arithmetic_matches_a_hand_calculation(tmp_path, monkeypatch):
+    res, b, bar, sent = ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(special_distributions=(0.4, "millions")))], code=xb(XB_ALL, shares=10.0e6))
+    assert res["status"] == "ok" and len(sent) == 1
+    ce = ce_of(res)
+    # 7.0 million of excess cash - 3.0 acquired - 0.5 bought back - 0.4 special + 0.1 issued + 0.2 sold = 3.4 million; shares 10.0 million: unchanged
+    assert b["excess_cash"] == 7.0e6 and b["shares"] == 10.0e6
+    assert ce["excess_cash_before"] == 7.0e6 and ce["excess_cash_after"] == pytest.approx(3.4e6) and ce["net_effect_on_excess_cash"] == pytest.approx(-3.6e6)
+    assert res["decided"]["adjustments"]["excess_cash_after"] == pytest.approx(3.4e6) and res["decided"]["adjustments"]["excess_cash_before"] == 7.0e6
+    f = ce["figures"]
+    assert {k: v["source"] for k, v in f.items()} == {"acquisitions_paid": "xbrl", "buybacks_paid": "xbrl", "shares_issued_proceeds": "xbrl", "special_distributions": "read",
+                                                     "disposals_received": "xbrl"}
+    assert (f["acquisitions_paid"]["tag"], f["acquisitions_paid"]["accn"], f["acquisitions_paid"]["start"], f["acquisitions_paid"]["end"]) == \
+        ("us-gaap:acquisitions_paid", "0001-26-000002", "2026-01-01", Q3END)
+    assert f["special_distributions"]["amount"] == pytest.approx(0.4e6) and f["special_distributions"]["quotes"] == [{"id": "F3", "quote": QE["special_distributions"]}]
+    assert ce["shares"] == {"before": 10.0e6, "interim": 10.0e6, "source": "xbrl", "replaced": False, "after": 10.0e6}
+    hb = hand_base(b, excess_cash=3.4e6)
+    inp, rng = reply()["inputs"], reply()["ranges"]
+    assert res["values"]["base"] == pytest.approx(D.value_inputs(hb, C.R, inp)[0], rel=1e-12)
+    assert res["values"]["bear"] == pytest.approx(D.value_inputs(hb, C.R, D.scenario_inputs(inp, rng, 0))[0], rel=1e-12)
+    assert res["values"]["bull"] == pytest.approx(D.value_inputs(hb, C.R, D.scenario_inputs(inp, rng, 1))[0], rel=1e-12)
+    assert res["values"]["base"] == pytest.approx(D.value_inputs(b, C.R, inp)[0] - 3.6e6 / b["shares"], rel=1e-12)       # value / share = (equity x factor + excess cash) / shares
+    assert res["base"] == b and res["decided"]["value_at_old_defaults"] == D.old_defaults(b, bar, C.R)[0]                 # pinned base stored; the reference stays unadjusted
+    ad = res["decided"]["adjustments"]
+    assert ad["k0_after"] == b["k0"] and ad["x0_after"] == b["x0"]                                                       # no flow moved
+
+
+def test_each_event_from_the_read_when_code_found_no_filing(tmp_path, monkeypatch):
+    res, b, *_ = ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(**FULL))])
+    ce = ce_of(res)
+    assert res["status"] == "ok" and all(v["source"] == "read" for v in ce["figures"].values()) and ce["interim_end"] == Q3END
+    assert {k: v["amount"] for k, v in ce["figures"].items()} == pytest.approx({"acquisitions_paid": 3.0e6, "buybacks_paid": 0.5e6, "shares_issued_proceeds": 0.1e6,
+                                                                                "special_distributions": 0.4e6, "disposals_received": 0.2e6})
+    assert ce["excess_cash_after"] == pytest.approx(3.4e6) and ce["shares"]["source"] == "read" and ce["shares"]["replaced"] is True and ce["shares"]["after"] == 10_500_000
+    assert res["values"]["base"] == pytest.approx(D.value_inputs(hand_base(b, excess_cash=3.4e6, shares=10_500_000), C.R, reply()["inputs"])[0], rel=1e-12)
+    assert "shares_from_latest_interim" in ce["stamps"] and "shares_from_latest_interim" in res["decided"]["flags"]
+
+
+def test_an_event_the_filings_do_not_state_is_taken_as_0_and_stamped_and_a_filed_zero_is_a_value(tmp_path, monkeypatch):
+    res, b, *_ = ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(acquisitions_paid=(3.0, "millions")))], code=xb({"buybacks_paid": 0.0}, shares=None))
+    ce = ce_of(res)
+    assert ce["figures"]["buybacks_paid"]["amount"] == 0.0 and ce["figures"]["buybacks_paid"]["source"] == "xbrl"
+    assert [ce["figures"][k]["source"] for k in ("acquisitions_paid", "shares_issued_proceeds", "special_distributions", "disposals_received")] == ["read", "none", "none", "none"]
+    assert set(ce["stamps"]) == {"shares_issued_proceeds_not_filed_taken_as_0", "special_distributions_not_filed_taken_as_0", "disposals_received_not_filed_taken_as_0",
+                                 "shares_outstanding_at_interim_not_found_base_count_kept"}
+    assert ce["excess_cash_after"] == pytest.approx(4.0e6) and ce["shares"]["replaced"] is False and set(ce["stamps"]) <= set(res["decided"]["flags"])
+
+
+def test_a_read_that_omits_since_base_year_with_an_interim_in_the_packet_gets_one_repair_turn(tmp_path, monkeypatch):
+    res, b, bar, sent = ev_run(tmp_path, monkeypatch, [reply(), reply(since_base_year=since(**FULL))])
+    assert res["status"] == "ok" and res["checked_attempt"] == 2 and len(sent) == 2
+    assert "since_base_year is null, but the evidence holds an interim report for the period ended 2026-06-30" in sent[1][3]["content"]
+    assert ce_of(res)["excess_cash_after"] == pytest.approx(3.4e6)
+    res2 = ev_run(tmp_path, monkeypatch, [reply(), reply(since_base_year=None)])[0]
+    assert res2["status"] == "no_call" and res2["reason"] == "decision_invalid" and "since_base_year is null" in res2["detail"]
+
+
+def test_a_six_k_interim_item_counts_as_an_interim_and_a_filing_before_the_base_year_end_does_not(tmp_path, monkeypatch):
+    six = [dict(PKQ["evidence"][3], fact_id="F3", kind="six_k_interim", form="6-K")]
+    assert D.interim_in_packet(dict(PK, evidence=PK["evidence"][:3] + six), "2025-12-31") == "2026-06-30"
+    assert D.interim_in_packet(dict(PK, evidence=PK["evidence"][:3] + [dict(six[0], period="2025-09-30", form="10-Q", kind="quarterly_section")]), "2025-12-31") is None
+    assert D.interim_in_packet(PK, "2025-12-31") is None
+    res = ev_run(tmp_path, monkeypatch, [reply(), reply(since_base_year=since())], pk=dict(PK, evidence=PK["evidence"][:3] + six))[0]
+    assert res["status"] == "ok" and res["checked_attempt"] == 2
+
+
+def test_null_since_base_year_is_allowed_where_the_packet_holds_no_interim_and_the_value_is_v2s(tmp_path, monkeypatch):
+    plain, b, bar, sent = ev_run(tmp_path, monkeypatch, [reply()], pk=PK)
+    assert plain["status"] == "ok" and plain["checked_attempt"] == 1 and len(sent) == 1
+    a = plain["decided"]["adjustments"]
+    assert a["capital_events"] is None and a["stamps"] == [] and a["excess_cash_after"] == a["excess_cash_before"]
+    assert plain["values"]["base"] == D.value_inputs(b, C.R, reply()["inputs"])[0] and plain["decided"]["flags"] == ["quotes_verified: 7 of 7"]
+    explicit = ev_run(tmp_path, monkeypatch, [reply(since_base_year=None)], pk=PK)[0]
+    assert explicit["values"] == plain["values"] and explicit["decided"]["adjustments"] == a
+    # a name with a filed 10-Q but no interim item in the packet takes the events from the XBRL alone
+    res = ev_run(tmp_path, monkeypatch, [reply()], code=xb(XB_ALL, shares=10.0e6), pk=PK)[0]
+    assert res["status"] == "ok" and ce_of(res)["excess_cash_after"] == pytest.approx(7.0e6 - 3.0e6 - 0.5e6 + 0.1e6 + 0.2e6)
+
+
+def test_code_wins_and_a_disagreement_over_2_percent_is_flagged(tmp_path, monkeypatch):
+    sby = since(acquisitions_paid=(3.1, "millions", "Cash paid for acquisitions was $3.1 million"), buybacks_paid=(500, "thousands"), shares_outstanding=(10_500_000, "units"))
+    res, b, *_ = ev_run(tmp_path, monkeypatch, [reply(since_base_year=sby)], code=xb({"acquisitions_paid": 3.0e6, "buybacks_paid": 0.5e6}, shares=10_500_000.0))
+    ce = ce_of(res)
+    # 3.1 against 3.0 is 3.3% of the xbrl figure: flagged, and the figure used is the xbrl one; 500 thousand against 500 thousand: no flag
+    assert ce["figures"]["acquisitions_paid"]["amount"] == 3.0e6 and ce["figures"]["acquisitions_paid"]["read_amount"] == pytest.approx(3.1e6)
+    assert ce["flags"][0] == "capital_event_read_differs_from_xbrl: acquisitions_paid xbrl 3,000,000, read 3,100,000" and not any("buybacks_paid" in x for x in ce["flags"])
+    assert not any("shares_outstanding" in x for x in ce["flags"]) and ce["flags"][0] in res["decided"]["flags"]
+    tol = ce_of(ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(acquisitions_paid=(3.0, "millions"), shares_outstanding=(10_500_000, "units")))],
+                       code=xb({"acquisitions_paid": 2.95e6}))[0])
+    assert not any(x.startswith("capital_event_read_differs") for x in tol["flags"])                         # 1.7%: inside the 2%
+    sh = ce_of(ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(shares_outstanding=(10_500_000, "units")))], code=xb({}, shares=10_000_000.0))[0])
+    assert any(x.startswith("capital_event_read_differs_from_xbrl: shares_outstanding") for x in sh["flags"]) and sh["shares"]["after"] == 10_000_000.0
+
+
+def test_the_interim_share_count_replaces_the_base_count_only_above_1_percent_and_is_stamped(tmp_path, monkeypatch):
+    small = ce_of(ev_run(tmp_path, monkeypatch, [reply()], code=xb({}, shares=10.09e6), pk=PK)[0])
+    assert small["shares"]["replaced"] is False and small["shares"]["after"] == 10.0e6 and "shares_from_latest_interim" not in small["stamps"]
+    big, b, *_ = ev_run(tmp_path, monkeypatch, [reply()], code=xb({}, shares=10.2e6), pk=PK)
+    ce = ce_of(big)
+    assert ce["shares"]["replaced"] is True and ce["shares"]["after"] == 10.2e6 and "shares_from_latest_interim" in ce["stamps"]
+    assert big["values"]["base"] == pytest.approx(D.value_inputs(hand_base(b, shares=10.2e6), C.R, reply()["inputs"])[0], rel=1e-12) and big["base"] == b
+
+
+def test_a_share_count_change_the_events_do_not_explain_is_flagged_and_one_they_explain_is_not(tmp_path, monkeypatch):
+    # price 12.5: 500 thousand bought back less 0.1 million issued is 0.4 million / (12.5 x 0.5 to 12.5 x 2) = 16,000 to 64,000 fewer shares; slack 1% of 10 million
+    unexplained = ce_of(ev_run(tmp_path, monkeypatch, [reply()], code=xb(XB_ALL, shares=10.5e6), pk=PK)[0])
+    assert any(x.startswith("share_count_change_unexplained: shares 10,000,000 to 10,500,000 (+500,000)") for x in unexplained["flags"])
+    assert unexplained["shares"]["price_used"] == 12.5 and unexplained["shares"]["explained_range"] == pytest.approx([-64000.0, -16000.0])
+    explained = ce_of(ev_run(tmp_path, monkeypatch, [reply()], code=xb({"buybacks_paid": 5.0e6, "shares_issued_proceeds": 0.1e6}, shares=9.6e6), pk=PK)[0])
+    assert explained["shares"]["replaced"] is True and not any(x.startswith("share_count_change_unexplained") for x in explained["flags"])
+    no_price = dict(PK, evidence=[PK["evidence"][0], PK["evidence"][1], dict(PK["evidence"][2], text="sector: Industrials\nrank: 3")])
+    np_ = ce_of(ev_run(tmp_path, monkeypatch, [reply()], code=xb({}, shares=10.5e6), pk=no_price)[0])
+    assert "share_change_not_assessed_no_price" in np_["stamps"] and not any(x.startswith("share_count_change") for x in np_["flags"])
+
+
+def test_events_summing_to_5_percent_of_the_market_cap_are_flagged(tmp_path, monkeypatch):
+    small = ce_of(ev_run(tmp_path, monkeypatch, [reply()], code=xb(XB_ALL, shares=10.0e6), pk=PK)[0])
+    assert small["gross_events"] == pytest.approx(3.8e6) and not any(x.startswith("capital_events_over_5pct") for x in small["flags"])      # 2.1% of 180 million
+    big = ev_run(tmp_path, monkeypatch, [reply()], code=xb({"acquisitions_paid": 9.0e6}, shares=10.0e6), pk=PK)[0]               # 5.0% exactly
+    fl = ce_of(big)["flags"]
+    assert fl == ["capital_events_over_5pct_of_market_cap: events sum to 9,000,000, 5.0% of the market cap 180,000,000"] and fl[0] in big["decided"]["flags"]
+    assert big["decided"]["adjustments"]["excess_cash_after"] == pytest.approx(-2.0e6) and big["status"] == "ok"     # a purchase above the cash is a debt claim, not a refusal
+
+
+@pytest.mark.parametrize("label,sby,expect", [
+    ("digits not in the quote", since(acquisitions_paid=(3.5, "millions")), "the number 3.5 does not appear in any quote"),
+    ("quote not in the item", since(acquisitions_paid=(3.0, "millions", "Cash paid for acquisitions was three million")), "no quote found word for word"),
+    ("zero", since(acquisitions_paid=(0, "millions")), "value must be a number above 0"),
+    ("bad scale", since(acquisitions_paid=(3.0, "lakhs")), "scale must be one of"),
+    ("bad date", dict(since(), interim_date="June"), "interim_date must be a date"),
+    ("date before the base year", dict(since(), interim_date="2025-06-30"), "is not after the base year"),
+    ("not an object", "none", "since_base_year must be null or an object"),
+    ("shares not in the quote", since(shares_outstanding=(10_400_000, "units")), "since_base_year.shares_outstanding: the number 10400000"),
+])
+def test_a_figure_that_fails_its_check_goes_to_the_repair_turn(tmp_path, monkeypatch, label, sby, expect):
+    res, b, bar, sent = ev_run(tmp_path, monkeypatch, [reply(since_base_year=sby), reply(since_base_year=since(**FULL))])
+    assert res["status"] == "ok" and res["checked_attempt"] == 2, label
+    assert expect in sent[1][3]["content"], label
+
+
+def test_a_disposal_is_the_other_sign_and_a_negative_filed_figure_is_stamped_not_clamped(tmp_path, monkeypatch):
+    up = ce_of(ev_run(tmp_path, monkeypatch, [reply()], code=xb({"disposals_received": 2.0e6}, shares=10.0e6), pk=PK)[0])
+    assert up["excess_cash_after"] == pytest.approx(9.0e6) and up["net_effect_on_excess_cash"] == pytest.approx(2.0e6)
+    code = xb({"buybacks_paid": -1.0e6}, shares=10.0e6)
+    code["events"]["buybacks_paid"]["stamp"] = "buybacks_paid_negative_as_filed"
+    neg = ce_of(ev_run(tmp_path, monkeypatch, [reply()], code=code, pk=PK)[0])
+    assert neg["figures"]["buybacks_paid"]["amount"] == -1.0e6 and "buybacks_paid: buybacks_paid_negative_as_filed" in neg["stamps"] and neg["excess_cash_after"] == pytest.approx(8.0e6)
+
+
+def test_the_events_apply_on_the_same_copy_after_the_cash_not_free_step_and_with_the_one_offs(tmp_path, monkeypatch):
+    res, b, *_ = ev_run(tmp_path, monkeypatch, [reply(cash_not_free=cash(), base_year_one_offs=[one_off(1.2, "charge", Q_LOSS)], since_base_year=since(**FULL))],
+                        pk=dict(PKQ, evidence=[PKQ["evidence"][0], PKQ["evidence"][1], PKQ["evidence"][2], PKQ["evidence"][3]]))
+    a = res["decided"]["adjustments"]
+    # 7.0 - 2.5 (cash not free) - 3.0 - 0.5 - 0.4 + 0.1 + 0.2 = 0.9 million; k0 and x0 as in v2 for the cash and the charge; shares 10.5 million
+    assert res["status"] == "ok" and a["excess_cash_after"] == pytest.approx(0.9e6) and a["capital_events"]["excess_cash_before"] == pytest.approx(4.5e6)
+    assert a["k0_after"] == pytest.approx(3.28e6 - 1.0e5 - 1.2e6) and a["x0_after"] == pytest.approx(10.176e6 + 1.3e6 * 0.8)
+    hb = hand_base(b, excess_cash=0.9e6, shares=10.5e6, k0=3.28e6 - 1.3e6, x0=10.176e6 + 1.04e6)
+    assert res["values"]["base"] == pytest.approx(D.value_inputs(hb, C.R, reply()["inputs"])[0], rel=1e-12)
+    assert "shares_from_latest_interim" in a["stamps"] and "cash_not_free_taken_out_of_excess_cash" in a["stamps"]
+
+
+def test_the_second_tax_rate_carries_the_events(tmp_path, monkeypatch):
+    res, b, *_ = ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(**FULL))], facts=TS.fb_facts())
+    tr = res["tax_range"]
+    ev = D.resolve_events({"found": False}, D.read_events(res["inputs"], b, {"F3": F3_TEXT}, Q3END)[1], 180e6, 12.5)
+    alt_b = D.vrun.alt_tax_base(TS.fb_facts(), b, 180e6)
+    alt, _ = D.adjust_base(alt_b, None, [], ev)
+    assert tr["status_alt"] == "ok" and tr["values_alt"]["base"] == D.value_inputs(alt, C.R, reply()["inputs"])[0]
+    assert alt["excess_cash"] == pytest.approx(alt_b["excess_cash"] - 3.6e6) and alt["shares"] == 10_500_000
+    assert tr["values_alt"]["base"] != D.value_inputs(alt_b, C.R, reply()["inputs"])[0]
+
+
+def test_the_report_carries_the_capital_events_of_each_run(tmp_path, monkeypatch):
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, [reply(since_base_year=since(**FULL)), reply(since_base_year=since(**FULL))], pk=PKQ)
+    rs = {str(s): D.value(packet, "1", "Industrials", 180e6, family="operating", analysis=AN, seed=s, out_root=tmp_path / "runs", online=False) for s in (1000, 3000)}
+    rep = Q.report("TEST", "list", "2026-11-18T00:00:00Z", {}, N(packet), rs, "c")
+    ce = rep["decided"]["runs"]["1000"]["adjustments"]["capital_events"]
+    assert ce["excess_cash_after"] == pytest.approx(3.4e6) and ce["interim_end"] == Q3END
+    json.dumps(rep)
+
+
+def test_code_capital_events_reads_the_stored_facts_and_a_store_miss_is_not_found(monkeypatch):
+    from datetime import datetime, timezone
+    T = datetime(2026, 11, 18, tzinfo=timezone.utc)
+    got = {}
+    monkeypatch.setattr(D.facts, "fetch", lambda cik, t, online, root=None: got.update(cik=cik, online=online) or ({"facts": {}}, {"filings": {"recent": {}}}, {}))
+    out = D.code_capital_events("1", T, "2025-12-31")
+    assert got == {"cik": "1", "online": False} and out["found"] is False and out["absent"] == "no 10-Q of year 1 effective at T"
+
+    def miss(*a, **k):
+        raise D.sec_store.NotInStore("x")
+    monkeypatch.setattr(D.facts, "fetch", miss)
+    assert D.code_capital_events("1", T, "2025-12-31") == {"fy0": "2025-12-31", "found": False, "absent": "companyfacts_not_stored: NotInStore"}
+
+
+def test_packet_price_reads_the_screener_row():
+    assert D.packet_price(PK) == 12.5 and D.packet_price({"evidence": []}) is None

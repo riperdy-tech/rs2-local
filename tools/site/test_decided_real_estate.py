@@ -67,8 +67,8 @@ def run(tmp_path, packet, seed=1000):
 
 def test_the_real_estate_task_text_is_pinned_and_is_the_generic_text_with_additions_only():
     """Changing what the model is told is a versioned decision (non-negotiable 7): re-pin this hash and bump RE.VERSION together."""
-    assert hashlib.sha256(RE.TASK.encode()).hexdigest() == "8f1bd856bd223a75b6963cd6fac55c948b054787874583be2aff1e8d45f35816"
-    assert RE.VERSION.startswith("decided.real_estate.v2") and RE.FAMILY == "real_estate" and D.VARIANTS["real_estate"] is RE
+    assert hashlib.sha256(RE.TASK.encode()).hexdigest() == "801babf6d45a609751bb26c98358a2a85a80fddb67660882aa14b06e23df0788"
+    assert RE.VERSION.startswith("decided.real_estate.v3") and RE.FAMILY == "real_estate" and D.VARIANTS["real_estate"] is RE
     head, sep, tail = D.TASK.partition("\nSchema:\n")
     assert RE.TASK.startswith(head) and RE.PARAGRAPH in RE.TASK and "recurring capital expenditure, tenant improvements and leasing costs, the hotel renewal and replacement reserve" in RE.TASK
     assert "NOT acquisitions or development" in RE.TASK and '"property_business": "owns_or_operates|lends|unclear"' in RE.TASK and '"reported_ffo": {' in RE.TASK

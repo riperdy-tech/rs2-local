@@ -23,7 +23,7 @@ from interest_from_filing import SCALES, _printed, digits_in_quote  # noqa: E402
 
 FAMILY = "real_estate"
 KEY = "real_estate"                        # the key of the result's `decided` that carries this variant's record
-VERSION = "decided.real_estate.v2 2026-11-19"   # v2: the desk keeps depreciation above upkeep for equity, every year and in the terminal (desk.py, real estate only)   # v1 WO_NC9c
+VERSION = "decided.real_estate.v3 2026-11-20"   # v3 WO_NC10a: the generic task text it extends carries since_base_year (no text of its own changed)   # v2: the desk keeps depreciation above upkeep for equity, every year and in the terminal (desk.py, real estate only)   # v1 WO_NC9c
 PREPARE = {"real_estate": True}            # extra keyword arguments of run.prepare
 SIC_RANGES = ((6500, 6599), (6798, 6798))
 BUSINESS = ("owns_or_operates", "lends", "unclear")
