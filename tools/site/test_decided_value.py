@@ -503,6 +503,23 @@ def test_pending_offer_reads_the_supported_pending_acquisition_of_the_company(tm
     assert G.pending_offer(dict(rep, ticker="NONE")) is None
 
 
+def test_a_name_goes_to_the_fallback_arm_only_when_the_home_allowance_is_low_and_the_fallbacks_is_not(monkeypatch):
+    left = {"gemini": 0.5, "sonnet": 0.5}
+    monkeypatch.setattr(G, "meter", lambda: {k: (left[G.ARM], None) for k in G.FLOORS})
+    monkeypatch.setattr(G, "log", lambda msg: None)
+    try:
+        assert G.choose_arm("gemini") == "gemini" and G.ARM == "gemini"
+        left["gemini"] = 0.0
+        assert G.choose_arm("gemini") == "sonnet" and G.ARM == "sonnet" and G.GEM_MODEL == G.ARMS["sonnet"]["model"]
+        left["sonnet"] = 0.0
+        assert G.choose_arm("gemini") == "gemini" and G.ARM == "gemini" and G.LOCK.name == "worker.lock"      # both low: wait at home
+        left["gemini"] = 0.5
+        assert G.choose_arm("gemini") == "gemini"
+        assert G.choose_arm("sonnet") == "sonnet"                 # an arm with no fallback stays itself
+    finally:
+        G.set_arm("gemini")
+
+
 # ---- the switch in gemini_ondemand.analyze ---------------------------------------------------------------------------------------
 
 def switch(tmp_path, monkeypatch, method, family="operating"):

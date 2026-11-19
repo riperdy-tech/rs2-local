@@ -111,6 +111,35 @@ def set_arm(arm):
     ARM, GEM_MODEL, FLOORS = arm, ARMS[arm]["model"], ARMS[arm]["floors"]
     if arm != "gemini":
         LOCK, USAGE = SITE / f"worker_{arm}.lock", SITE / f"usage_{arm}.jsonl"
+    else:
+        LOCK, USAGE = SITE / "worker.lock", SITE / "usage.jsonl"
+
+
+FALLBACK = {"gemini": "sonnet"}     # operator 2026-11-19: a name the Gemini worker cannot take because Gemini's allowance is under its floor goes to
+#                                     Claude Sonnet (same messages, same checks; the report records the model). Sonnet under its own floor: wait, as before
+
+
+def quota_low():
+    """True when an allowance of the current arm is under its floor, or the meter cannot be read (never read as "there is room")."""
+    try:
+        m = meter()
+        return any(m[k][0] < FLOORS[k] for k in FLOORS)
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def choose_arm(home):
+    """Sets and returns the arm for the next name: `home`, or its FALLBACK when home's allowance is low and the fallback's is not."""
+    set_arm(home)
+    other = FALLBACK.get(home)
+    if other is None or not quota_low():
+        return home
+    set_arm(other)
+    if quota_low():
+        set_arm(home)                       # both low: wait on the home arm's reset, as before
+        return home
+    log(f"{home} allowance is under its floor: this name goes to {other}")
+    return other
 
 
 def log(msg):
@@ -627,10 +656,12 @@ def work(max_names, do_publish):
     if not take_lock():
         print("another worker holds the lock", flush=True)
         return 0
+    home, lock = ARM, LOCK                      # the scheduled arm and its lock (a name may go to the FALLBACK arm; the lock stays this one)
     try:
         swap()
         done = 0
         while max_names is None or done < max_names:
+            choose_arm(home)
             before = wait_for_quota()       # before the name is claimed: a claim held through a long quota wait is taken over by another arm, and the name was then read twice (2026-11-18)
             nxt = next_name()
             if nxt is None:
@@ -655,8 +686,8 @@ def work(max_names, do_publish):
                     log(f"publish failed: {e}")
         return 0
     finally:
-        if LOCK.exists() and LOCK.read_text().strip() == str(os.getpid()):
-            LOCK.unlink()
+        if lock.exists() and lock.read_text().strip() == str(os.getpid()):
+            lock.unlink()
 
 
 if __name__ == "__main__":
