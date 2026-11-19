@@ -69,3 +69,10 @@ def test_the_within_one_year_figure_is_capped_at_the_filed_total_and_a_total_alo
 
 def test_a_company_with_a_short_term_investment_tag_is_unchanged_by_the_afs_figures():
     assert base(afs_facts(sti=(1, 2))) == base(afs_facts(within=None, total=None, sti=(1, 2)))
+
+
+def test_a_filed_lease_liability_is_the_debt_even_where_cash_covers_any_debt_the_interest_allows():
+    f = lease_facts(total=(20, 20))
+    f["cash"] = series([110, 110])                                          # interest / 1% is far below cash: "no debt filed" before
+    b = base(f)
+    assert b["debt0"] == 20 and b["debt_basis"] == "FinanceLeaseLiability" and "no_debt_filed" not in b["stamps"]
