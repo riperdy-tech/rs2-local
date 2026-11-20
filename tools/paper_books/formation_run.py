@@ -105,6 +105,29 @@ def save(path, m):
     os.replace(tmp, path)
 
 
+def settle(n, res, returncode, seconds, stderr):
+    """The bookkeeping of one finished run on a map name (attempt, `runs` entry, complete / partial_analysis / pending / analysis_incomplete).
+    `res` is the runner's result dict ({} when it printed none). Shared with formation_run_cloud.py."""
+    n["attempts"] += 1
+    n.setdefault("runs", []).append({"run_id": res.get("run_id"), "run_dir": res.get("run_dir"), "status": res.get("status"),
+                                     "exit": returncode, "seconds": round(seconds, 1),
+                                     "incomplete_tasks": res.get("incomplete_tasks"), "stderr_tail": stderr[-400:]})
+    me_ok = res.get("status") == "analysis_incomplete" and "material_events" not in (res.get("incomplete_tasks") or {})
+    if res.get("status") == "complete":
+        n.update(state="complete", run_dir=res["run_dir"])
+    elif me_ok:                       # SPEC_m3o A1S: material_events ok is complete (flagged partial_analysis); no GPU retry
+        n.update(state="complete", run_dir=res["run_dir"], partial_analysis=True)
+    elif n["attempts"] >= MAX_ATTEMPTS:
+        n.update(state="analysis_incomplete", reason="runner_attempts", run_dir=res.get("run_dir"))
+    else:
+        n["state"] = "pending"
+
+
+def names_left(m):
+    """True when a name of the map is still to build, run or retry."""
+    return any(n["state"] in ("to_build", "to_run", "pending") for n in m["names"].values())
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("formation_T")
@@ -141,22 +164,10 @@ def main():
             res = json.loads(r.stdout[r.stdout.index("{"):])          # the runner prints its result as indented JSON
         except ValueError:
             res = {}
-        n["attempts"] += 1
-        n.setdefault("runs", []).append({"run_id": res.get("run_id"), "run_dir": res.get("run_dir"), "status": res.get("status"),
-                                         "exit": r.returncode, "seconds": round(time.time() - t0, 1),
-                                         "incomplete_tasks": res.get("incomplete_tasks"), "stderr_tail": r.stderr[-400:]})
-        me_ok = res.get("status") == "analysis_incomplete" and "material_events" not in (res.get("incomplete_tasks") or {})
-        if res.get("status") == "complete":
-            n.update(state="complete", run_dir=res["run_dir"])
-        elif me_ok:                       # SPEC_m3o A1S: material_events ok is complete (flagged partial_analysis); no GPU retry
-            n.update(state="complete", run_dir=res["run_dir"], partial_analysis=True)
-        elif n["attempts"] >= MAX_ATTEMPTS:
-            n.update(state="analysis_incomplete", reason="runner_attempts", run_dir=res.get("run_dir"))
-        else:
-            n["state"] = "pending"
+        settle(n, res, r.returncode, time.time() - t0, r.stderr)
         save(path, m)
         print(t, n["state"], n["runs"][-1]["seconds"], flush=True)
-    if not a.ticker and a.limit is None and not any(n["state"] in ("to_build", "to_run", "pending") for n in m["names"].values()):   # Q7 4
+    if not a.ticker and a.limit is None and not names_left(m):   # Q7 4
         (STATE / f"finished_{a.formation_T}.flag").write_text("done")
     return 0
 

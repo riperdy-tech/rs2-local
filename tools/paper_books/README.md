@@ -60,6 +60,19 @@ from the repo root (`py` = `"C:\Program Files\Python312\python.exe"`):
    `formation_value.py` calls `formation_fv.py <T>`, which writes `value/fv_<T>.json` once (cheapness per name, and FV's own fill session:
    the first New York open after the file is written); later passes find it and leave it. If the next formation's map already exists,
    FV skips <T>. Tests: `tests/test_formation_fv.py`.
+4b. From the 2026-11-30 formation the reader is the cloud reader (Qwen was retired 2026-11-20; ruling D3), not step 4: run
+   `py tools/paper_books/formation_run_cloud.py --dry-run` (lists the names it would read, reads nothing), then
+   `py tools/paper_books/formation_run_cloud.py [--map <path>] [--limit N]` by hand or from a scheduled task (the newest live map by default).
+   Per `to_run` / `pending` name it runs `qwen_c.runner.run(packet, seed=1000, task_ids=["material_events"])` in process with the site worker's model
+   swap (`gemini_ondemand.swap`; Gemini, Claude Sonnet when Gemini's allowance is under its floor), into the run root `cache/m3m_formation/` of the
+   main checkout (its own `runs/` and `ledger.jsonl`; `analysis.json` holds that one task, which is all the book rule reads). The bookkeeping is
+   `formation_run.settle` (complete, one retry, `analysis_incomplete`) plus `reader` per name and per `runs` entry; the manifest holds the model in
+   `model.tag`. It takes the site worker's lock (`cache/gemini_site/worker.lock`) and exits 0 if a worker holds it; exit 3 when both allowances are
+   under their floors (nothing is changed for the unread names; start it again later). `finished_<T>.flag` as in step 4 (no `--limit`, no name left).
+   No GPU, no Ollama. Valuation (`formation_value.py`) is not run at this formation (ruling 5). Then, after the engine has run:
+   `py tools/paper_books/publish_books.py <T> --dry-run` (writes `cache/site/m3o_books.json`, prints the difference against the published copy), and
+   without `--dry-run` it commits that one file through the publish clone and pushes. Tests: `tests/test_formation_cloud.py`.
+   **The run folders in `stocks-workspace/scratch/rev23/wt-m3o*` and `cache/m3m_formation` must never be deleted: the daily engine reads them.**
 5. Before the fill open: `py tools/paper_books/formation_freeze.py <T>` copies the map to `formation_<T>.frozen.json` (refuses a second
    freeze), writes the one-line witness to `<books>/m3o/witness/formation_<T>.txt` and prints it. Publishing the witness (a public commit
    and push) is by hand, after a scan.
