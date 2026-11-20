@@ -235,7 +235,7 @@ def report(t, source, T, q1, n, results, commit, interest_override=None):
         valued, v = (decided_financial if n["family"] in decided_financial.FAMILIES else decided_value).combine_runs(results)
         seed0 = next(iter(ok.values()), {}).get("base") or {}
         if valued and seed0.get("tax_fallback"):
-            tax_range = _tax_range_decided(ok, seed0.get("shares"))
+            tax_range = _tax_range_decided(ok, v["shares"] if v.get("shares") is not None else seed0.get("shares"))
     elif ok:
         from qwen_c.value import consensus, run, task
         pk = json.loads(Path(n["packet"]).read_text(encoding="utf-8"))
@@ -264,7 +264,10 @@ def report(t, source, T, q1, n, results, commit, interest_override=None):
     if valued:
         seed = next(iter(ok.values()))
         shares = (seed.get("base") or {}).get("shares")
-        rep.update(equity_value=v["values"]["base"] * shares if shares else None, filed_shares=shares,
+        equity = v["values"]["base"] * shares if shares else None
+        if dec and v.get("shares") is not None:                    # the decided method's values are per the share count after its capital events
+            shares, equity = v["shares"], v["equity_value"]
+        rep.update(equity_value=equity, filed_shares=shares,
                    value_per_filed_share={k: v["values"][k] for k in ("bear", "base", "bull")},
                    seeds_agree=not any(a.startswith("seeds_disagree") for a in v.get("annotations", [])),
                    seed_base={k: (x.get("values") or {}).get("base") for k, x in results.items()})

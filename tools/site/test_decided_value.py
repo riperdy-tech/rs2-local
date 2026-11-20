@@ -986,6 +986,17 @@ def test_the_report_carries_the_capital_events_of_each_run(tmp_path, monkeypatch
     json.dumps(rep)
 
 
+def test_the_report_quotes_the_share_count_its_values_are_per(tmp_path, monkeypatch):
+    # v3.1: the 10-Q's cover count (9.0 million against the base's 10.0) replaces the base count in the value; the report's filed_shares and equity
+    # value are on that count, so the site's conversion to the quoted unit (equity value / quoted shares) is not made on a stale count
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, [reply(), reply()], pk=PK)
+    monkeypatch.setattr(D, "code_capital_events", lambda *a, **kw: xb({"buybacks_paid": 12.0e6}, shares=9.0e6))
+    rs = {str(s): D.value(packet, "1", "Industrials", 180e6, family="operating", analysis=AN, seed=s, out_root=tmp_path / "runs", online=False) for s in (1000, 3000)}
+    assert all(D.valued_shares(x) == 9.0e6 and x["base"]["shares"] == b["shares"] != 9.0e6 for x in rs.values())
+    rep = Q.report("TEST", "list", "2026-11-18T00:00:00Z", {}, N(packet), rs, "c")
+    assert rep["filed_shares"] == 9.0e6 and rep["equity_value"] == pytest.approx(rep["value_per_filed_share"]["base"] * 9.0e6, rel=1e-12)
+
+
 def test_code_capital_events_reads_the_stored_facts_and_a_store_miss_is_not_found(monkeypatch):
     from datetime import datetime, timezone
     T = datetime(2026, 11, 18, tzinfo=timezone.utc)

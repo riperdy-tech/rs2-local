@@ -53,6 +53,24 @@ def test_refusal_is_retried_next_day(tmp_path, monkeypatch):
     assert G.next_name() == ("REFUSED", "list", False)
 
 
+def test_a_report_valued_on_an_older_method_version_is_due(tmp_path, monkeypatch):
+    # a change of method re-values the names it touched through the worker: fresh reports, one on the current version, one on an older one,
+    # one never on the decided method (the menu), one financial report on its own current version
+    monkeypatch.setattr(G, "ONDEMAND", tmp_path)
+    monkeypatch.setattr(G, "CLAIMS", tmp_path / "claims")
+    monkeypatch.setattr(G, "queue_file", lambda: tmp_path / "no_queue.jsonl")
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    for t, dec in (("CUR", {"version": G.decided_value.DECIDED_VERSION}), ("OLD", {"version": "decided.v0 an older one"}), ("MENU", None),
+                   ("FIN", {"version": G.decided_financial.DECIDED_VERSION})):
+        (tmp_path / f"{t}.json").write_text(json.dumps({"ticker": t, "date": now, "analysis": "complete", "valued": True, "decided": dec}), encoding="utf-8")
+    monkeypatch.setattr(G.Q, "list_names", lambda: ["CUR", "MENU", "FIN", "OLD"])
+    monkeypatch.setattr(G, "VALUE_METHOD", "decided")
+    assert G.method_stale() == {"OLD"} and G.next_name() == ("OLD", "method_changed", False) and G.next_name() is None
+    monkeypatch.setattr(G, "VALUE_METHOD", "menu")
+    monkeypatch.setattr(G, "CLAIMS", tmp_path / "claims2")
+    assert G.method_stale() == set() and G.next_name() is None                # the decided method off: nothing is due by version
+
+
 def test_two_arms_never_take_the_same_name(tmp_path, monkeypatch):
     monkeypatch.setattr(G, "ONDEMAND", tmp_path)
     monkeypatch.setattr(G, "CLAIMS", tmp_path / "claims")
