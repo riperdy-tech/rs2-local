@@ -891,6 +891,12 @@ def test_with_the_xbrl_there_a_read_figure_that_fails_its_check_is_dropped_not_r
     assert res2["status"] == "no_call" and "since_base_year.acquisitions_paid" in res2["detail"]
 
 
+def test_a_cover_page_with_a_count_per_class_keeps_the_base_share_count(tmp_path, monkeypatch):
+    code = dict(xb({}), shares_outstanding=None, shares_absent="the cover page of 0001-26-000002 gives 2 different counts (classes of stock): [1.0, 2.0]")
+    ce = ce_of(ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(shares_outstanding=(10_500_000, "units")))], code=code)[0])
+    assert ce["shares"]["replaced"] is False and ce["shares"]["after"] == ce["shares"]["before"] and "shares_multi_class_base_count_kept" in ce["stamps"]
+
+
 def test_the_interim_share_count_replaces_the_base_count_only_above_1_percent_and_is_stamped(tmp_path, monkeypatch):
     small = ce_of(ev_run(tmp_path, monkeypatch, [reply()], code=xb({}, shares=10.09e6), pk=PK)[0])
     assert small["shares"]["replaced"] is False and small["shares"]["after"] == 10.0e6 and "shares_from_latest_interim" not in small["stamps"]

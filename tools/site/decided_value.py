@@ -46,7 +46,8 @@ from qwen_c.value import checks, coe, desk, facts, inputs, menu, run as vrun, ta
 import interest_from_filing as IFF  # noqa: E402                    # WO_NC9a: the digit-in-quote rule and the scales
 
 DECIDED_VERSION = "decided.v3.1 2026-11-20 WO_NC10a"       # v3.1: a checked read figure above the XBRL one is used (the XBRL concept is narrower);
-# where the XBRL is there, a read figure that fails its check is dropped and stamped, not a repair turn or a no call.
+# where the XBRL is there, a read figure that fails its check is dropped and stamped, not a repair turn or a no call; a cover page with one
+# count per class of stock keeps the base share count (the read's figure is not used).
 # v3: the capital events since the base year (v2: cash not free, base-year one-offs, tax and debt flags; the method label stays decided.v1)
 METHOD = "decided.v1"
 FAMILIES = vrun.ROUTED                    # the financial route keeps the menu until it is tested the same way
@@ -537,6 +538,9 @@ def resolve_events(code, read, market_cap=None, price=None):
             stamps.append(f"{k}_not_filed_taken_as_0")
         figs[k] = fig
     cs, rs = (code.get("shares_outstanding") if found else None), (read or {}).get("shares_outstanding")
+    if found and cs is None and "classes of stock" in (code.get("shares_absent") or ""):
+        rs = None                             # v3.1: one count per class on the cover page; a read's single figure would mix them with the base count's class
+        stamps.append("shares_multi_class_base_count_kept")
     sh = None
     if cs is not None:
         sh = {"amount": cs["value"], "source": "xbrl", "tag": cs["tag"], "accn": cs["accn"], "end": cs["end"]}
