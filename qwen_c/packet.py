@@ -66,6 +66,8 @@ the verified record; a verified row without a readable GitHub `run_updated_at`, 
 a ticker missing from that commit's stocks.json or from its factor profiles; no CIK; a screener commit dated after T; a T older than the
 oldest row of the submissions' filings.recent (older filings are in filings.files, which v1 does not read).
 A document that cannot be had (NotInStore offline, FetchFailed online, StoreCorrupt) raises too.
+One exception (2026-11-19): an 8-K or 6-K whose full submission text is over the store's size cap (sec_store.TooLarge) is left out and
+annotated `filing_too_large_not_read: <slot> <accession>`; the name is still built. Annual and quarterly reports still raise.
 
 TWO REGIMES (SPEC_m3n_event_validation.md section 2; `regime` is a top-level field of every packet). `verified` (the default) is all of the
 above. `archival_sec_acceptance_v1` builds a packet for a historical T from SEC documents under the same acceptance rule and the screener
@@ -375,21 +377,26 @@ def _map_cik(cmap_blob, ticker):
     return str(raw).strip().zfill(10) if raw and str(raw).strip().isdigit() else None
 
 
-def _screener(repo, commit_full, ticker):
-    """(S0 item, header fields, cik) from the screener blobs at `commit_full`, or a refusal."""
+def _screener(repo, commit_full, ticker, require_profile=True):
+    """(S0 item, header fields, cik) from the screener blobs at `commit_full`, or a refusal. `require_profile=False` (a request for one
+    name, not the book) builds a name that is in stocks.json but not among the factor profiles, and says so in the header
+    (`factor_profile: false`); the packet reads nothing from a profile, so only the header differs."""
     blobs, shas = {}, {}
     for path in (STOCKS_PATH, FACTOR_PATH, CIK_MAP_PATH):
         blobs[path] = _git(repo, "show", f"{commit_full}:{path}")
         shas[path] = _blob_sha(repo, commit_full, path)
     row = _stock_row(blobs[STOCKS_PATH], ticker, commit_full)
     profiles = (json.loads(blobs[FACTOR_PATH]) or {}).get("profiles")
-    if not isinstance(profiles, dict) or not isinstance(profiles.get(ticker), dict):
+    has_profile = isinstance(profiles, dict) and isinstance(profiles.get(ticker), dict)
+    if not has_profile and require_profile:
         raise PacketRefused("ticker_not_in_factor_profiles", f"{ticker} has no profile in {FACTOR_PATH} at {commit_full}")
     cik = _map_cik(blobs[CIK_MAP_PATH], ticker)
     if not cik:
         raise PacketRefused("no_cik", f"{ticker} has no CIK in {CIK_MAP_PATH} at {commit_full}")
     header = {"commit": commit_full, "stocks_blob_sha": shas[STOCKS_PATH], "factor_blob_sha": shas[FACTOR_PATH],
               "cik_map_blob_sha": shas[CIK_MAP_PATH]}
+    if not has_profile:
+        header["factor_profile"] = False
     return _s0_item(commit_full, row, blobs[STOCKS_PATH]), header, cik
 
 
@@ -726,28 +733,51 @@ def _release_docs(docs):
     return [d for _, d in sorted(((n, d) for n, d in enumerate(docs) if d["type"].upper().startswith("EX-99") and "raw" in d), key=key)]
 
 
-def _release(cik, row, fetch, notes):
+def _submission(fetch, url, row, notes, slot):
+    """The full submission text of an 8-K or 6-K, or None where it is over the store's size cap: the filing is then left out of the packet and
+    annotated filing_too_large_not_read (one oversized exhibit file no longer refuses the whole name; the annual and quarterly reports are
+    read from their primary documents, not from here, and still refuse)."""
+    try:
+        return fetch(url)
+    except sec_store.TooLarge:
+        notes.append(f"filing_too_large_not_read: {slot} {row['accession']}")
+        return None
+
+
+def _flag_truncated(text, row, cap, notes, flag):
+    """NC10b: a release or interim report still cut at `cap` is annotated release_truncated. Only where the caller chose a cap (`flag`):
+    the default build's annotations, and so its bytes, are unchanged."""
+    if flag and sec_primary.OMIT_RE.search(text):
+        notes.append(f"release_truncated: {row['accession']} cut at {cap} characters")
+
+
+def _release(cik, row, fetch, notes, cap=RELEASE_CAP, flag_truncated=False):
     """The release item: every EX-99.x exhibit (_release_docs) read as one document, to RELEASE_CAP by sec_primary.select_text. The title names
     the exhibits the kept text reaches: those with a selection unit whose first 40 characters are in it (every exhibit, when the
     text fits). A filing with no readable EX-99.x exhibit is annotated release_exhibit_not_found."""
     url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
-    raw = fetch(url)
+    raw = _submission(fetch, url, row, notes, "release")
+    if raw is None:
+        return []
     docs = _release_docs(_eight_k_docs(raw))
     blocks = [(d, blocks_of(d["raw"])) for d in docs]
-    text = canonical(select_text([b for _, bs in blocks for b in bs], RELEASE_CAP))
+    text = canonical(select_text([b for _, bs in blocks for b in bs], cap))
     if not text:
         notes.append(f"release_exhibit_not_found: {row['accession']}")
         return []
+    _flag_truncated(text, row, cap, notes, flag_truncated)
     used = [f"{d['type']} {d['filename']}" for d, bs in blocks if any(canonical(t)[:40] in text for _, t in _units(bs) if canonical(t))]
     return [_evidence("release", "earnings_release", f"{row['form']} Item 2.02 earnings release ({', '.join(used)})", row, url, raw, text)]
 
 
-def _six_k(cik, row, fetch, notes, kind, cap):
+def _six_k(cik, row, fetch, notes, kind, cap, flag_truncated=False):
     """A six_k_interim or six_k item (v8): a 6-K's EX-99.x exhibits (_release_docs order), else the 6-K document itself, read as one
     document to `cap` by sec_primary.select_text. Nothing is chosen by content: the interim slot by the period-of-report gap, the
     event slots by date. A filing with no readable text is annotated six_k_text_not_found."""
     url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
-    raw = fetch(url)
+    raw = _submission(fetch, url, row, notes, kind)
+    if raw is None:
+        return []
     all_docs = _eight_k_docs(raw)
     docs = _release_docs(all_docs) or [d for d in all_docs if d["type"].upper() in SIX_K_FORMS]
     blocks = [(d, blocks_of(d["raw"])) for d in docs]
@@ -755,6 +785,7 @@ def _six_k(cik, row, fetch, notes, kind, cap):
     if not text:
         notes.append(f"six_k_text_not_found: {row['accession']}")
         return []
+    _flag_truncated(text, row, cap, notes, flag_truncated)
     used = [f"{d['type']} {d['filename']}" for d, bs in blocks if any(canonical(t)[:40] in text for _, t in _units(bs) if canonical(t))]
     label = "interim report" if kind == "six_k_interim" else "report"
     return [_evidence(kind, kind, f"{row['form']} {label} ({', '.join(used)})", row, url, raw, text)]
@@ -810,7 +841,9 @@ def _other_8k(cik, row, fetch, notes):
     longer cuts off the Item 2.04 after it); a body with no heading of such an item is read from its first listed Item heading, as in v5.
     The exhibits fill what the body leaves. No other exhibit is read: contracts (EX-1, EX-3, EX-4, EX-10) and everything else are never used."""
     url = f"{_base(cik, row['accession'])}/{row['accession']}.txt"
-    raw = fetch(url)
+    raw = _submission(fetch, url, row, notes, "other_8k")
+    if raw is None:
+        return []
     docs = _eight_k_docs(raw)
     its = _items_list(row["items"])
     parts = []                                                  # (label, canonical text)
@@ -1005,12 +1038,14 @@ def _commit_time(repo, commit_full):
     return datetime.fromisoformat(_git(repo, "show", "-s", "--format=%cI", commit_full).decode("ascii").strip())
 
 
-def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED, cik_arg=None, s0_row=None):
+def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED, cik_arg=None, s0_row=None, require_profile=True, release_cap=None):
     """The packet of an already-verified commit (regime `verified`; `verified` is the pinned verified row, pinned_row) or of a frame commit
     (regime `archival_sec_acceptance_v1`; `verified` is None and `cik_arg` the CIK argument, if any). `fetch` is an _Inputs. Pure given the
     store, the repository, the builder's code and the arguments."""
     if regime not in REGIMES:
         raise PacketRefused("regime_invalid", f"{regime!r} is not one of {', '.join(REGIMES)}")
+    flag_cut = release_cap is not None                  # NC10b: a caller-chosen cap (the cloud workers) also annotates a cut release
+    release_cap = RELEASE_CAP if release_cap is None else release_cap
     check_T_in_calendar(T)
     extra = {}
     if regime == REGIME_SEC_ONLY:
@@ -1025,7 +1060,7 @@ def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED,
         extra["cik_source"] = cik_source
     else:
         check_run_time(verified, T)
-        s0, sheader, cik = _screener(repo, commit_full, ticker)
+        s0, sheader, cik = _screener(repo, commit_full, ticker, require_profile)
         committed = _commit_time(repo, commit_full)
         if committed.astimezone(timezone.utc) > T:
             raise PacketRefused("screener_commit_after_T", f"{commit_full} is dated {committed.isoformat()}, after T {_z(T)}")
@@ -1066,7 +1101,7 @@ def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED,
                      f"before T")
         release = []
     elif release:
-        items += _release(cik, release[0], fetch, notes)
+        items += _release(cik, release[0], fetch, notes, release_cap, flag_cut)
     else:
         notes.append("no_eligible_filing: release (8-K Item 2.02 in the recent submissions)")
     since = T - timedelta(days=OTHER_8K_DAYS)
@@ -1080,7 +1115,7 @@ def _core(ticker, T, commit_full, repo, fetch, verified, regime=REGIME_VERIFIED,
         later = lambda r: r["form"] in SIX_K_FORMS and (r["accepted"] is None or r["accepted"] > after)
         interim = _pick(rows, lambda r: later(r) and _six_k_periodic(r), "six_k_interim", T, excluded, notes)
         if interim:
-            items += _six_k(cik, interim[0], fetch, notes, "six_k_interim", RELEASE_CAP)
+            items += _six_k(cik, interim[0], fetch, notes, "six_k_interim", release_cap, flag_cut)
         else:
             notes.append("no_eligible_filing: six_k_interim (a 6-K interim report after the 20-F/40-F annual report)")
         skip = {interim[0]["accession"]} if interim else set()
@@ -1105,7 +1140,7 @@ def _check_ticker(ticker):
 
 
 def build(ticker, T, screener_commit, *, online, verified_record=None, screener_repo_path=None, store_root=None, regime=REGIME_VERIFIED,
-          cik=None, s0_row=None):
+          cik=None, s0_row=None, require_profile=True, release_cap=None):
     """The packet dict of `ticker` at decision time T over the screener commit `screener_commit`. Regime `verified` (the default) needs
     `verified_record`, the check_new_runs record (a path to its JSON, or the loaded list of rows), and takes no `cik`. Regime
     `archival_sec_acceptance_v1` takes no `verified_record`, and `cik` only for a commit whose cik_map.json lacks the ticker. See the module
@@ -1120,7 +1155,7 @@ def build(ticker, T, screener_commit, *, online, verified_record=None, screener_
         if cik is None or s0_row is None:
             raise PacketRefused("argument_missing", f"regime {regime} needs the cik and the S0 row")
         fetch = _Inputs(lambda url: sec_store.get(url, online=online, root=store_root))
-        return _core(t, T, None, None, fetch, None, regime, cik, s0_row)
+        return _core(t, T, None, None, fetch, None, regime, cik, s0_row, release_cap=release_cap)
     if s0_row is not None:
         raise PacketRefused("argument_not_for_regime", f"an S0 row is used only by regime {REGIME_SEC_ONLY}")
     if regime == REGIME_ARCHIVAL and verified_record is not None:
@@ -1133,9 +1168,9 @@ def build(ticker, T, screener_commit, *, online, verified_record=None, screener_
     commit_full = _resolve_commit(repo, screener_commit)
     fetch = _Inputs(lambda url: sec_store.get(url, online=online, root=store_root))
     if regime == REGIME_ARCHIVAL:
-        return _core(t, T, commit_full, repo, fetch, None, regime, cik)
+        return _core(t, T, commit_full, repo, fetch, None, regime, cik, release_cap=release_cap)
     row = verified_row(verified_record, commit_full)
-    return _core(t, T, commit_full, repo, fetch, pinned_row(row))
+    return _core(t, T, commit_full, repo, fetch, pinned_row(row), require_profile=require_profile, release_cap=release_cap)
 
 
 def save(packet, root=None):
@@ -1174,12 +1209,16 @@ def main(argv=None):
                                             "checkout); default: the dedicated publish clone")
     ap.add_argument("--cik", help="the CIK, for an archival frame commit whose cik_map.json lacks the ticker")
     ap.add_argument("--online", action="store_true", help="fetch what the store lacks from SEC")
+    ap.add_argument("--release-cap", type=int, help="characters kept of the earnings release and the 6-K interim report (default: RELEASE_CAP; the "
+                    "cloud workers pass 60000); a release still cut is then annotated release_truncated")
+    ap.add_argument("--no-profile-ok", action="store_true", help="regime verified: build a name that is in stocks.json but has no factor "
+                    "profile (a request for one name); the header then carries factor_profile: false")
     a = ap.parse_args(argv)
     if a.regime == REGIME_VERIFIED and not a.verified_record:
         ap.error("--verified-record is required for --regime verified")
     T = datetime.now(timezone.utc).replace(microsecond=0) if a.T == "now" else a.T
     pk = build(a.ticker, T, a.commit, online=a.online, verified_record=a.verified_record, screener_repo_path=a.screener_repo,
-               regime=a.regime, cik=a.cik)
+               regime=a.regime, cik=a.cik, require_profile=not a.no_profile_ok, release_cap=a.release_cap)
     path = save(pk)
     print(json.dumps({"packet": str(path), "packet_sha256": packet_sha256(pk), "evidence": [e["fact_id"] for e in pk["evidence"]],
                       "annotations": pk["annotations"], "excluded": pk["excluded"]}, ensure_ascii=False, indent=1))

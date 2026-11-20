@@ -2,6 +2,7 @@
 
     python tools/site/gemini_ondemand.py [--arm gemini|opus] work [--max-names N] [--no-publish]   # one worker per arm, no GPU
     python tools/site/gemini_ondemand.py [--arm gemini|opus] build | publish | status | meter
+    python tools/site/gemini_ondemand.py check-filings      # NC10b: queue every name whose SEC list holds a filing newer than its report (run daily)
 
 A name is analysed exactly as qwen_ondemand analyses it (the same packet builder, reading run, family, valuation at seeds
 1000 and 3000, value of record and report), with one thing replaced in this process: the function that sends a request to
@@ -21,6 +22,12 @@ on its own account's meter. The opus arm leaves a small margin for the coordinat
 Requests come first: the site's Analyze button and Telegram /analyze write qwen_ondemand's queue (cache/site/queue.jsonl of
 the repository's main working tree); while the Qwen site worker is on hold these workers take them, oldest first, whatever
 the name's age (operator 2026-11-16: the analysis is the cloud models' job).
+
+Filings (WO_NC10 part B): every report records `based_on`, the newest periodic or interim filing in its packet and the packet's decision
+time. check_filings() reads SEC's submissions list of each name with a report (sec_store, online) and queues the name in
+filing_queue.jsonl (beside the operators' queue; qwen_ondemand's worker never reads it) when a 10-Q, 10-K, 20-F, 40-F, an interim 6-K
+(period of report ends packet.SIX_K_PERIODIC_DAYS or more before acceptance) or an 8-K with item 2.02 became effective after that decision
+time. next_name() order: operator requests, then these, then the list. The cloud arms build packets with a 60,000 character release cap.
 
 List: research_now then watchlist by rank, operator-excluded names left out, a name re-analysed when its newest Gemini
 analysis is older than REFRESH_DAYS (30: the backstop when nothing happened; operator 2026-11-16).
@@ -48,10 +55,15 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools" / "paper_books"))
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
+import decided_financial  # noqa: E402
+import decided_value  # noqa: E402
+import decided_real_estate  # noqa: E402                       # WO_NC9c: registers the real-estate variant of decided_value
 import qwen_ondemand as Q  # noqa: E402
 import qwen_site  # noqa: E402
-from qwen_c import runner  # noqa: E402
-from qwen_c.value import run as vrun  # noqa: E402
+import why_losses  # noqa: E402
+import interest_from_filing  # noqa: E402
+from qwen_c import packet as P, runner, sec_store  # noqa: E402
+from qwen_c.value import desk, run as vrun  # noqa: E402
 
 PY = sys.executable
 EFFORT = "high"                       # operator 2026-11-16: thinking effort is not negotiable
@@ -78,10 +90,23 @@ AGY_CWD = SITE / "agy_cwd"
 CLAIM_STALE_HOURS = 3
 SCHEMA = "gemini_c_site_v1"
 REFRESH_DAYS = 30
+CLOUD_RELEASE_CAP = 60_000                       # NC10b: characters of an earnings release or interim 6-K the cloud arms read (Qwen's packets keep P.RELEASE_CAP)
+FILING_QUEUE = "filing_queue.jsonl"
+FILING_CHECK_STATE = SITE / "filing_check.json"
+FILING_CHECK_MIN_HOURS = 2                       # the check before a name runs at most this often (each online read of a submissions list is a new store receipt)
 RETRY_REFUSED_HOURS = 24
 FLOORS = ARMS[ARM]["floors"]
 SITE_FILES = ("public/data/gemini_c_overlay.json", "public/data/gemini_c_reports")
 STATE = {"label": ""}
+VALUE_METHOD = os.environ.get("VALUE_METHOD", "menu")      # WO_NC7: "menu" (default) or "decided" (the read decides the valuation inputs; operating and commodity names)
+VALUE_METHODS = ("menu", "decided")
+
+
+def decided():
+    """True when this process values operating and commodity names by decided_value (VALUE_METHOD, or --value-method)."""
+    if VALUE_METHOD not in VALUE_METHODS:
+        raise ValueError(f"VALUE_METHOD {VALUE_METHOD!r} is not one of {VALUE_METHODS}")
+    return VALUE_METHOD == "decided"
 
 
 def agy_exe():
@@ -97,6 +122,35 @@ def set_arm(arm):
     ARM, GEM_MODEL, FLOORS = arm, ARMS[arm]["model"], ARMS[arm]["floors"]
     if arm != "gemini":
         LOCK, USAGE = SITE / f"worker_{arm}.lock", SITE / f"usage_{arm}.jsonl"
+    else:
+        LOCK, USAGE = SITE / "worker.lock", SITE / "usage.jsonl"
+
+
+FALLBACK = {"gemini": "sonnet"}     # operator 2026-11-19: a name the Gemini worker cannot take because Gemini's allowance is under its floor goes to
+#                                     Claude Sonnet (same messages, same checks; the report records the model). Sonnet under its own floor: wait, as before
+
+
+def quota_low():
+    """True when an allowance of the current arm is under its floor, or the meter cannot be read (never read as "there is room")."""
+    try:
+        m = meter()
+        return any(m[k][0] < FLOORS[k] for k in FLOORS)
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def choose_arm(home):
+    """Sets and returns the arm for the next name: `home`, or its FALLBACK when home's allowance is low and the fallback's is not."""
+    set_arm(home)
+    other = FALLBACK.get(home)
+    if other is None or not quota_low():
+        return home
+    set_arm(other)
+    if quota_low():
+        set_arm(home)                       # both low: wait on the home arm's reset, as before
+        return home
+    log(f"{home} allowance is under its floor: this name goes to {other}")
+    return other
 
 
 def log(msg):
@@ -245,7 +299,7 @@ def analyze(t, source):
     commit, record = Q.verified_commit()
     T = Q.now_z()
     r = subprocess.run([PY, "-m", "qwen_c.packet", "--ticker", t, "--T", T, "--commit", commit, "--verified-record", record,
-                        "--screener-repo", str(Q.book_paths.screener_repo()), "--online"], cwd=ROOT, capture_output=True, text=True,
+                        "--screener-repo", str(Q.book_paths.screener_repo()), "--online", "--no-profile-ok", "--release-cap", str(CLOUD_RELEASE_CAP)], cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
     pk = Q._json_tail(r.stdout)
     if r.returncode or not pk.get("packet"):
@@ -262,26 +316,93 @@ def analyze(t, source):
     fam = FV.name_family(cik, datetime.fromisoformat(T.replace("Z", "+00:00"))) if cik else {"family": None}
     n = {"packet": packet, "packet_sha256": pk.get("packet_sha256"), "cik": cik, "sector": row.get("sector"),
          "market_cap": row.get("marketCap"), "family": fam.get("family")}
+    if decided() and decided_real_estate.routes(fam):               # WO_NC9c: a real-estate name (not a mortgage REIT by the balance-sheet route) is valued by the decided method's real-estate variant
+        n["family"] = decided_real_estate.FAMILY
+    out_root = vrun.RUNS if ARM == "gemini" else ROOT / "cache" / f"m3q_{ARM}" / "runs"
+    why, why_reason = None, None                  # WO_NC5: why a thin profit record is thin, asked once, before the two seeds (a base with a statutory tax fallback only)
+    ifl, override = None, None                    # WO_NC8: the interest on borrowings from the filing text, asked once, only where the tagged interest gives a cost of debt outside the band
+    prep = lambda **k: vrun.prepare(pkj, str(cik), str(n["sector"]), float(n["market_cap"] or 0), online=True, family=str(n["family"]), **({"real_estate": True} if n["family"] == decided_real_estate.FAMILY else {}), **k)[:2]  # noqa: E731
+    try:
+        try:
+            f, b = prep()
+        except desk.DeskRefusal as e:
+            if e.code != "kd_out_of_band" or not getattr(e, "figures", None):
+                raise
+            STATE["label"] = f"{t}:interest_from_filing"
+            raw = out_root / f"{pkj['ticker']}_{runner.t_compact(pkj['decision_time_utc'])}_{runner.sha256_bytes(Path(packet).read_bytes())[:12]}_interest_from_filing"
+            ifl, override = interest_from_filing.ask(pkj, e.figures, raw)
+            log(f"{t} interest from the filing: {ifl['status']}")
+            if override is None:
+                raise
+            f, b = prep(interest_override=override)           # the band still applies to the new rate: outside it, this raises kd_out_of_band again
+            ifl["kd_used"] = b["interest_from_filing"]["kd_used"]
+        if b.get("tax_fallback"):
+            STATE["label"] = f"{t}:why_losses"
+            raw = out_root / f"{pkj['ticker']}_{runner.t_compact(pkj['decision_time_utc'])}_{runner.sha256_bytes(Path(packet).read_bytes())[:12]}_why_losses"
+            why, why_reason = why_losses.ask(pkj, f, raw)
+            log(f"{t} why losses: {why['cause']} {why_reason or 'valued'}")
+    except desk.DeskRefusal as e:                 # the seeds record the same refusal
+        if ifl and override is not None:
+            ifl["kd_used"] = (getattr(e, "figures", None) or {}).get("kd")
+    ov = {} if override is None else {"interest_override": override}      # WO_NC8: without it every call is exactly as before
     results = {}
-    for seed in Q.SEEDS:
+    use_decided = decided() and (n["family"] in decided_value.FAMILIES + decided_financial.FAMILIES or n["family"] in decided_value.VARIANTS)      # WO_NC7, WO_NC9b: every other family keeps the menu; WO_NC9c: real estate
+    an = decided_value.read_analysis(q1) if use_decided else None
+    for seed in (() if why_reason else Q.SEEDS):
         STATE["label"] = f"{t}:value{seed}"
-        res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed,
-                         out_root=vrun.RUNS if ARM == "gemini" else ROOT / "cache" / f"m3q_{ARM}" / "runs")
+        if use_decided:
+            res = (decided_financial if n["family"] in decided_financial.FAMILIES else decided_value).value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), analysis=an, seed=seed, out_root=out_root, **ov)
+        else:
+            res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed, out_root=out_root, **ov)
         results[str(seed)] = res
         log(f"{t} value seed {seed} {res.get('status')} {res.get('reason') or ''}")
-    rep = Q.report(t, source, T, q1, n, results, commit)
+    if why_reason:
+        results["loss_record"] = {"status": "no_call", "reason": why_reason}
+    rep = Q.report(t, source, T, q1, n, results, commit, **ov)
     rep["model"] = GEM_MODEL
+    rep["based_on"] = based_on(pkj)                                        # NC10b
+    rep["release_truncated"] = [a.split()[1] for a in pkj.get("annotations") or [] if a.startswith("release_truncated:")]
+    if source.startswith("new_filing:"):
+        rep["source"] = f"new filing ({source})"
+    if why:
+        rep["loss_record"] = why
+    if ifl:
+        rep["interest_from_filing"] = ifl
     _write_report(rep)
     return "ok"
 
 
 def refusal(t, source, T, why):
-    _write_report({"ticker": t, "date": T, "source": "screener list refresh" if source == "list" else f"on request ({source})",
+    _write_report({"ticker": t, "date": T, "source": "screener list refresh" if source == "list" else f"new filing ({source})" if source.startswith("new_filing:") else f"on request ({source})",
+                   "based_on": None, "release_truncated": [],
                    "model": GEM_MODEL, "analysis": "not run", "claims": None, "claims_supported": None, "in_code_book": False,
                    "qwen_book": None, "flags": [], "valued": False, "no_value_reason": why, "family": None, "tasks": {},
                    "valuation": None, "authority": "diagnostic: paper only, not investment advice"})
     log(f"{t} refused: {why}")
     return "refused"
+
+
+def _dt(z):
+    return datetime.fromisoformat(z.replace("Z", "+00:00"))
+
+
+def based_on(pk):
+    """NC10b: the newest periodic or interim filing in a packet (a 10-Q, 10-K, 20-F or 40-F item, or the six_k_interim item) by acceptance, as
+    {form, accession, period, accepted, accepted_utc, decision_time}; the filing fields are None when the packet holds none."""
+    best = None
+    for e in pk.get("evidence") or []:
+        if e.get("form") in P.PERIODIC_FORMS or e.get("kind") == "six_k_interim":
+            try:
+                acc = P.accepted_at(e.get("accepted_raw"))
+            except (ValueError, TypeError):
+                continue
+            if best is None or (acc, e["source"]["accession"]) > (best[0], best[1]["source"]["accession"]):
+                best = (acc, e)
+    out = {"form": None, "accession": None, "period": None, "accepted": None, "accepted_utc": None, "decision_time": pk["decision_time_utc"]}
+    if best:
+        acc, e = best
+        out.update(form=e["form"], accession=e["source"]["accession"], period=e.get("period"), accepted=e["accepted_raw"], accepted_utc=P._z(acc))
+    return out
 
 
 def _write_report(rep):
@@ -305,15 +426,37 @@ def alpha_pts(value, price, ke):
 def value_meta(rep):
     """(required return, {bear, base, bull: probability}) from the name's stored valuation result, or (None, None)."""
     stem = f"{rep['ticker']}_{runner.t_compact(rep['date'])}_"
-    for root in sorted((ROOT / "cache").glob("m3q*")):
-        for d in sorted((root / "runs").glob(stem + "*")):
-            f = d / "result.json"
-            if f.exists():
-                r = json.loads(f.read_text(encoding="utf-8"))
-                prob = (r.get("checks") or {}).get("prob")
-                if str(r.get("status", "")).startswith("ok") and r.get("cost_of_equity") is not None and prob:
-                    return r["cost_of_equity"], prob
+    dec = bool(rep.get("decided"))              # the runs of the report's own method first: a decided report beside an older menu run
+    dirs = [d for root in sorted((ROOT / "cache").glob("m3q*")) for d in sorted((root / "runs").glob(stem + "*"))]
+    for d in sorted(dirs, key=lambda d: ("_decided_" in d.name) != dec):
+        f = d / "result.json"
+        if f.exists():
+            r = json.loads(f.read_text(encoding="utf-8"))
+            prob = (r.get("checks") or {}).get("prob")
+            if str(r.get("status", "")).startswith("ok") and r.get("cost_of_equity") is not None and prob:
+                return r["cost_of_equity"], prob
     return None, None
+
+
+def pending_offer(rep):
+    """The read's supported claim that an acquisition of the company itself is announced and pending (its `material_events` task, event type
+    `acquisition_of_the_company`, status `announced_pending`), as {claim, date}, or None. Read from the name's stored read, as value_meta
+    reads the stored valuation. Operator 2026-11-19: a company under a signed offer trades at the offer, so a verdict on its standalone
+    value misleads; build() gives it no verdict and says why, and the value stays on the page."""
+    stem = f"{rep['ticker']}_{runner.t_compact(rep['date'])}_"
+    for root in sorted((ROOT / "cache").glob("m3m*")):
+        for d in sorted((root / "runs").glob(stem + "*_1")):
+            f = d / "analysis.json"
+            if f.exists():
+                claims = ((json.loads(f.read_text(encoding="utf-8")).get("tasks") or {}).get("material_events") or {}).get("claims") or []
+                for c in claims:
+                    if c.get("event_type") == "acquisition_of_the_company" and c.get("status") == "announced_pending" and c.get("support") == "supported":
+                        return {"claim": c.get("claim"), "date": c.get("occurred_on")}
+                return None
+    return None
+
+
+OFFER_REASON = "an offer to acquire the company is announced and pending: the price follows the offer's terms, not the company's standalone value"
 
 
 def verdict(row, ke, prob):
@@ -340,6 +483,17 @@ def verdict(row, ke, prob):
     return "BUY", why, a
 
 
+def verdict_differs_at_alt_tax_rate(row, ke, prob, v):
+    """WO_NC3: whether the same verdict() on the values at the second rate of a statutory tax fallback gives a label other than `v`
+    (the verdict at the filed rate); None when no second value was made. Annotation only: the label itself is unchanged."""
+    tr = row.get("tax_range") or {}
+    alt = tr.get("value_alt")
+    if not alt:
+        return None
+    return verdict(dict(row, value_bear=alt["bear"], value_base=alt["base"], value_bull=alt["bull"],
+                        value_per_filed_share=tr["value_per_filed_share_alt"], seed_base=tr["seed_base_alt"]), ke, prob)[0] != v
+
+
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 
 
@@ -360,6 +514,13 @@ def fill_state(have):
     return len(names), sum(t in have for t in names)
 
 
+def overlay_row(row):
+    """The overlay's row of a name: the row, with the decided method's detail (tens of kilobytes a name; the stock page reads it from the
+    per-name report) cut to the two fields that say the name was valued by it."""
+    d = row.get("decided")
+    return dict(row, decided={k: d.get(k) for k in ("method", "version")}) if d else row
+
+
 def build():
     rows = {}
     for p in sorted(ONDEMAND.glob("*.json")) if ONDEMAND.exists() else []:
@@ -371,8 +532,14 @@ def build():
     for row, rep in rows.values():
         ke, prob = value_meta(rep) if row.get("valued") else (None, None)
         v, why, a = verdict(row, ke, prob)
+        offer = pending_offer(rep)
+        if offer:                               # no verdict on a standalone value while the company is under offer; the value and alpha stay
+            v, why = "NO_CALL", OFFER_REASON + (f" (on the value alone: {v}, {why})" if a is not None else "")
         for d in (row, rep):
-            d.update(verdict=v, verdict_reason=why, alpha_pts=a, ke=ke)
+            d.update(verdict=v, verdict_reason=why, alpha_pts=a, ke=ke, pending_offer=offer)
+        if row.get("tax_range"):
+            for d in (row, rep):
+                d["verdict_differs_at_alt_tax_rate"] = verdict_differs_at_alt_tax_rate(row, ke, prob, v)
     if REPORTS.exists():
         shutil.rmtree(REPORTS)
     REPORTS.mkdir(parents=True)
@@ -390,7 +557,7 @@ def build():
                           "both runs. WATCH: above zero. AVOID: zero or less. NO_CALL: not valued.",
           "note": "Gemini reading of SEC filings in the place of the local model; values per share from code using Gemini's "
                   "choices, where both seeds agree. Paper only, not investment advice.",
-          "tickers": {t: r for t, (r, _) in sorted(rows.items())}}
+          "tickers": {t: overlay_row(r) for t, (r, _) in sorted(rows.items())}}
     OVERLAY.write_text(json.dumps(ov, indent=1, sort_keys=True), encoding="utf-8")
     print(f"built {len(rows)} names ({ov['valued_count']} valued) {counts}", flush=True)
     return ov
@@ -496,11 +663,18 @@ def queue_file():
 
 
 def next_name():
-    """(ticker, source, from_queue) claimed for this arm, or None: a queued request first (oldest first), then the next due list
-    name: gemini from the top of the list, any other arm from the bottom."""
+    """(ticker, source, from_queue) claimed for this arm, or None: a queued request first (oldest first; from_queue True), then a name with
+    a new filing (from_queue "filing", source its reason; an entry whose name was analysed since it was queued is dropped), then the next
+    due list name: gemini from the top of the list, any other arm from the bottom."""
     for q in Q._jsonl(queue_file()):
         if claim(q["ticker"]):
             return q["ticker"], q.get("source") or "web", True
+    for q in Q._jsonl(filing_queue_file()):
+        p = ONDEMAND / f"{q['ticker']}.json"
+        if p.exists() and _dt(decision_time(json.loads(p.read_text(encoding="utf-8")))) > _dt(q["queued_at"]):
+            drop_filing(q["ticker"])
+        elif claim(q["ticker"]):
+            return q["ticker"], q["reason"], "filing"
     cutoff = (datetime.now(timezone.utc) - timedelta(days=REFRESH_DAYS)).isoformat()
     seen = last_analysed()
     names = Q.list_names()
@@ -508,6 +682,105 @@ def next_name():
         if seen.get(t, "") < cutoff and claim(t):
             return t, "list", False
     return None
+
+
+def filing_queue_file():
+    """The filings' queue: beside the operators' queue and shared by the arms, in a file the Qwen worker never reads."""
+    return queue_file().with_name(FILING_QUEUE)
+
+
+def drop_filing(t):
+    f = filing_queue_file()
+    keep = [q for q in Q._jsonl(f) if q["ticker"] != t]
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text("".join(json.dumps(q) + "\n" for q in keep), encoding="utf-8")
+    os.replace(tmp, f)
+
+
+def decision_time(rep):
+    """When the filings a report read stopped: its packet's decision time (`based_on`), else the report's own date (older reports, refusals)."""
+    return (rep.get("based_on") or {}).get("decision_time") or rep["date"]
+
+
+def triggering_filing(subs, since, now):
+    """(form, accession) of the newest filing on a submissions list (bytes) that became effective after `since` and by `now` and re-values
+    the name, or None: a 10-Q, 10-K, 20-F or 40-F; a 6-K that is an interim report (P._six_k_periodic); an 8-K with item 2.02. Effective
+    is the packet's own rule (P.effective_at): a filing accepted before `since` but effective after it was left out of that packet. One
+    not yet effective at `now` cannot be in a packet yet and is taken at the check after it is."""
+    best = None
+    for r in P._filing_rows(json.loads(subs)):
+        if r["accepted"] is None or not since < r["effective"] <= now:
+            continue
+        f = r["form"]
+        if f in P.PERIODIC_FORMS or (f == "6-K" and P._six_k_periodic(r)) or (f == "8-K" and P._has_item_202(r["items"])):
+            if best is None or (r["effective"], r["accession"]) > (best["effective"], best["accession"]):
+                best = r
+    return None if best is None else (best["form"], best["accession"])
+
+
+def enqueue_filing(t, form, accession):
+    """Queues t for re-valuation (one entry per name, none where an operator request already waits); True when added."""
+    f = filing_queue_file()
+    if any(q["ticker"] == t for q in Q._jsonl(f) + Q._jsonl(queue_file())):
+        return False
+    f.parent.mkdir(parents=True, exist_ok=True)
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"ticker": t, "source": "new_filing", "reason": f"new_filing:{form}:{accession}", "queued_at": Q.now_z()}) + "\n")
+    return True
+
+
+def _ciks(names):
+    """{ticker: 10-digit CIK} from the screener's cik_map.json at the commit the packets use."""
+    commit, _ = Q.verified_commit()
+    blob = subprocess.run(["git", "-C", str(Q.book_paths.screener_repo()), "show", f"{commit}:{P.CIK_MAP_PATH}"], capture_output=True, check=True).stdout
+    return {t: P._map_cik(blob, t) for t in names}
+
+
+def check_filings(get=None, now=None, names=None, ciks=None):
+    """Reads the SEC submissions list of every list name that has a report (valued or refused) and queues each name with a filing newer
+    than its report (triggering_filing). `get(url)` defaults to sec_store online. Returns {checked, stale, queued, errors}; a name whose
+    list cannot be read is an error, logged, never a reason to stop."""
+    get = get or (lambda url: sec_store.get(url, online=True))
+    now = now or datetime.now(timezone.utc)
+    names = Q.list_names() if names is None else names
+    reps = {}
+    for p in ONDEMAND.glob("*.json") if ONDEMAND.exists() else []:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        reps[d["ticker"]] = d
+    names = [t for t in names if t in reps]
+    ciks = _ciks(names) if ciks is None else ciks
+    out = {"checked": 0, "stale": 0, "queued": [], "errors": []}
+    for t in names:
+        try:
+            if not ciks.get(t):
+                raise ValueError("no CIK in cik_map.json")
+            hit = triggering_filing(get(f"https://data.sec.gov/submissions/CIK{ciks[t]}.json"), _dt(decision_time(reps[t])), now)
+            out["checked"] += 1
+        except Exception as e:  # noqa: BLE001
+            out["errors"].append(t)
+            log(f"check-filings {t}: {type(e).__name__}: {str(e)[:120]}")
+            continue
+        if hit:
+            out["stale"] += 1
+            if enqueue_filing(t, *hit):
+                out["queued"].append(t)
+                log(f"check-filings {t}: queued, new_filing:{hit[0]}:{hit[1]}")
+    FILING_CHECK_STATE.parent.mkdir(parents=True, exist_ok=True)
+    FILING_CHECK_STATE.write_text(json.dumps({"at": Q.now_z(), **{k: out[k] for k in ("checked", "stale", "queued", "errors")}}), encoding="utf-8")
+    log(f"check-filings: {out['checked']} checked, {out['stale']} with a newer filing, {len(out['queued'])} newly queued, {len(out['errors'])} errors")
+    return out
+
+
+def maybe_check_filings():
+    """The check before a name, at most every FILING_CHECK_MIN_HOURS; a failure is logged and the worker goes on."""
+    try:
+        if FILING_CHECK_STATE.exists():
+            at = _dt(json.loads(FILING_CHECK_STATE.read_text(encoding="utf-8"))["at"])
+            if datetime.now(timezone.utc) - at < timedelta(hours=FILING_CHECK_MIN_HOURS):
+                return
+        check_filings()
+    except Exception as e:  # noqa: BLE001
+        log(f"check-filings failed: {type(e).__name__}: {str(e)[:160]}")
 
 
 def take_lock():
@@ -524,25 +797,31 @@ def take_lock():
 
 
 def work(max_names, do_publish):
+    decided()                                   # WO_NC7: an unknown VALUE_METHOD stops the worker before it claims a name
     if not take_lock():
         print("another worker holds the lock", flush=True)
         return 0
+    home, lock = ARM, LOCK                      # the scheduled arm and its lock (a name may go to the FALLBACK arm; the lock stays this one)
     try:
         swap()
         done = 0
         while max_names is None or done < max_names:
+            choose_arm(home)
+            maybe_check_filings()
+            before = wait_for_quota()       # before the name is claimed: a claim held through a long quota wait is taken over by another arm, and the name was then read twice (2026-11-18)
             nxt = next_name()
             if nxt is None:
                 log("nothing to analyse")
                 break
             t, source, queued = nxt
-            before = wait_for_quota()
             log(f"{t} start ({source}) | left: " + ", ".join(f"{k} {before[k][0]:.1%}" for k in FLOORS))
             try:
                 st = analyze(t, source)
             except Exception as e:  # noqa: BLE001  one name's failure is logged and the worker moves on
                 st = refusal(t, source, Q.now_z(), f"pipeline error: {type(e).__name__}: {str(e)[:160]}")
-            if queued:
+            if queued == "filing":
+                drop_filing(t)
+            elif queued:
                 Q.QUEUE = queue_file()
                 Q.pop(t)
             (CLAIMS / f"{t}.json").unlink(missing_ok=True)
@@ -555,27 +834,33 @@ def work(max_names, do_publish):
                     log(f"publish failed: {e}")
         return 0
     finally:
-        if LOCK.exists() and LOCK.read_text().strip() == str(os.getpid()):
-            LOCK.unlink()
+        if lock.exists() and lock.read_text().strip() == str(os.getpid()):
+            lock.unlink()
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", choices=sorted(ARMS), default="gemini")
+    ap.add_argument("--value-method", choices=VALUE_METHODS, help="WO_NC7: the valuation method (default: the VALUE_METHOD environment variable, else menu)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     wk = sub.add_parser("work")
     wk.add_argument("--max-names", type=int)
     wk.add_argument("--no-publish", action="store_true")
-    for c in ("build", "publish", "status", "meter"):
+    for c in ("build", "publish", "status", "meter", "check-filings"):
         sub.add_parser(c)
     a = ap.parse_args()
     set_arm(a.arm)
+    VALUE_METHOD = a.value_method or VALUE_METHOD
     if a.cmd == "work":
         sys.exit(work(a.max_names, not a.no_publish))
     elif a.cmd == "build":
         build()
     elif a.cmd == "publish":
         publish()
+    elif a.cmd == "check-filings":
+        r = check_filings()
+        print(json.dumps(r, indent=1))
+        sys.exit(1 if r["errors"] else 0)
     elif a.cmd == "meter":
         print(json.dumps(meter(), indent=1))
     else:

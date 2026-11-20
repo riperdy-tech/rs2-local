@@ -439,7 +439,7 @@ def _recompute(inp, v):
         nwc = inp["w"] * (rev[t] - rev[t - 1])
         reinvest = cx[t - 1] - da + nwc
         lease = (inp["p_ratio"] - inp["rou_ratio"]) * rev[t]
-        flow = x - reinvest + inp["delta"] * reinvest - lease + inp["tau"] * v["amort_path"][t - 1]
+        flow = x - reinvest + inp["delta"] * (nwc if inp.get("real_estate") and da > cx[t - 1] else reinvest) - lease + inp["tau"] * v["amort_path"][t - 1]   # real estate: depreciation above upkeep goes to equity whole (desk.py)
         if not same(flow, v["flows_all"][t - 1]):
             raise AssertionError(f"V1: the year-{t} levels flow {v['flows_all'][t - 1]} != {flow} recomputed")
     if not same(v["pv_levels"] + v["pv_flows"] + v["tv_pv"] + v["shield_after_n_pv"], v["equity_value"]):

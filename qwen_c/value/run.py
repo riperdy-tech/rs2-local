@@ -40,20 +40,23 @@ ROUTED = ("operating", "commodity")      # ruling 17: every other family not rou
 FINANCIAL = ("financial",)   # WO_Q6: the financial route (O3). mortgage_reit is not routed until a name is covered (CROSS_CHECK_Q3 7)
 
 
-def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow_after_T=False):
+def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow_after_T=False, interest_override=None, real_estate=False):
     """Everything code owns, before any model call: (facts, base, bar, record items, r, coe provenance, fiscal-year ends).
-    `family` is required (the census's), never defaulted. Raises DeskRefusal."""
-    if family not in ROUTED + FINANCIAL:
+    `family` is required (the census's), never defaulted. Raises DeskRefusal. `interest_override` (WO_NC8): inputs.base's, the operating route only.
+    `real_estate` (WO_NC9c, the decided method's real-estate family): family "real_estate" is prepared on the operating route with inputs.base(real_estate=True);
+    without the flag that family is refused as every unrouted family is, and the flag with any other family is refused."""
+    if real_estate != (family == "real_estate") or (family not in ROUTED + FINANCIAL and not real_estate):
         raise desk.DeskRefusal("family_not_routed", f"family {family!r}: only {ROUTED + FINANCIAL} are valued by this runner")
     T = runner._parse_t(packet["decision_time_utc"])
-    f = facts.build(cik, T, online=online, root=root)
+    f = facts.build(cik, T, online=online, root=root, substitute_revenue=family not in FINANCIAL,
+                    substitute_items=family not in FINANCIAL)     # WO_NC1, WO_NC2: the operating route only
     if family in FINANCIAL:
         return _prepare_financial(f, T, sector, allow_after_T)
     fy0 = max(v["end"] for v in (f.get("revenue") or {}).get("values", [])) if f.get("revenue") else None
     if fy0 is None:
         raise desk.DeskRefusal("history_short", "no filed revenue")
     bill, bill_src = rs2_data.bill_rate_mean(str(date.fromisoformat(fy0) - timedelta(days=365)), fy0)
-    b = inputs.base(f, market_cap=market_cap, bill_rate=bill)
+    b = inputs.base(f, market_cap=market_cap, bill_rate=bill, interest_override=interest_override, **({"real_estate": True} if real_estate else {}))
     b["bill_source"] = bill_src
     b["stub_days"] = (T.date() - date.fromisoformat(b["fy0"])).days      # ruling 7: rolled forward from the fiscal-year end to T
     if b["stub_days"] > MAX_STUB_DAYS:                                    # CROSS_CHECK_Q2 N12: refused before any model call
@@ -66,6 +69,31 @@ def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow
     b["g_anchor"] = prov["g_anchor"]                                      # N7: the long-run growth anchor the checks annotate against
     fy_ends = [v["end"] for v in f["revenue"]["values"]]
     return f, b, bar, record, r, prov, fy_ends
+
+
+def alt_tax_base(f, b, market_cap):
+    """WO_NC3: the base of a statutory tax fallback taken at its second rate (b["tax_fallback"]["rate_alt"]): the same facts, market value and
+    bill rate, tau replaced, and the fields prepare() adds to b carried over."""
+    a = inputs.base(f, market_cap=market_cap, bill_rate=b["bill_rate"], tau_override=b["tax_fallback"]["rate_alt"],
+                    interest_override=(b.get("interest_from_filing") or {}).get("value"))      # WO_NC8: the same interest at the second rate
+    a.update({k: b[k] for k in ("bill_source", "stub_days", "g_anchor")})
+    return a
+
+
+def _tax_range(f, b, market_cap, reply, ids, bar, r, fy_ends, values):
+    """WO_NC3: the same checked reply valued at the second rate of a statutory tax fallback. The first result is never touched: a refusal or an
+    error here leaves values_alt None with status_alt saying why."""
+    tr = {"rate": b["tax_fallback"]["rate"], "rate_alt": b["tax_fallback"]["rate_alt"], "values": values, "values_alt": None, "status_alt": None}
+    if reply is None:
+        return dict(tr, status_alt="no_checked_attempt")
+    try:
+        res = checks.check(reply, ids, alt_tax_base(f, b, market_cap), bar, r, fy_ends, route="operating")
+    except desk.DeskRefusal as e:
+        return dict(tr, status_alt=f"no_call: {e.code}: {e}")
+    except AssertionError as e:                                       # N11: an engine defect is recorded, never a crash
+        return dict(tr, status_alt=f"engine_defect: {e}")
+    detail = f": {res.get('reason')}: {res.get('detail')}" if res["status"] == "no_call" else ""
+    return dict(tr, values_alt=res["values"] if str(res["status"]).startswith("ok") else None, status_alt=f"{res['status']}{detail}")
 
 
 def _prepare_financial(f, T, sector, allow_after_T):
@@ -106,7 +134,7 @@ def _one_call(msgs, seed, opts, url):
 
 
 def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner.SEED_BASE, online=True, root=None, out_root=RUNS,
-          allow_after_T=False, opts=None, temperature=None):
+          allow_after_T=False, opts=None, temperature=None, interest_override=None):
     packet, src = runner.load_packet(packet_path)
     opts = dict(opts or {"num_ctx": runner.NUM_CTX, "num_predict": NUM_PREDICT, "think": THINK})
     if temperature is not None:                                       # the decoding check (2026-11-10): overrides the Modelfile's 0.6
@@ -129,7 +157,7 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
         if any(e.get("kind") == "news" for e in packet.get("evidence") or []):          # 2026-11-11 (WO_HM2b, SPEC_holdings_monitor_v2 s4): filings only
             raise desk.DeskRefusal("news_items_not_valued", "the packet holds news items; the valuation reads filings only")
         f, b, bar, record, r, prov, fy_ends = prepare(packet, cik, sector, market_cap, online=online, root=root,
-                                                      allow_after_T=allow_after_T, family=family)
+                                                      allow_after_T=allow_after_T, family=family, interest_override=interest_override)
     except desk.DeskRefusal as e:
         result.update(status="no_call", reason=e.code, detail=str(e))
         return _write(run_dir, result)
@@ -175,6 +203,8 @@ def value(packet_path, cik, sector, market_cap, *, family, url=None, seed=runner
                       checked_attempt=checked[-1]["attempt"])
         if result["status"] == "no_call":                                 # the desk refused the Base (a data refusal)
             result.update(reason=result["checks"].get("reason"), detail=result["checks"].get("detail"))
+    if b.get("tax_fallback"):                                         # WO_NC3: the value at the second rate rides beside the first, which is unchanged
+        result["tax_range"] = _tax_range(f, b, market_cap, checked[-1]["inputs"] if checked else None, ids, bar, r, fy_ends, result.get("values"))
     return _write(run_dir, result)
 
 

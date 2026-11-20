@@ -15,16 +15,20 @@ amortization permanent (found by the v1.3 production-path test, D_acquirer +12%)
 bill rate the cash is NOT added and the interest stays in the base (stamped): never both.
 """
 import statistics
+from datetime import date, timedelta
 
 from qwen_c.value import desk
 from qwen_c.value.desk import DeskRefusal
-from qwen_c.value.facts import DA_EXCLUDES_AMORTIZATION, PRETAX_FROM_NI, has_stamp
+from qwen_c.value.facts import (DA_EXCLUDES_AMORTIZATION, ITEM_SUBSTITUTES, PRETAX_DERIVED, PRETAX_FROM_NI, SUBSTITUTE_PREFIX, SUBSTITUTE_SCOPE_PREFIX,
+                                  has_stamp, taxonomy_of)
+from qwen_c.value.ix_figures import SHARES_STAMP, STAMP as IX_STAMP
 
-INPUTS_VERSION = "m3q.inputs.v11"   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
+INPUTS_VERSION = "m3q.inputs.v21"   # v21 2026-11-19 a filed finance-lease liability is the debt wherever no debt tag resolves, also where cash would cover any debt the interest allows (it was taken as no debt: 0); where no short-term investment tag is filed, the available-for-sale debt securities maturing within one year (fair value, at most the filed total) are the short-term investments of the base and opening years (stamped st_investments_from_afs_debt_maturing_within_one_year); a name with a short-term investment tag, or with no such maturity figure for the base year, is unchanged   # v20 2026-11-19 finance-lease liabilities are the debt where no debt tag resolves and the base would be refused (the filed total, or the present value of the filed payments; parts reconciled; stamped debt_from_finance_lease_liability); names that passed before are unchanged   # v19 2026-11-19 WO_UV5: where the IFRS finance-cost bundle gives a cost of debt outside the band, ifrs-full:InterestExpense of the same year is used if it gives one inside the band (stamped interest_ifrs_expense_for_finance_costs, base["interest_ifrs_expense"]); a pooled capex or D&A series read from the filing holds the filing's years only (an assertion refusal ix_series_mixed replaces the old flag; history_short names the filing's columns); names that passed before are unchanged   # v18 2026-11-19 WO_UV3: diluted shares from class-of-stock members (proven against the member EPS by check_shares, no rescaling) where no other count resolves; every ix_read stamp of a figure the base uses reaches base["stamps"]; names that passed before are unchanged   # v17 2026-11-19 WO_UV2: senior-notes debt tags where no debt tag resolves (parts reconciled), cash interest also supplies the base year's interest where operating income is derived, an unclassified balance sheet gives working capital 0 for every family (flag working_capital_unclassified_balance_sheet), partnership units with per-unit EPS as the diluted count, a filed 0.0 preferred balance is a value and preferred dividends are taken as 0 where EPS x shares reconciles (financial route), derived-pretax and redeemable-NCI flags; names that passed before are unchanged   # v16 2026-11-19 WO_NC9c: base() takes real_estate (the decided method's real-estate family: an unclassified balance sheet gives working capital 0, a stale operating-income tag gives pretax plus interest, each stamped; False is byte-identical)   # v15 2026-11-18 WO_NC8: base() takes interest_override (the interest on borrowings stated from the filing text) where the tagged figure gives a cost of debt outside the band; stamped interest_from_filing_text, base["interest_from_filing"], the lease and financing-interest additions are not made for it, a kd_out_of_band refusal carries .figures   # v14 2026-11-18 WO_NC3: tax_rate's last rung is the statutory rate the company files for the base year (stamped tax_rate_statutory_fallback), base() carries it with a second rate (tax_fallback) and takes tau_override for the value at that rate   # v13 2026-11-18 WO_NC2: base["stamps"] also carry the substitute labels and scope stamps of equity, capex, D&A, current items and pretax income   # v12 2026-11-17 WO_NC1: labelled substitutes (period-end share count, cash interest paid) only where the exact figure is absent; base["substitutes"] only when one is used   # v11 2026-11-07 coverage A: check_shares accepts a diluted share count filed in thousands where the rescaled count reconciles with filed diluted EPS   # v10 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): base["ytd"], the facts' year-to-date pair of year 1 (menu option ytd)   # v9 2026-11-03 F_SPEC_valuation_menu F6: tau = 0 where no income tax is filed; IFRS 16 lease liabilities in debt where lease interest is in the interest; kd with the financing interest outside nonoperating interest   # v8 2026-11-03 F_SPEC_valuation_menu §2.1, §6: record.rev_growth; stamps for zero and outside-band tax, kd unused at delta 0, OI from pretax plus interest, ADS share scale   # v7 2026-10-31 CROSS_CHECK_Q3 5/6 and Q3b N4/N5/N8: the financial base's data rules, common equity   # v6 2026-10-30 WO_Q6: base_financial record book_growth_max; v5 2026-10-30 B12b bounds: delta cap, negative equity at the cap, interest-only K_0 scaling   # v4 2026-10-30 B12: K_0 scales with revenue, delta at the book ratio   # v3 2026-10-30 CROSS_CHECK_Q2: net-debt delta, NCI bounds, vintages bounds, stamps
 POOL_YEARS = 5
 MIN_POOL_YEARS = 3
 TAX_BAND = (0.0, 0.35)
 PERSISTENT_SPREAD = 0.05
+STATUTORY_UPLIFT = 0.055       # WO_NC3: the upper quartile of (measured rate - filed statutory rate) on 28 stored US filers, 2026-11-18: the second rate of a statutory fallback
 TAX_DEPART = 0.05            # ruling 9: the latest in-band rate is used only within 5 points of the in-band median
 KD_BAND = (0.01, 0.20)       # ruling 5 (the audited coverage rule)
 SHARES_TOL = 0.05            # ruling 5: NI / diluted shares against filed diluted EPS
@@ -36,6 +40,7 @@ VINTAGE_RATIO_TOL = 0.5
 DELTA_CAP = 0.75             # B12b (OPINION_B12b_fable.md): the book delta's ceiling
 ZERO_TAX_TOL = 0.02          # F_SPEC §6 tax (a): net income within 2% of pretax income less NCI
 NEAR_ZERO_TAX = 0.01         # F_SPEC v1.2: a measured median within 1 point of 0 is a zero rate, stamped
+COVER_WINDOW_DAYS = 120      # WO_NC1: a cover-page share count counts for a year end only when dated within 120 days after it
 DEBT_TOTAL_EXCLUDES_SHORT = {"LongTermDebt", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"}
 CURRENT_INCLUDES_SHORT = {"DebtCurrent", "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings"}
 DEBT_INCLUDES_LEASES = {"DebtAndCapitalLeaseObligations", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"}
@@ -45,30 +50,146 @@ def _by_end(f, concept):
     return {v["end"]: v["value"] for v in (f.get(concept) or {}).get("values", [])}
 
 
-def check_shares(f, e0, numer, shares, stamps, what):
+def check_shares(f, e0, numer, shares, stamps, what, strict=False, eps=None):
     """Ruling 5 / N15: the per-share scale of the filed diluted shares, proven against filed diluted EPS. Returns the shares to use.
     Coverage A 2026-11-07: a count filed in thousands (the XBRL scale slip measured on SWBI) is rescaled when the count times 1e3
     reconciles, stamped. Nothing else is accepted (a 1e6 slip is not measured on any filer, so it stays refused). Not accepted, measured 11-07: reconciling on the filed diluted numerator (an
     if-converted convertible would then count as shares and as debt, CHEF), and preferred dividends without a filed preferred balance
     (State Street files its preferred in equity untagged after 2013): both stay refused."""
-    eps = _by_end(f, "eps_diluted").get(e0)
+    eps = _by_end(f, "eps_diluted").get(e0) if eps is None else eps          # WO_UV2: the per-unit EPS of a partnership is passed in
     if not eps:
         stamps.append("shares_unreconciled_no_eps")
         return shares
-    ok = lambda x: abs(x / eps - 1) <= SHARES_TOL or abs(x - eps) <= EPS_ROUNDING    # N15: EPS is filed to the cent
+    ok = lambda x: _eps_ok(x, eps)
     for k in (1.0, 1e3):
         if ok(numer / (shares * k)):
             if k != 1.0:
                 stamps.append(f"shares_filed_scale_x{k:.0e}_eps_reconciled")
             return shares * k
-    if "per_share_basis_unverified" not in stamps:                        # F_SPEC §6: a 20-F/40-F filer (an ADS ratio) is valued
+    if strict or "per_share_basis_unverified" not in stamps:              # strict (WO_NC1, a substitute count): the ADS allowance does not apply; F_SPEC §6: a 20-F/40-F filer (an ADS ratio) is valued
         raise DeskRefusal("shares_scale_unverified", f"{what} / diluted shares {numer / shares:.6g} against filed diluted EPS {eps:.6g}")
     stamps.append("shares_scale_unverified_ads")
     return shares
 
 
+def _eps_ok(x, eps):
+    """N15: net income per share `x` against filed diluted EPS `eps`: within SHARES_TOL, or within EPS_ROUNDING (EPS is filed to the cent)."""
+    return abs(x / eps - 1) <= SHARES_TOL or abs(x - eps) <= EPS_ROUNDING
+
+
+def _verified_shares(f, e0, numer, substitutes, stamps, what):
+    """(shares, substituted) for `numer` at the base year `e0`, proven against filed diluted EPS (check_shares). WO_UV2: where no diluted
+    weighted-average count is filed but the partnership's diluted unit count and its per-unit diluted EPS are, the units are the count, and
+    they are proven against that per-unit EPS; units that do not reconcile are not used (shares_unavailable, as before). Otherwise as before."""
+    lp, lp_eps = _by_end(f, "lp_units_diluted").get(e0), _by_end(f, "eps_lp_diluted").get(e0)
+    if e0 not in _by_end(f, "diluted_shares") and lp is not None and lp > 0 and lp_eps:
+        try:
+            n = check_shares(f, e0, numer, lp, [], what, strict=True, eps=lp_eps)
+        except DeskRefusal as e:
+            if e.code != "shares_scale_unverified":
+                raise
+            raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}; the diluted partnership units are filed but do not reconcile with the filed per-unit EPS ({e})")
+        stamps.append("shares_from_partnership_units_reconciled_with_per_unit_eps")
+        return n, False
+    try:
+        shares, sub = _shares_or_substitute(f, e0, substitutes)
+    except DeskRefusal as e:
+        if e.code != "shares_unavailable":
+            raise
+        got = _ix_shares(f, e0, numer, stamps, what)                      # WO_UV3: only where the base would be refused for the count
+        if got is None:
+            raise
+        return got, False
+    return check_shares(f, e0, numer, shares, stamps, what, strict=sub), sub
+
+
+def _ix_shares(f, e0, numer, stamps, what):
+    """WO_UV3: the diluted count of the fiscal year `e0` from the class-of-stock members of the newest annual filing's inline XBRL (ix_figures.
+    share_candidates), or None. Each candidate (one member, or the sum of members that file one EPS) is proven against ITS OWN filed diluted EPS
+    with check_shares, strict, and is used only at the scale the tag states (a count that only reconciles after check_shares' thousands
+    rescale is not used). Exactly one count may reconcile: none, or two different ones, and nothing is read."""
+    ix = f.get("_ix_shares")
+    if not ix or ix["end"] != e0:
+        return None
+    ok = {}
+    for c in ix["candidates"]:
+        try:
+            n = check_shares(f, e0, numer, c["shares"], [], what, strict=True, eps=c["eps"])
+        except DeskRefusal:
+            continue
+        if n == c["shares"]:
+            ok[n] = c
+    if len(ok) != 1:
+        return None
+    n, c = next(iter(ok.items()))
+    stamps.append(f"{SHARES_STAMP}:{ix['accession']}:{'+'.join(m.split(':')[-1] for m in c['members'])}")
+    stamps.append("shares_reconciled_with_class_eps")
+    return n
+
+
+def _eps_reconciles(f, e, numer):
+    """WO_UV2: whether `numer` / the filed diluted shares of year `e` matches that year's filed diluted EPS (check_shares' reconciliation, counts in
+    thousands included); False where either is not filed."""
+    eps, shares = _by_end(f, "eps_diluted").get(e), _by_end(f, "diluted_shares").get(e)
+    return bool(eps) and shares is not None and shares > 0 and any(_eps_ok(numer / (shares * k), eps) for k in (1.0, 1e3))
+
+
+def shares_substitute(f, e0):
+    """WO_NC1: (count, taxonomy, tag) of the period-end share count to stand in for an absent diluted weighted-average count for the base
+    year `e0`, or None: the count filed for that year end (us-gaap CommonStockSharesOutstanding, ifrs-full NumberOfSharesOutstanding, in that
+    order, as facts lists them), else the cover-page count (dei) dated within COVER_WINDOW_DAYS after the year end (the earliest such date)."""
+    pe = _by_end(f, "shares_period_end").get(e0)             # facts takes the highest-priority tag per year end
+    if pe is not None and pe > 0:
+        return pe, taxonomy_of("shares_period_end", _tag(f, "shares_period_end", e0)), _tag(f, "shares_period_end", e0)
+    lo, hi = date.fromisoformat(e0), date.fromisoformat(e0) + timedelta(days=COVER_WINDOW_DAYS)
+    cover = sorted((v["end"], v["value"], v["tag"]) for v in (f.get("shares_cover") or {}).get("values", [])
+                   if v["value"] > 0 and lo < date.fromisoformat(v["end"]) <= hi)
+    return (cover[0][1], taxonomy_of("shares_cover", cover[0][2]), cover[0][2]) if cover else None
+
+
+def interest_substitute(f, e0):
+    """WO_NC1: (expense, taxonomy, tag) to stand in for a gross interest expense not filed for the base year `e0`, or None: cash interest
+    paid, when positive. A net interest line is NOT taken (coordinator's audit 2026-11-17): it nets interest income, which the base
+    already removes at the bill rate, and no name of the measured corpus needed it."""
+    for v in (f.get("interest_paid") or {}).get("values", []):
+        if v["end"] == e0 and v["value"] > 0:
+            return v["value"], taxonomy_of("interest_paid", v["tag"]), v["tag"]
+    return None
+
+
+def _label(concept, tax, tag):
+    return f"{SUBSTITUTE_PREFIX}{concept}:{tax}:{tag}"
+
+
+def _shares_or_substitute(f, e0, substitutes):
+    """(shares, substituted): the filed diluted weighted-average count for `e0`; where none is filed (None, not 0) a period-end count
+    (WO_NC1), appended to `substitutes` and then reconciled strictly with filed diluted EPS, which a substitute needs: without a filed
+    diluted EPS for the year it stays refused. Else shares_unavailable as before."""
+    shares = _by_end(f, "diluted_shares").get(e0)
+    if shares is None:
+        sub = shares_substitute(f, e0)
+        if sub is None:
+            raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
+        if _by_end(f, "eps_diluted").get(e0) is None:
+            raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}; a period-end count ({sub[2]}) is filed but no diluted EPS to reconcile it")
+        substitutes.append(_label("diluted_shares", sub[1], sub[2]))
+        return sub[0], True
+    if not shares > 0:
+        raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
+    return shares, False
+
+
 def _tag(f, concept, end):
     return next((v["tag"] for v in (f.get(concept) or {}).get("values", []) if v["end"] == end), None)
+
+
+def statutory_rate(f, e0):
+    """WO_NC3: (rate, "<taxonomy>:<tag>") of the statutory tax rate the company files for the fiscal year end `e0` in its own rate
+    reconciliation, when it lies in TAX_BAND; else None. A filed 0.0 is a rate."""
+    for v in (f.get("statutory_tax_rate") or {}).get("values", []):
+        if v["end"] == e0 and TAX_BAND[0] <= v["value"] <= TAX_BAND[1]:
+            return v["value"], f"{taxonomy_of('statutory_tax_rate', v['tag'])}:{v['tag']}"
+    return None
 
 
 def tax_rate(f, e0=None):
@@ -77,7 +198,8 @@ def tax_rate(f, e0=None):
     rate (>= 3 measured years, all >= 0, within 5 points): their median. F6: else, with no income-tax fact filed at all (the base year's
     pretax income derived by facts._derive), a zero rate. F_SPEC §6: else, with no provision filed for the base year `e0`
     and its filed net income within 2% of pretax income less NCI, a zero rate; else, with >= 3 measured years, zero when their median
-    is within 1 point of 0 (v1.2), else their UNCLAMPED median when it lies in [0, 1); else refused. Never a clamped default."""
+    is within 1 point of 0 (v1.2), else their UNCLAMPED median when it lies in [0, 1); else (WO_NC3) the statutory rate the company files for
+    `e0` when it lies in the band, stamped tax_rate_statutory_fallback (the last rung: every rung above comes first); else refused."""
     tax, pre = _by_end(f, "tax_provision"), _by_end(f, "pretax_income")
     years = sorted(set(tax) & set(pre))
     rates = [(e, tax[e] / pre[e]) for e in years if pre[e] > 0][-8:]
@@ -103,7 +225,10 @@ def tax_rate(f, e0=None):
         return 0.0, "tax_rate_median_near_zero"
     if len(recent) >= 3 and 0 <= statistics.median(recent) < 1:
         return statistics.median(recent), "tax_rate_median_outside_band"
-    raise DeskRefusal("tax_unavailable", f"no usable measured tax rate (latest {rates[-1][1] if rates else None}); never a stamped default")
+    sr = statutory_rate(f, e0)
+    if sr is not None:
+        return sr[0], "tax_rate_statutory_fallback"
+    raise DeskRefusal("tax_unavailable", f"no usable measured tax rate (latest {rates[-1][1] if rates else None}); no statutory rate in the band is filed for {e0}")
 
 
 def debt_total(f, end):
@@ -122,9 +247,70 @@ def debt_total(f, end):
     return parts, "components"
 
 
-def base(f, *, market_cap, bill_rate):
+def _rounding_unit(values):
+    """The largest power of ten that divides every non-zero figure: the precision the filing printed them at (1 when none is rounded)."""
+    ints, unit = [abs(int(round(v))) for v in values if v], 1
+    while ints and all(i % (unit * 10) == 0 for i in ints):
+        unit *= 10
+    return unit
+
+
+def senior_debt(f, end):
+    """WO_UV2: (debt at `end`, how) from the senior-notes tags, or (None, None). SeniorNotes is the total; SeniorLongTermNotes is its non-current part
+    and SeniorNotesCurrent its current part (a current part not filed is none). The total is used only when it is filed beside its non-current
+    part and the parts sum to it within the rounding of the filed figures (each printed figure is off by at most half the unit it is printed in,
+    so the sum of n figures by at most n/2 units); otherwise nothing is read. A long-term line of credit, filed apart from the notes, is added."""
+    tot, nc, cur = (_by_end(f, k).get(end) for k in ("debt_senior_total", "debt_senior_noncurrent", "debt_senior_current"))
+    if tot is None or nc is None:
+        return None, None
+    figures = [tot, nc] + ([cur] if cur is not None else [])
+    if abs(nc + (cur if cur is not None else 0.0) - tot) > len(figures) / 2 * _rounding_unit(figures):
+        return None, None
+    loc = _by_end(f, "line_of_credit_noncurrent").get(end)
+    return tot + (loc if loc is not None else 0.0), "SeniorNotes" + ("+LongTermLineOfCredit" if loc is not None else "")
+
+
+def finance_lease_debt(f, end):
+    """(finance-lease liability at `end`, how) or (None, None): the debt of a company whose only borrowing is finance leases. The filed total
+    (FinanceLeaseLiability) is used; where it is not filed, the present value the lease maturity table states (the payments due less the
+    undiscounted excess, both filed). Either figure is refused where a filed part contradicts it: the current and non-current parts, when both
+    are filed, must sum to it within the rounding of the filed figures (as senior_debt), and a non-current part alone must not exceed it."""
+    tot, nc, cur, due, exc = (_by_end(f, k).get(end) for k in ("finance_lease_total", "finance_lease_noncurrent", "finance_lease_current",
+                                                               "finance_lease_payments_due", "finance_lease_undiscounted_excess"))
+    how = "FinanceLeaseLiability"
+    if tot is None and due is not None and exc is not None:
+        tot, how = due - exc, "FinanceLeaseLiabilityPaymentsDue-UndiscountedExcessAmount"
+    if tot is None:
+        return (nc + cur, "FinanceLeaseLiabilityNoncurrent+Current") if nc is not None and cur is not None else (None, None)
+    figures = [v for v in (tot, nc, cur, due, exc) if v is not None]
+    slack = len(figures) / 2 * _rounding_unit(figures)
+    if nc is not None and cur is not None and abs(nc + cur - tot) > slack:
+        return None, None
+    if nc is not None and nc > tot + slack:
+        return None, None
+    return tot, how
+
+
+def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None, real_estate=False, interest_swap=None):
     """The measured base for value_operating. `market_cap` (USD, from the formation's price row) sets delta at market weights (O5);
-    `bill_rate` (a fraction, or None) is the 3-month bill rate over the base fiscal year (the cash term)."""
+    `bill_rate` (a fraction, or None) is the 3-month bill rate over the base fiscal year (the cash term). `tau_override` (WO_NC3):
+    replaces the rate tax_rate returns in the base, RONIC and the NCI term, nothing else (the value at a statutory fallback's second rate).
+    `interest_override` (WO_NC8, a number in the filing's currency): replaces the tagged interest expense of the base year where it is read, in the
+    cost of debt, the interest scaled with revenue (k0_interest) and the interest added back in RONIC; the IFRS 16 lease and financing-interest
+    additions are not made (the figure is the interest on borrowings alone). The band still applies. None: byte-identical to before.
+    `real_estate` (WO_NC9c, the decided method's real-estate family only; False: byte-identical to before): two data rules that real-estate balance
+    sheets and income statements fail structurally are replaced, each stamped. (1) No current assets and no current liabilities filed for the base
+    year (an unclassified balance sheet): working capital is 0 (`nwc_not_classified_taken_as_0`); one of the two filed still refuses. (2) The
+    operating-income tag is stale: operating income is pretax income plus interest expense for every year, as when the tag is never filed
+    (`oi_from_pretax_plus_interest`, `operating_income_tag_stale_not_used`). Nothing else is relaxed.
+    WO_UV2, every family: an unclassified balance sheet (no current assets and no current liabilities for the base year) gives working capital 0 also
+    where total assets and total liabilities are filed for that year (`working_capital_unclassified_balance_sheet`); where operating income is derived
+    and the base year has no gross interest expense, cash interest paid supplies it (as the labelled substitute below does); where no debt tag resolves
+    and the filed interest would exceed cash even at the band's lowest rate, the senior-notes tags are read for both years (senior_debt).
+    WO_UV5, every family: where the interest read is the IFRS finance-cost bundle (ifrs-full:FinanceCosts) and the cost of debt it gives is outside the band,
+    ifrs-full:InterestExpense of the same year is tried: base calls itself with that figure as the interest (`interest_swap` names the refused and the
+    used tag; the lease and financing-interest additions are not made, as for any other stated interest) and returns that base if it passes the band,
+    stamped. No tolerance against cash interest. If it is also outside, the first refusal stands (and says so)."""
     rev = _by_end(f, "revenue")
     ends = sorted(rev)[-POOL_YEARS:]
     if len(ends) < MIN_POOL_YEARS:
@@ -133,28 +319,55 @@ def base(f, *, market_cap, bill_rate):
     if any(not rev[e] > 0 for e in ends):
         raise DeskRefusal("revenue_not_positive", f"a pooled year has revenue <= 0: {[(e, rev[e]) for e in ends if not rev[e] > 0]}")
     stale = {c: d for c, d in (f.get("_stale") or {}).items() if c in ("net_income", "capex", "da", "revenue", "pretax_income", "operating_income")}
+    oi_stale = real_estate and stale.pop("operating_income", None) is not None      # WO_NC9c: a stale operating-income tag is replaced below, not refused
     if stale:
         raise DeskRefusal("facts_stale", f"concepts end before the latest revenue year {e0}: {stale}")
     if f.get("_latest_annual_period") and f["_latest_annual_period"] > e0:
         raise DeskRefusal("base_year_not_latest_annual", f"the newest eligible annual report is for {f['_latest_annual_period']}, the facts end {e0}")
-    stamps = ["rou_depreciation_not_separated", "leases_not_modeled"]
+    marks = {x for c in ("revenue", *ITEM_SUBSTITUTES) for v in (f.get(c) or {}).get("values", []) for x in (v.get("stamp") or "").split(";")}
+    stamps = ["rou_depreciation_not_separated", "leases_not_modeled"] + sorted(x for x in marks if x.startswith(SUBSTITUTE_SCOPE_PREFIX))     # WO_NC2
+    substitutes = sorted(x for x in marks if x.startswith(SUBSTITUTE_PREFIX))
+    stamps += _ix_marks(f, ends)                                           # WO_UV3: figures read from the filing's inline XBRL
+    if real_estate:
+        stamps.append("real_estate_base")                                    # WO_NC9c
     if any((v.get("form") or "").startswith(("20-F", "40-F")) for v in f["revenue"]["values"]):
         stamps.append("per_share_basis_unverified")                         # ruling 18: no ADS ratio is applied
     else:
         stamps.append("split_after_fy0_unchecked")                          # CROSS_CHECK_Q2 #18: split detection not built
     tau, s = tax_rate(f, e0)
     stamps.append(s)
+    tax_fallback = None
+    if s == "tax_rate_statutory_fallback":                                 # WO_NC3: the filed rate drives the value; a second rate rides beside it
+        pre_all = _by_end(f, "pretax_income")
+        n_pre = [pre_all[e] for e in ends if e in pre_all]                  # the pooled window's fiscal years with a filed pretax income
+        tax_fallback = {"rate": tau, "rate_alt": tau + STATUTORY_UPLIFT, "source_tag": statutory_rate(f, e0)[1],
+                        "positive_pretax_years": sum(x > 0 for x in n_pre), "pretax_years": len(n_pre)}
+        stamps.append(f"tax_fallback_positive_pretax_years:{tax_fallback['positive_pretax_years']}_of_{tax_fallback['pretax_years']}")
+    if tau_override is not None:
+        tau = tau_override
+    if any(has_stamp(v, PRETAX_DERIVED) for v in (f.get("pretax_income") or {}).get("values", [])):          # WO_UV2: derived or widened figures stay visible
+        stamps.append(PRETAX_DERIVED)
+    if any(v["end"] == e0 and has_stamp(v, "nci_income_includes_redeemable_nci") for v in (f.get("nci_income") or {}).get("values", [])):
+        stamps.append("nci_income_includes_redeemable_nci")
     ni, da, cx, am, pt, oi = (_by_end(f, k) for k in ("net_income", "da", "capex", "amortization", "pretax_income", "operating_income"))
-    if not oi:                                                             # F_SPEC §6: OperatingIncomeLoss not filed in any year
+    if not oi or oi_stale:                                                 # F_SPEC §6: OperatingIncomeLoss not filed in any year (WO_NC9c: or, for real estate, stale)
         ie_all = _by_end(f, "interest_expense")
         oi = {e: pt[e] + ie_all[e] for e in pt if e in ie_all}
         stamps.append("oi_from_pretax_plus_interest")
+        if oi_stale:
+            stamps.append("operating_income_tag_stale_not_used")
+        if e0 in pt and e0 not in ie_all:                                  # WO_UV2: no gross interest for the base year: cash interest paid, where the base would be refused
+            sub = interest_substitute(f, e0)
+            if sub is not None:
+                oi[e0] = pt[e0] + sub[0]
+                substitutes.append(_label("interest_expense", sub[1], sub[2]))
+                stamps.append("oi_interest_from_cash_interest_paid")
     for name, series in (("net_income", ni), ("da", da), ("capex", cx), ("pretax_income", pt), ("operating_income", oi)):
         if e0 not in series:
             raise DeskRefusal("input_missing" if name not in ("operating_income",) else "bridge_unavailable", f"{name} for the latest fiscal year {e0}")
     pool = [e for e in ends if e in da and e in cx]
     if len(pool) < MIN_POOL_YEARS:
-        raise DeskRefusal("history_short", f"{len(pool)} years with revenue, D&A and capex")
+        raise DeskRefusal("history_short", f"{len(pool)} years with revenue, D&A and capex; at least {MIN_POOL_YEARS} are needed" + _single_source_note(f))
     # ruling 19: the amortization basis holds in every pooled year, or nowhere
     sched = [_by_end(f, f"amort_next_{k}").get(e0) for k in range(1, 6)]
     after = _by_end(f, "amort_after_5").get(e0)
@@ -170,7 +383,14 @@ def base(f, *, market_cap, bill_rate):
     cash = _by_end(f, "cash")
     if e0 not in cash:
         raise DeskRefusal("input_missing", f"cash for {e0}")
-    c_l = cash[e0] + _by_end(f, "st_investments").get(e0, 0.0)
+    sti = _by_end(f, "st_investments")
+    if not sti:                                    # no short-term investment tag: the filed maturity table of the AFS debt securities
+        afs = _by_end(f, "afs_debt_total")
+        within = {e: min(v, afs.get(e, v)) for e, v in _by_end(f, "afs_debt_within_one_year").items() if e in (e0, ends[-2])}
+        if e0 in within:
+            sti = within
+            stamps.append("st_investments_from_afs_debt_maturing_within_one_year" + ("" if ends[-2] in within else ":opening_year_not_filed"))
+    c_l = cash[e0] + sti.get(e0, 0.0)
     if bill_rate is None:
         i_pre, excess_cash = 0.0, 0.0
         stamps.append("cash_term_not_available_no_bill_rate")
@@ -189,7 +409,7 @@ def base(f, *, market_cap, bill_rate):
     if not x0 > 0:
         raise DeskRefusal("e0_not_positive", f"X_0 = {x0:.6g}: no earnings base (O7)")
     k0 = oi[e0] - pt_ex
-    k0_int = _by_end(f, "interest_expense").get(e0) or 0.0                                            # B12b: only interest scales with revenue (debt grows with it)
+    k0_int = (_by_end(f, "interest_expense").get(e0) or 0.0) if interest_override is None else interest_override                  # B12b: only interest scales with revenue (debt grows with it)
     stamps.append("bridge_constant_from_base_year")
     r_sum = sum(rev[e] for e in pool)
     da_tag = {v["end"]: v["tag"] for v in f["da"]["values"]}
@@ -198,36 +418,63 @@ def base(f, *, market_cap, bill_rate):
     capex_record = {e: cx[e] / rev[e] for e in pool}
     ac, lc, eq, ie, gw, ia = (_by_end(f, k) for k in ("assets_current", "liabilities_current", "equity", "interest_expense", "goodwill",
                                                        "intangibles"))
-    if not (e0 in ac and e0 in lc):
+    ta, tl = _by_end(f, "assets_total"), _by_end(f, "liabilities_total")
+    unclassified = e0 not in ac and e0 not in lc and (real_estate or (e0 in ta and e0 in tl))     # WO_NC9c: neither filed for the base year: an unclassified balance sheet (WO_UV2: every family, total assets and liabilities filed)
+    if not (e0 in ac and e0 in lc) and not unclassified:
         raise DeskRefusal("input_missing", f"current assets and current liabilities for {e0}")
     debt0, how0 = debt_total(f, e0)
     if how0 and how0.startswith("LongTermDebt") and _tag(f, "debt_current", e0) == "LongTermDebtCurrent":
         stamps.append("debt_total_tag_ambiguous")                          # CROSS_CHECK_Q2 #27 (MTCH)
     prev = ends[-2]
     debt_prev, _ = debt_total(f, prev)
-    interest = ie.get(e0)
+    interest = ie.get(e0) if interest_override is None else interest_override                              # WO_NC8
+    if interest_swap is not None:
+        stamps.append(f"interest_ifrs_expense_for_finance_costs:refused={interest_swap[0]}:used={interest_swap[1]}")          # WO_UV5
+    elif interest_override is not None:
+        stamps.append("interest_from_filing_text")
     if debt0 is None:
         # F_SPEC §6: kd is unused when delta = 0 (desk.equity_ronic). With no debt tag, delta is 0 when even the most debt the filed
         # interest allows at the band's lowest rate (interest / KD_BAND[0]) is covered by cash and short-term investments
         if interest and interest / KD_BAND[0] > c_l:
-            raise DeskRefusal("debt_unavailable", f"interest expense {interest:.6g} is filed for {e0} but no debt tag resolves")
-        debt0, how0 = 0.0, "no_debt_filed"
-        stamps += ["no_debt_filed"] + (["debt_unresolved_bounded_by_interest", "kd_unused_delta_zero"] if interest else [])
+            (s0, h0), (sp, _) = senior_debt(f, e0), senior_debt(f, prev)        # WO_UV2: only where the base would be refused
+            stamp = "debt_from_senior_notes_tags_parts_reconciled"
+            if s0 is None or sp is None:
+                (s0, h0), (sp, _) = finance_lease_debt(f, e0), finance_lease_debt(f, prev)
+                stamp = "debt_from_finance_lease_liability"
+            if s0 is None or sp is None:
+                raise DeskRefusal("debt_unavailable", f"interest expense {interest:.6g} is filed for {e0} but no debt tag resolves")
+            debt0, how0, debt_prev = s0, h0, sp
+            stamps.append(stamp)
+        else:
+            (s0, h0), (sp, _) = finance_lease_debt(f, e0), finance_lease_debt(f, prev)
+            if s0 is not None and sp is not None:                          # a filed lease liability is debt, covered by cash or not
+                debt0, how0, debt_prev = s0, h0, sp
+                stamps.append("debt_from_finance_lease_liability")
+            else:
+                debt0, how0 = 0.0, "no_debt_filed"
+                stamps += ["no_debt_filed"] + (["debt_unresolved_bounded_by_interest", "kd_unused_delta_zero"] if interest else [])
     if debt_prev is None:
         debt_prev = 0.0 if how0 == "no_debt_filed" else None
     if debt_prev is None:
         raise DeskRefusal("debt_unavailable", f"no debt tag resolves for the opening year {prev}")
+    sub_interest = None
     if debt0 > 0 and not interest:
-        if debt0 > c_l:
+        sub_interest = interest_substitute(f, e0) if (e0 not in ie and debt0 > c_l) else None      # WO_NC1: only where the base would be refused
+        if sub_interest is not None:
+            interest, k0_int = sub_interest[0], sub_interest[0]
+            if _label("interest_expense", sub_interest[1], sub_interest[2]) not in substitutes:
+                substitutes.append(_label("interest_expense", sub_interest[1], sub_interest[2]))
+        elif debt0 > c_l:
             raise DeskRefusal("debt_without_interest", f"debt {debt0:.6g} at {e0} with no filed interest expense")
-        stamps.append("kd_unused_delta_zero")                             # F_SPEC §6: net debt <= 0, so delta = 0
+        else:
+            stamps.append("kd_unused_delta_zero")                         # F_SPEC §6: net debt <= 0, so delta = 0
     # F6: IFRS 16 puts the interest on lease liabilities in finance costs. Where the base year's filed lease interest lies inside the
     # interest read, the lease liabilities (both years) are debt, so kd, delta, the capital and the interest added back share one basis;
     # their current part leaves working capital as current debt does
     li, ll = _by_end(f, "lease_interest_ifrs16").get(e0), _by_end(f, "lease_liabilities_ifrs16")
     lease_cur = 0.0
-    if (interest and li is not None and 0 < li <= interest and e0 in ll and prev in ll and how0 != "no_debt_filed"
-            and how0 not in DEBT_INCLUDES_LEASES):
+    if (interest and sub_interest is None and li is not None and 0 < li <= interest and e0 in ll and prev in ll and how0 != "no_debt_filed"
+            and how0 not in DEBT_INCLUDES_LEASES and interest_override is None):         # not for a substituted interest: whether it holds the lease interest is not filed
         debt0, debt_prev, how0 = debt0 + ll[e0], debt_prev + ll[prev], f"{how0}+lease_liabilities"
         stamps.append("debt_includes_ifrs16_lease_liabilities")
         if e0 in _by_end(f, "lease_liabilities_current_ifrs16"):
@@ -238,23 +485,42 @@ def base(f, *, market_cap, bill_rate):
     # (FinancingInterestExpense), while the debt tags carry that arm's debt: kd takes both interests (kd only; the bridge keeps the former)
     kd_interest = interest
     fin = _by_end(f, "financing_interest").get(e0)
-    if interest and fin is not None and _tag(f, "interest_expense", e0) == "InterestExpenseNonoperating":
+    if interest and fin is not None and interest_override is None and _tag(f, "interest_expense", e0) == "InterestExpenseNonoperating":
         kd_interest = interest + fin
         stamps.append("kd_includes_financing_interest")
     kd = kd_interest / ((debt0 + debt_prev) / 2) if interest and debt0 + debt_prev > 0 else 0.0
+    swap_note = ""
     if interest and debt0 + debt_prev > 0 and not KD_BAND[0] <= kd <= KD_BAND[1]:
-        raise DeskRefusal("kd_out_of_band", f"kd = interest / average debt = {kd:.4f}, outside {KD_BAND}")
+        alt = _by_end(f, "interest_expense_ifrs").get(e0)                  # WO_UV5: the IFRS interest expense where the bundle is out of band
+        if interest_override is None and _tag(f, "interest_expense", e0) == "FinanceCosts" and alt is not None and alt > 0:
+            try:
+                return base(f, market_cap=market_cap, bill_rate=bill_rate, tau_override=tau_override, interest_override=alt, real_estate=real_estate,
+                            interest_swap=("ifrs-full:FinanceCosts", "ifrs-full:InterestExpense"))
+            except DeskRefusal as second:
+                if second.code != "kd_out_of_band":
+                    raise
+                swap_note = f"; ifrs-full:InterestExpense ({alt:.6g}) for the same year is also outside"
+    if interest and debt0 + debt_prev > 0 and not KD_BAND[0] <= kd <= KD_BAND[1]:
+        refusal = DeskRefusal("kd_out_of_band", f"kd = interest / average debt = {kd:.4f}, outside {KD_BAND}" + swap_note + (
+            "; the interest stated from the filing text, in place of the tagged figure, is also outside" if interest_override is not None else ""))
+        refusal.figures = {"fy0": e0, "tag": _tag(f, "interest_expense", e0), "interest": interest, "kd_interest": kd_interest, "debt0": debt0,     # WO_NC8: what the cloud read is shown
+                           "debt_prev": debt_prev, "debt_basis": how0, "kd": kd}
+        raise refusal
     cur_debt = _by_end(f, "debt_current").get(e0, 0.0) + (_by_end(f, "debt_short").get(e0, 0.0)
                                                            if _tag(f, "debt_current", e0) not in CURRENT_INCLUDES_SHORT else 0.0) + lease_cur
-    nwc0 = (ac[e0] - cash[e0] - _by_end(f, "st_investments").get(e0, 0.0)) - (lc[e0] - cur_debt)
+    if unclassified:
+        nwc0 = 0.0
+        stamps += ["nwc_not_classified_taken_as_0", "working_capital_unclassified_balance_sheet"]
+    else:
+        nwc0 = (ac[e0] - cash[e0] - sti.get(e0, 0.0)) - (lc[e0] - cur_debt)
     w = nwc0 / rev[e0]
     if not (prev in eq and prev in cash):
         raise DeskRefusal("input_missing", f"equity and cash for {prev} (the opening capital)")
     for c in ("goodwill", "intangibles", "st_investments"):
-        if not _by_end(f, c):
+        if not (sti if c == "st_investments" else _by_end(f, c)):
             stamps.append(f"{c}_not_filed_taken_as_0")                    # N14
     # ruling 21: tangible capital, the return capped at 100%
-    tangible = eq[prev] + debt_prev - cash[prev] - _by_end(f, "st_investments").get(prev, 0.0) - gw.get(prev, 0.0) - ia.get(prev, 0.0)
+    tangible = eq[prev] + debt_prev - cash[prev] - sti.get(prev, 0.0) - gw.get(prev, 0.0) - ia.get(prev, 0.0)
     ronic0 = (x0 + (interest or 0.0) * (1 - tau)) / tangible if tangible > 0 else float("inf")
     if not ronic0 > 0:
         raise DeskRefusal("ronic_not_positive", f"RONIC_0 = {ronic0:.6g}")
@@ -283,11 +549,8 @@ def base(f, *, market_cap, bill_rate):
         stamps.append("debt_includes_finance_leases")
     if delta > 0:
         stamps.append("leverage_book_ratio_assumed")                      # B12: debt grows with the business at its book ratio
-    shares = _by_end(f, "diluted_shares").get(e0)
-    if not (shares and shares > 0):
-        raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
-    shares = check_shares(f, e0, ni[e0], shares, stamps, "NI")
-    stamps.append("shares_weighted_average_diluted")
+    shares, shares_sub = _verified_shares(f, e0, ni[e0], substitutes, stamps, "NI")
+    stamps.append("shares_period_end_not_weighted_average" if shares_sub else "shares_weighted_average_diluted")
     # ruling 4: the vintages D&A rule from filed PP&E (prior gross, gross, net, D&A_org of the base year); else pooled, stamped
     gross, net = _by_end(f, "ppe_gross"), _by_end(f, "ppe_net")
     da_org0 = da[e0] - (am.get(e0, 0.0) if da_tag[e0] not in DA_EXCLUDES_AMORTIZATION else 0.0)   # N8: always without amortization
@@ -306,12 +569,45 @@ def base(f, *, market_cap, bill_rate):
             "oi0": oi[e0], "k0": k0, "k0_interest": k0_int, "op_margin0": oi[e0] / rev[e0], "d_ratio": d_ratio, "c_ratio": c_ratio, "w": w, "tau": tau,
             "ronic0": ronic0, "delta": delta, "delta_market": delta_market, "kd": kd, "debt0": debt0, "debt_basis": how0, "shares": shares, "excess_cash": excess_cash,
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,
-            "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps,
+            "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps + substitutes, **({"substitutes": substitutes} if substitutes else {}),
+            **({"tax_fallback": tax_fallback} if tax_fallback else {}),
+            **({"interest_from_filing": {"value": interest_override, "tagged_value": ie.get(e0), "kd_used": kd}} if interest_override is not None and interest_swap is None else {}),
+            **({"interest_ifrs_expense": {"value": interest_override, "refused_tag": interest_swap[0], "used_tag": interest_swap[1],
+                                          "tagged_value": ie.get(e0), "kd_used": kd}} if interest_swap is not None else {}),
+            **({"real_estate": True} if real_estate else {}),
             "da_rule": "vintages" if ppe else "pooled",
             "ytd": _ytd(f, e0),
             "record": {"op_margin": {e: oi[e] / rev[e] for e in ends if e in oi}, "capex_ratio": capex_record,
                        "rev_growth_max": max(rev[ends[i]] / rev[ends[i - 1]] - 1 for i in range(1, len(ends))),
                        "rev_growth": {c[i]: rev[c[i]] / rev[c[i - 1]] - 1 for c in [_year_chain(ends)] for i in range(1, len(c))}}}  # F_SPEC §2.1
+
+
+def _single_source_note(f):
+    """WO_UV5: what a pooled series read from the filing's inline XBRL is made of, for a refusal's wording: the filing's years only, the feed's years
+    under another tag left out. Empty where nothing was read for capital spending or D&A."""
+    one = ((f.get("_ix") or {}).get("single_source")) or {}
+    return "".join(f"; {c} is taken from the filing's own columns only ({len(n['read'])} fiscal years: {', '.join(n['read'])}), "
+                   f"the feed's figures for {', '.join(n['dropped']) or 'no other year'} are another tag and are not pooled with them" for c, n in sorted(one.items()))
+
+
+def _ix_marks(f, ends):
+    """WO_UV3: the ix_read stamps (document, tag or member) of every figure the base uses, one per figure, sorted: the facts' values of the fiscal
+    years `ends`. WO_UV5: a pooled series (capex, D&A) that holds years read from the filing holds nothing else but years the feed filed under the very
+    tag of the filing's one undimensioned line (the same concept); any other mix is refused (ix_series_mixed), an assertion, as the facts build none."""
+    marks = {x for c, d in f.items() if not c.startswith("_") for v in d["values"] if v["end"] in ends for x in (v.get("stamp") or "").split(";")
+             if x.startswith(IX_STAMP + ":")}
+    for c in ("capex", "da"):
+        vals = [v for v in (f.get(c) or {}).get("values", []) if v["end"] in ends]
+        stamp = lambda v: next((x for x in (v.get("stamp") or "").split(";") if x.startswith(IX_STAMP + ":")), None)    # noqa: E731
+        read = [stamp(v) for v in vals if stamp(v)]
+        if read and len(read) < len(vals):
+            lines = {x.split(":", 3)[3] for x in read}
+            names = next(iter(lines)).split("+") if len(lines) == 1 else []
+            others = [v for v in vals if not stamp(v)]
+            if len(names) != 1 or "[" in names[0] or any(names[0].split(":")[-1] != v["tag"] for v in others):
+                raise DeskRefusal("ix_series_mixed", f"{c}: years read from the filing's inline XBRL are pooled with years of another source or tag "
+                                                     f"({[(v['end'], v['tag']) for v in others]})")
+    return sorted(marks)
 
 
 def _ytd(f, e0):
@@ -366,6 +662,7 @@ def base_financial(f):
     pref = {e: (carry[e] if carry.get(e, 0.0) > 0 else liq[e]) for e in set(carry) | set(liq)
             if carry.get(e, 0.0) > 0 or e in liq}
     at_liq = any(not carry.get(e, 0.0) > 0 and liq.get(e, 0.0) > 0 for e in pref)
+    zero = {e for e in carry if carry[e] == 0.0 and e not in pref}          # WO_UV2: a balance filed as 0.0 is a value (carried at 0, no liquidation preference filed)
     ends = _year_chain(sorted(eq_all))[-(POOL_YEARS + 1):]               # Q3b N8: year-ends 350-380 days apart
     if len(ends) < MIN_POOL_YEARS:
         raise DeskRefusal("history_short", f"{len(ends)} fiscal-year equity balances; at least {MIN_POOL_YEARS}")
@@ -378,7 +675,8 @@ def base_financial(f):
     for v in (f.get("net_income") or {}).get("values", []):
         if v["end"] in ends[1:] and v.get("stamp") == "profitloss_basis_unverified":           # Q3b N4: ends[0] is the opening balance
             raise DeskRefusal("profitloss_basis_unverified", f"ProfitLoss for {v['end']} reconciles with diluted EPS on neither basis")
-    stamps = ["financial_driver_book_equity", "shares_weighted_average_diluted", "financial_classification_unverified"]
+    substitutes = []
+    stamps = ["financial_driver_book_equity", "shares_weighted_average_diluted", "financial_classification_unverified"] + _ix_marks(f, ends)
     if any((v.get("form") or "").startswith(("20-F", "40-F")) for v in f["equity"]["values"]):
         stamps.append("per_share_basis_unverified")                         # ruling 18: no ADS ratio is applied
     else:
@@ -389,7 +687,16 @@ def base_financial(f):
     if has_pref:
         # years before the first filed preferred hold none (an issue in the record); a year missing after it is refused (Q3b b4: BFH)
         first = min(e for e in ends if e in pref)
-        missing = [e for e in ends if e >= first and e not in pref]
+        missing = []
+        for e in (x for x in ends if x >= first and x not in pref and x not in zero):
+            # WO_UV2: a year with no balance filed, right after a year whose balance was filed as 0.0, is 0 when that year's preferred dividends
+            # are filed as 0 or its income to common equals net income (to the dollar)
+            last = max((x for x in ends if x < e and (x in pref or x in zero)), default=None)
+            if last in zero and ((e in pdiv and pdiv[e] == 0.0) or (e in nic and e in ni_all and abs(nic[e] - ni_all[e]) < 0.5)):
+                zero.add(e)
+                stamps.append(f"preferred_balance_not_filed_taken_as_0:{e}")
+            else:
+                missing.append(e)
         if missing:
             raise DeskRefusal("preferred_series_incomplete", f"preferred stock filed from {first}, not for {missing}")
         if first > ends[0]:
@@ -407,6 +714,9 @@ def base_financial(f):
             ni[e] = nic[e]
         elif e in pdiv:
             ni[e] = ni_all[e] - pdiv[e]
+        elif _eps_reconciles(f, e, ni_all[e]):                                # WO_UV2: no dividends filed: none, where EPS x shares reconciles without them
+            ni[e] = ni_all[e]
+            stamps.append(f"preferred_dividends_taken_as_0_eps_times_shares_reconciles:{e}")
         else:
             raise DeskRefusal("preferred_dividends_unavailable", f"preferred stock is filed but neither income to common nor preferred dividends for {e}")
     if e0 not in ni:
@@ -414,10 +724,9 @@ def base_financial(f):
     opening = eq[ends[-2]]
     if not (ni[e0] > 0 and opening > 0):
         raise DeskRefusal("e0_not_positive", f"E_0 = {ni[e0]:.6g}, opening common equity {opening:.6g}")
-    shares = _by_end(f, "diluted_shares").get(e0)
-    if not (shares and shares > 0):
-        raise DeskRefusal("shares_unavailable", f"diluted shares for {e0}")
-    shares = check_shares(f, e0, ni[e0], shares, stamps, "income to common")
+    shares, shares_sub = _verified_shares(f, e0, ni[e0], substitutes, stamps, "income to common")
+    if shares_sub:
+        stamps[stamps.index("shares_weighted_average_diluted")] = "shares_period_end_not_weighted_average"
     aoci = _by_end(f, "aoci").get(e0)
     if aoci is not None and eq_all[e0]:
         stamps.append(f"aoci_in_book_not_separated:{aoci / eq_all[e0]:+.3f}")   # CROSS_CHECK_Q3 11: its share of book
@@ -431,4 +740,4 @@ def base_financial(f):
             "record": {"roe": roe_hist, "book_growth": growth, "common_equity": eq, "income_to_common": ni,
                        "preferred": {e: (pref[e] if has_pref else 0.0) for e in ends}, "book_growth_max": max(retained) if retained else None,
                        "book_growth_min": min(growth.values()) if growth else None},
-            "stamps": stamps}
+            "stamps": stamps + substitutes, **({"substitutes": substitutes} if substitutes else {})}

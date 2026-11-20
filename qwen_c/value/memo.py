@@ -4,7 +4,7 @@ beneath it; then the scenarios, the reverts and stamps, the annotations, and the
 The memo carries the authority line: diagnostic only (B9). Stated limit (§2.2): code cannot tell a GAAP operating margin from an adjusted
 margin printed in the same unit, so every guidance sentence is printed in full for a reader to judge.
 """
-MEMO_VERSION = "m3q.memo.v7"   # v7 2026-11-06 PREREG amendment 2: a held year-1 key says it is not valued   # v6 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): a ytd input prints its period and filing   # v5 2026-11-03 F_SPEC_valuation_menu §5: code's text from options, drivers and cited sentences   # v4 Q3c: the record-neutral reference   # v3, v2 (see git)
+MEMO_VERSION = "m3q.memo.v8"   # v8 2026-11-18 WO_NC3: a statutory tax fallback prints the value at its second rate   # v7 2026-11-06 PREREG amendment 2: a held year-1 key says it is not valued   # v6 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): a ytd input prints its period and filing   # v5 2026-11-03 F_SPEC_valuation_menu §5: code's text from options, drivers and cited sentences   # v4 Q3c: the record-neutral reference   # v3, v2 (see git)
 
 
 def _pct(x):
@@ -40,6 +40,11 @@ def render(result):
         lines += [f"Cost of equity {_pct(result['cost_of_equity'])} (code). Financial route: common book equity and return on equity (O3).", ""]
     else:
         lines += [f"Cost of equity {_pct(result['cost_of_equity'])} (code). Tax {_pct(result['base']['tau'])} (code, V8).", ""]
+        tr = result.get("tax_range")
+        if tr:                                                            # WO_NC3: the statutory rate is the company's filed rate, not a measured one
+            va = tr.get("values_alt")
+            lines += [f"Tax rate: statutory rate (company's filed rate), not measured. Value per share at {_pct(tr['rate'])} (above) and at {_pct(tr['rate_alt'])}: "
+                      + (" | ".join(f"{k} {va[k]:,.2f}" for k in ("bear", "base", "bull")) if va else f"not available ({tr.get('status_alt')})"), ""]
     deps = {d["input"]: d for d in chk.get("departures") or []}
     ev = chk.get("evidence") or {}
     guid = ((result.get("inputs") or {}).get("guidance") or {})

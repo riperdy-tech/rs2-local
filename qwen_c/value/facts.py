@@ -16,8 +16,9 @@ import re
 from datetime import date, datetime, timedelta, timezone
 
 from qwen_c import packet, sec_store
+from qwen_c.value import ix_figures
 
-FACTS_VERSION = "m3q.facts.v8"   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
+FACTS_VERSION = "m3q.facts.v17"   # v17 2026-11-19 available-for-sale debt securities, total and maturing within one year (auxiliary: read by inputs only where no short-term investment tag is filed); no existing series moves   # v16 2026-11-19 finance-lease liability concepts (auxiliary: read by inputs only where no debt tag resolves and the base would be refused); no existing series moves   # v15 2026-11-19 WO_UV5: a capex or D&A series read from the filing's inline XBRL holds the filing's own years only (the feed's years under another tag are dropped); interest_expense_ifrs (auxiliary: ifrs-full:InterestExpense, read by inputs only where the finance-cost bundle gives a cost of debt outside the band); no existing series moves for a name the filing's inline XBRL was not read for   # v14 2026-11-19 WO_UV3: figures read from the newest annual filing's inline XBRL where companyfacts lacks them and the base would be refused (ix_figures: a year not ingested, capital spending under a company's own tags, one-segment D&A, class-of-stock share counts), each verified by a second filed figure and stamped ix_read; no existing series moves   # v13 2026-11-19 WO_UV2: cash interest paid also under us-gaap:InterestPaid; auxiliary senior-notes, line-of-credit, partnership-unit, redeemable-NCI, total assets and total liabilities concepts (read by inputs only where the exact figure cannot be read); the ProfitLoss basis also less the redeemable NCI income; pretax income derived from net income, NCI income and the tax provision where its tag is absent or stale and no discontinued operation is filed for the year (no existing series moves)   # v12 2026-11-19 WO_NC9c: re_gain_on_sales and re_impairment (auxiliary, the real-estate record block; no existing concept moves)   # v11 2026-11-18 WO_NC3: statutory_tax_rate, the rate the company files for the base year in its own rate reconciliation (auxiliary; inputs.tax_rate reads it only as the last rung)   # v10 2026-11-18 WO_NC2: labelled substitutes for equity, capex, D&A, current items and pretax income (ITEM_SUBSTITUTES), consulted only where the exact concept lacks a needed year, one tag for every year   # v9 2026-11-17 WO_NC1: labelled fact substitutes (revenue: the largest narrower revenue line; aux period-end share counts and interest paid), consulted only where the exact concept is absent   # v8 2026-11-07 coverage A: parent equity is the filed total where the company files no NCI fact of any kind   # v7 2026-11-03 F_SPEC_valuation_menu v1.3 (F11): `_ytd`, year 1's year-to-date revenue and operating income from the latest 10-Q effective at T, current and prior-year legs from that one filing   # v6 2026-11-03 F_SPEC_valuation_menu F6: derived series, each value stamped: pretax income where no income-tax fact is filed, IFRS diluted shares from basic plus the dilutive effect (EPS-reconciled), equity from the total less NCI; the cost-of-sales D&A line as the last D&A tag; IFRS 16 lease and financing-interest facts for inputs   # v5 2026-11-03 RR_Q7 3: IFRS net income (ProfitLoss, ordinary holders), NCI, diluted EPS, depreciation   # v4 2026-10-31 CROSS_CHECK_Q3b N5: preferred liquidation preference   # v3 2026-10-30 CROSS_CHECK_Q3 5, 6, 11: preferred stock, income to common, AOCI (financial route)   # v2 2026-10-30 CROSS_CHECK_Q 5, 8, 27, 28: debt ladder, latest filing first, revenue total, latest annual
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 # concept -> (kind, [(taxonomy, tag, unit)] in priority order). Each fiscal year takes the value of the highest-priority tag that has that
@@ -119,16 +120,83 @@ CONCEPTS = {
     "lease_liabilities_ifrs16": ("instant", [("ifrs-full", "LeaseLiabilities", "USD")]),
     "lease_liabilities_current_ifrs16": ("instant", [("ifrs-full", "CurrentLeaseLiabilities", "USD")]),
     "financing_interest": ("flow", [("us-gaap", "FinancingInterestExpense", "USD")]),
+    # WO_UV5: the IFRS interest expense concept, read by inputs only where the finance-cost bundle (ifrs-full:FinanceCosts) gives a cost of debt outside the band
+    "interest_expense_ifrs": ("flow", [("ifrs-full", "InterestExpense", "USD")]),
+    # WO_NC1 substitutes: read by inputs only where the exact concept is absent (never part of an exact series)
+    "shares_period_end": ("instant", [("us-gaap", "CommonStockSharesOutstanding", "shares"), ("ifrs-full", "NumberOfSharesOutstanding", "shares")]),
+    "shares_cover": ("instant", [("dei", "EntityCommonStockSharesOutstanding", "shares")]),
+    "interest_paid": ("flow", [("us-gaap", "InterestPaidNet", "USD"), ("ifrs-full", "InterestPaidClassifiedAsOperatingActivities", "USD"),
+                               ("ifrs-full", "InterestPaidClassifiedAsFinancingActivities", "USD"),
+                               ("us-gaap", "InterestPaid", "USD")]),       # WO_UV2: the gross cash interest, last, so that no company that has a listed tag changes
+    # WO_NC3: the statutory rate the company states in its own rate reconciliation (a fraction); read by inputs.tax_rate only, as the last rung
+    "statutory_tax_rate": ("flow", [("us-gaap", "EffectiveIncomeTaxRateReconciliationAtFederalStatutoryIncomeTaxRate", "pure"),
+                                    ("ifrs-full", "ApplicableTaxRate", "pure")]),
+    # WO_NC9c: the real-estate record block only (the decided method's derived funds from operations); no valuation input reads them. Gains: the first
+    # tag filed for the year, a gain positive; impairments: the first filed, a charge positive
+    "re_gain_on_sales": ("flow", [("us-gaap", "GainLossOnSaleOfProperties", "USD"), ("us-gaap", "GainsLossesOnSalesOfInvestmentRealEstate", "USD"),
+                                  ("us-gaap", "GainLossOnDispositionOfAssets", "USD"), ("us-gaap", "GainLossOnSaleOfPropertyPlantEquipment", "USD"),
+                                  ("us-gaap", "GainLossOnDispositionOfAssets1", "USD"), ("us-gaap", "GainsLossesOnSalesOfOtherRealEstate", "USD")]),
+    "re_impairment": ("flow", [("us-gaap", "ImpairmentOfRealEstate", "USD"), ("us-gaap", "AssetImpairmentCharges", "USD"),
+                               ("us-gaap", "ImpairmentOfLongLivedAssetsHeldForUse", "USD")]),
+    # WO_UV2: read by inputs only where the exact figure cannot be read (never part of an exact series)
+    "debt_senior_total": ("instant", [("us-gaap", "SeniorNotes", "USD")]),
+    "debt_senior_noncurrent": ("instant", [("us-gaap", "SeniorLongTermNotes", "USD")]),
+    "debt_senior_current": ("instant", [("us-gaap", "SeniorNotesCurrent", "USD")]),
+    "line_of_credit_noncurrent": ("instant", [("us-gaap", "LongTermLineOfCredit", "USD")]),
+    # 2026-11-19: a company whose only borrowing is finance leases; read by inputs only where no debt tag resolves
+    "afs_debt_total": ("instant", [("us-gaap", "AvailableForSaleSecuritiesDebtSecurities", "USD")]),
+    "afs_debt_within_one_year": ("instant", [("us-gaap", "AvailableForSaleSecuritiesDebtMaturitiesWithinOneYearFairValue", "USD")]),
+    "finance_lease_total": ("instant", [("us-gaap", "FinanceLeaseLiability", "USD")]),
+    "finance_lease_noncurrent": ("instant", [("us-gaap", "FinanceLeaseLiabilityNoncurrent", "USD")]),
+    "finance_lease_current": ("instant", [("us-gaap", "FinanceLeaseLiabilityCurrent", "USD")]),
+    "finance_lease_payments_due": ("instant", [("us-gaap", "FinanceLeaseLiabilityPaymentsDue", "USD")]),
+    "finance_lease_undiscounted_excess": ("instant", [("us-gaap", "FinanceLeaseLiabilityUndiscountedExcessAmount", "USD")]),
+    "lp_units_diluted": ("flow", [("us-gaap", "WeightedAverageLimitedPartnershipUnitsOutstandingDiluted", "shares")]),
+    "eps_lp_diluted": ("flow", [("us-gaap", "NetIncomeLossNetOfTaxPerOutstandingLimitedPartnershipUnitDiluted", "USD/shares")]),
+    "nci_redeemable_income": ("flow", [("us-gaap", "NetIncomeLossAttributableToRedeemableNoncontrollingInterest", "USD")]),
+    "assets_total": ("instant", [("us-gaap", "Assets", "USD"), ("ifrs-full", "Assets", "USD")]),
+    "liabilities_total": ("instant", [("us-gaap", "Liabilities", "USD"), ("ifrs-full", "Liabilities", "USD")]),
 }
+# WO_NC1: the narrower revenue lines, consulted only when no total-revenue tag resolves for any year
+REVENUE_SUBSTITUTES = [("ifrs-full", "RevenueFromRenderingOfServices", "USD"), ("ifrs-full", "RevenueFromRenderingOfTransportServices", "USD"),
+                       ("ifrs-full", "RevenueFromSaleOfGoods", "USD"), ("ifrs-full", "RevenueFromSaleOfGold", "USD"),
+                       ("us-gaap", "SalesRevenueServicesNet", "USD"), ("us-gaap", "SalesRevenueGoodsNet", "USD")]
+SUBSTITUTE_PREFIX = "substitute:"
+SUBSTITUTE_SCOPE_PREFIX = "substitute_scope:"
+# WO_NC2: concept -> [(taxonomy, tag or (tag, tag) summed, unit, scope or None)] in priority order; consulted only where the exact concept lacks a
+# year the valuation reads (_item_substitutes). Left out on purpose, so the refusal stands: AmortizationOfIntangibleAssets (only part of D&A) and
+# the depletion tags (no depreciation), and every tag not listed
+ITEM_SUBSTITUTES = {
+    "equity": [("us-gaap", "PartnersCapital", "USD", None),
+               ("us-gaap", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "USD", "includes_nci")],
+    "capex": [("ifrs-full", "PurchaseOfMiningAssets", "USD", None), ("us-gaap", "PropertyPlantAndEquipmentAdditions", "USD", None),
+              ("us-gaap", "PaymentsForProceedsFromProductiveAssets", "USD", "net")],      # net of disposals: only while a net outflow in every year read
+    "da": [("us-gaap", "ResultsOfOperationsDepreciationDepletionAmortizationAndAccretion", "USD", "producing_activities_only")],      # the oil and gas producing-activities disclosure: no corporate depreciation, with accretion
+    "assets_current": [("ifrs-full", "CurrentAssetsOtherThanAssetsOrDisposalGroupsClassifiedAsHeldForSaleOrAsHeldForDistributionToOwners", "USD",
+                        "excludes_held_for_sale")],
+    "liabilities_current": [("ifrs-full", "CurrentLiabilitiesOtherThanLiabilitiesIncludedInDisposalGroupsClassifiedAsHeldForSale", "USD",
+                             "excludes_held_for_sale")],
+    "pretax_income": [("us-gaap", ("IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign"),
+                       "USD", None)],      # both parts must be filed for a year
+}
+NET_SCOPE = "net"
+SUBSTITUTE_WINDOW, SUBSTITUTE_MIN_POOL = 5, 3     # inputs.POOL_YEARS and MIN_POOL_YEARS: the years capex and D&A are pooled over
 AUX_CONCEPTS = {"income_continuing", "income_discontinued", "profit_loss_consolidated", "basic_shares_ifrs", "dilutive_effect_ifrs",
                 "equity_incl_nci", "nci_equity", "cost_excl_da", "lease_interest_ifrs16", "lease_liabilities_ifrs16", "lease_liabilities_current_ifrs16",
-                "financing_interest"}
+                "financing_interest", "interest_expense_ifrs",
+                "shares_period_end", "shares_cover", "interest_paid", "statutory_tax_rate", "re_gain_on_sales", "re_impairment",
+                "debt_senior_total", "debt_senior_noncurrent", "debt_senior_current", "line_of_credit_noncurrent", "lp_units_diluted", "eps_lp_diluted",
+                "finance_lease_total", "finance_lease_noncurrent", "finance_lease_current", "finance_lease_payments_due",
+                "finance_lease_undiscounted_excess", "afs_debt_total", "afs_debt_within_one_year",
+                "nci_redeemable_income", "assets_total", "liabilities_total"}
 # F6: the cost-of-sales D&A line is D&A only where the same year's cost of sales is filed EXCLUDING D&A (the face statement then shows
 # D&A as its own line, which this tag carries); without that companion the year's value is dropped. Stamped da_from_cost_of_sales_line
 DA_COST_LINE = "CostOfGoodsAndServicesSoldDepreciationAndAmortization"
 # F6: a USD fact under any tag naming an income tax, in an annual form effective by T, means the company reports income taxes
 TAX_FACT_RX = re.compile(r"IncomeTax|TaxExpense|CurrentTax|DeferredTax|TaxesPaid")
 PRETAX_FROM_NI = "pretax_from_net_income_no_tax_filed"
+PRETAX_DERIVED = "pretax_derived_from_net_income_nci_tax"      # WO_UV2: net income + NCI income + the filed provision; no discontinued operation filed for the year
+DISCONTINUED_RX = re.compile(r"Discontinued")
 EPS_TOL, EPS_ROUNDING = 0.01, 0.006        # the ProfitLoss reconciliation's 1%; diluted EPS is filed to the cent (inputs.EPS_ROUNDING)
 
 
@@ -198,12 +266,17 @@ def _series(rows, kind, eligible, known, T):
     return {e: v[1] for e, v in by_end.items()}
 
 
-def annual_facts(cf, subs, T, years=8):
+def annual_facts(cf, subs, T, years=8, substitute_revenue=False, substitute_items=False, ix=None):
     """{concept: {"tags", "values": [{end, start, value, tag, accn, form, filed, stamp}] oldest first (at most `years`)}} plus
     {"_absent": {concept: reason}} and {"_stale": {concept: its latest end}} for a concept ending before the latest revenue year.
     Net income from ProfitLoss (consolidated) takes the basis, as filed or less the noncontrolling interest, that reconciles with
     diluted EPS x diluted shares within 1% (stamped); neither: left as filed, stamped `profitloss_basis_unverified`. Then the F6 derived
-    series (_derive). cf, subs: the parsed companyfacts and submissions JSON; T: aware."""
+    series (_derive). substitute_revenue (WO_NC1, the operating route only): where no total-revenue tag resolves for any year, the single
+    largest narrower revenue line (REVENUE_SUBSTITUTES), one tag for every year, each value stamped `substitute:revenue:<taxonomy>:<tag>`.
+    substitute_items (WO_NC2, the operating route only): the ITEM_SUBSTITUTES, after the derived series.
+    ix (WO_UV3): a function returning the newest annual filing's ix_figures.Source (or None), called at most once and only where a reading of
+    ix_figures is wanted; None: no reading is made (every series as before).
+    cf, subs: the parsed companyfacts and submissions JSON; T: aware."""
     eligible = eligible_accessions(subs, T)
     known = {r["accession"] for r in packet._filing_rows(subs)}
     facts = cf.get("facts") or {}
@@ -233,9 +306,29 @@ def annual_facts(cf, subs, T, years=8):
         vals = [{"end": e, "start": f.get("start"), "value": float(f["val"]), "tag": f["tag"], "accn": f.get("accn"), "form": f.get("form"),
                  "filed": f.get("filed"), "stamp": f.get("stamp")} for e, f in sorted(merged.items())][-years:]
         out[concept] = {"tags": sorted({v["tag"] for v in vals}), "values": vals}
+    if substitute_revenue and "revenue" not in out:
+        sub = _revenue_substitute(facts, eligible, known, T, years)
+        if sub:
+            out["revenue"] = sub
+            absent.pop("revenue", None)
+    once, ix_read, ix_single = _Once(ix), {}, {}
+
+    def cf_value(tax, tag, unit, kind, end):
+        rows = (((facts.get(tax) or {}).get(tag) or {}).get("units") or {}).get(unit) or []
+        got = _series(rows, kind, eligible, known, T).get(end)
+        return float(got["val"]) if got else None
+    newest = latest_annual_period(subs, T)
+    have_rev = max((v["end"] for v in out.get("revenue", {}).get("values", [])), default=None)
+    if ix is not None and have_rev and newest and newest > have_rev:        # WO_UV3: the newest annual report is not in companyfacts: its own figures, each verified
+        src = once()
+        if src is not None and src.report_date == newest:
+            got = ix_figures.fill_new_year(out, absent, src, cf_value, CONCEPTS, MAX_CONCEPTS, years)
+            if got:
+                ix_read["new_year"] = got
     nci = {v["end"]: v["value"] for v in out.get("nci_income", {}).get("values", [])}
     eps = {v["end"]: v["value"] for v in out.get("eps_diluted", {}).get("values", [])}
     sh = {v["end"]: v["value"] for v in out.get("diluted_shares", {}).get("values", [])}
+    red = {v["end"]: v for v in out.get("nci_redeemable_income", {}).get("values", [])}
     for v in out.get("net_income", {}).get("values", []):
         if v["tag"] != "ProfitLoss":
             continue
@@ -246,18 +339,160 @@ def annual_facts(cf, subs, T, years=8):
         if v["end"] in nci:
             options.append((v["value"] - nci[v["end"]], "profitloss_less_nci"))
         fits = [o for o in options if implied and abs(o[0] / implied - 1) <= 0.01]
+        if not fits and v["end"] in red:
+            # WO_UV2: only where neither basis above reconciles: the filed redeemable NCI income is also taken out (alone, or with the plain NCI)
+            options = ([(v["value"] - nci[v["end"]] - red[v["end"]]["value"], "profitloss_less_nci_and_redeemable_nci")] if v["end"] in nci
+                       else [(v["value"] - red[v["end"]]["value"], "profitloss_less_redeemable_nci")])
+            fits = [o for o in options if implied and abs(o[0] / implied - 1) <= 0.01]
+            if fits:
+                _add_nci(out, v["end"], red[v["end"]], nci)
+                absent.pop("nci_income", None)
         if fits:
             v["value"], v["stamp"] = min(fits, key=lambda o: abs(o[0] / implied - 1))
         else:
             v["stamp"] = "profitloss_basis_unverified"
     _derive(out, absent, cf, eligible, known, T, years)
+    if substitute_items:
+        _item_substitutes(out, absent, facts, eligible, known, T, years)
+        if ix is not None:
+            _ix_spending(out, absent, once, ix_read, years, ix_single)
     latest = max((v["end"] for v in out.get("revenue", {}).get("values", [])), default=None)
     stale = {c: d["values"][-1]["end"] for c, d in out.items()
              if latest and d["values"][-1]["end"] < latest and c != "nci_income" and c not in AUX_CONCEPTS}
     out["_absent"], out["_stale"] = absent, stale
+    if ix is not None and latest and _shares_wanted(out, latest):
+        src = once()                                                   # WO_UV3: class-of-stock share counts; inputs proves them against their own EPS
+        cands = ix_figures.share_candidates(src.doc, latest) if src is not None and src.report_date == latest else []
+        if cands:
+            out["_ix_shares"] = {"end": latest, "accession": src.accession, "url": src.url, "candidates": cands}
+    if once.src is not None:
+        out["_ix"] = {"url": once.src.url, "accession": once.src.accession, "read": ix_read, "version": ix_figures.IX_FIGURES_VERSION,
+                     **({"single_source": ix_single} if ix_single else {})}
     out["_latest_annual_period"] = latest_annual_period(subs, T)
     out["_ytd"] = ytd(cf, eligible, known, T, (out.get("revenue") or {}).get("values", [])[-1:])
     return out
+
+
+class _Once:
+    """Calls `fn` (the ix source loader) at most once; `src` is its result, None while it has not been needed (or it found nothing)."""
+
+    def __init__(self, fn):
+        self.fn, self.src, self.called = fn, None, False
+
+    def __call__(self):
+        if not self.called and self.fn is not None:
+            self.called, self.src = True, self.fn()
+        return self.src
+
+
+def _shares_wanted(out, end):
+    """WO_UV3: whether the base year `end` has no diluted share count that the valuation could use: none filed, and no period-end or cover-page count
+    (inputs.shares_substitute) with a filed diluted EPS to prove it. Only then are the class-of-stock counts of the filing's document wanted."""
+    from qwen_c.value import inputs
+    if end in {v["end"] for v in (out.get("diluted_shares") or {}).get("values", [])}:
+        return False
+    return inputs.shares_substitute(out, end) is None or end not in {v["end"] for v in (out.get("eps_diluted") or {}).get("values", [])}
+
+
+def _ix_spending(out, absent, once, ix_read, years, note):
+    """WO_UV3: capital spending and D&A from the newest annual filing's inline XBRL (ix_figures), for the operating route and only where the
+    valuation would be refused for them: the base year, or at least SUBSTITUTE_MIN_POOL of the last SUBSTITUTE_WINDOW fiscal years of revenue,
+    is missing from the series (after the companyfacts series and the WO_NC2 substitutes). WO_UV5: a series so read holds the filing's years only
+    (ix_figures.fill_capex, fill_da); `note` receives, per concept, the years read and the feed's years dropped, for inputs' refusal wording."""
+    ends = sorted(v["end"] for v in (out.get("revenue") or {}).get("values", []))[-SUBSTITUTE_WINDOW:]
+    if not ends:
+        return
+
+    def lacking(concept):
+        have = {v["end"] for v in (out.get(concept) or {}).get("values", [])}
+        return ends[-1] not in have or len(have & set(ends)) < SUBSTITUTE_MIN_POOL
+    for concept, fn in (("capex", lambda s: ix_figures.fill_capex(out, absent, s, years, note)),
+                        ("da", lambda s: ix_figures.fill_da(out, absent, s, DA_EXCLUDES_AMORTIZATION, years, note))):
+        if lacking(concept):
+            src = once()
+            if src is not None and src.report_date >= ends[-1]:
+                got = fn(src)
+                if got:
+                    ix_read[concept] = got
+
+
+def _add_nci(out, end, red, nci):
+    """WO_UV2: the redeemable NCI income of `end` joins the NCI income series (added to the plain NCI income where that is filed for the year),
+    stamped, so the earnings base takes out the same NCI that the ProfitLoss basis took out. `nci` is the loop's {end: value}, kept in step."""
+    d = out.setdefault("nci_income", {"tags": [], "values": []})
+    cur = next((x for x in d["values"] if x["end"] == end), None)
+    if cur is None:
+        d["values"] = sorted(d["values"] + [dict(red, stamp=_stamp(red.get("stamp"), "nci_income_includes_redeemable_nci"))], key=lambda x: x["end"])
+    else:
+        cur.update(value=cur["value"] + red["value"], tag=f"{cur['tag']}+{red['tag']}", stamp=_stamp(cur.get("stamp"), "nci_income_includes_redeemable_nci"))
+    nci[end] = next(x["value"] for x in d["values"] if x["end"] == end)
+    d["tags"] = sorted({x["tag"] for x in d["values"]})
+
+
+def taxonomy_of(concept, tag):
+    """The taxonomy of a tag listed under `concept` in CONCEPTS (the substitute stamps name it)."""
+    return next(tax for tax, t, _ in CONCEPTS[concept][1] if t == tag)
+
+
+def _revenue_substitute(facts, eligible, known, T, years):
+    """WO_NC1: the company's single largest filed narrower revenue line, as a revenue series, or None. Each candidate tag's annual series
+    is built as for any flow; the tag is the one with the largest value at the latest fiscal-year end any candidate has (ties: the
+    listing order), and that ONE tag supplies every year, never a mix. Every value is stamped substitute:revenue:<taxonomy>:<tag>."""
+    series = {}
+    for pri, (tax, tag, unit) in enumerate(REVENUE_SUBSTITUTES):
+        rows = (((facts.get(tax) or {}).get(tag) or {}).get("units") or {}).get(unit) or []
+        got = _series(rows, "flow", eligible, known, T)
+        if got:
+            series[(tax, tag)] = (pri, got)
+    if not series:
+        return None
+    latest = max(max(g) for _, g in series.values())
+    top = max((k for k, (_, g) in series.items() if latest in g), key=lambda k: (float(series[k][1][latest]["val"]), -series[k][0]))
+    tax, tag = top
+    stamp = f"{SUBSTITUTE_PREFIX}revenue:{tax}:{tag}"
+    vals = [{"end": e, "start": f.get("start"), "value": float(f["val"]), "tag": tag, "accn": f.get("accn"), "form": f.get("form"),
+             "filed": f.get("filed"), "stamp": _stamp(f.get("stamp"), stamp)} for e, f in sorted(series[top][1].items())][-years:]
+    return {"tags": [tag], "values": vals}
+
+
+def _item_series(facts, tax, tag, unit, kind, eligible, known, T):
+    """{end: fact} of one substitute: the annual series of its tag, or, for a pair of tags, the sum over the years both are filed."""
+    tags = (tag,) if isinstance(tag, str) else tag
+    parts = [_series((((facts.get(tax) or {}).get(t) or {}).get("units") or {}).get(unit) or [], kind, eligible, known, T) for t in tags]
+    out = {}
+    for e in set.intersection(*(set(p) for p in parts)):
+        fs = [p[e] for p in parts]
+        out[e] = dict(max(fs, key=lambda f: (f.get("filed") or "", f.get("accn") or "")), val=sum(float(f["val"]) for f in fs))
+    return out
+
+
+def _item_substitutes(out, absent, facts, eligible, known, T, years):
+    """WO_NC2: for each concept of ITEM_SUBSTITUTES whose exact series lacks a year the valuation reads (the base year; equity also the year
+    before; capex and D&A at least SUBSTITUTE_MIN_POOL of the last SUBSTITUTE_WINDOW fiscal years), the first listed tag that covers those years
+    replaces the series WHOLE (one tag for every year, never a mix with the exact tag). No tag qualifies: nothing changes. A filed 0 is a value,
+    so a year with an exact 0 is not missing. Each value is stamped substitute:<concept>:<taxonomy>:<tag(s)> and, where the tag differs in kind
+    from the concept, substitute_scope:<concept>:<scope>. A net tag (scope `net`) counts only while positive (a net outflow) in every year read."""
+    ends = sorted(v["end"] for v in (out.get("revenue") or {}).get("values", []))[-SUBSTITUTE_WINDOW:]
+    if not ends:
+        return
+    for concept, cands in ITEM_SUBSTITUTES.items():
+        need = {ends[-1], ends[-2]} if concept == "equity" and len(ends) > 1 else {ends[-1]}
+        min_years = SUBSTITUTE_MIN_POOL if concept in ("capex", "da") else 1
+        if need <= {v["end"] for v in (out.get(concept) or {}).get("values", [])}:
+            continue
+        for tax, tag, unit, scope in cands:
+            got = _item_series(facts, tax, tag, unit, CONCEPTS[concept][0], eligible, known, T)
+            if not need <= set(got) or len(set(got) & set(ends)) < min_years:
+                continue
+            if scope == NET_SCOPE and any(not got[e]["val"] > 0 for e in ends if e in got):
+                continue
+            name = tag if isinstance(tag, str) else "+".join(tag)
+            marks = [f"{SUBSTITUTE_PREFIX}{concept}:{tax}:{name}"] + ([f"{SUBSTITUTE_SCOPE_PREFIX}{concept}:{scope}"] if scope else [])
+            vals = [{"end": e, "start": f.get("start"), "value": float(f["val"]), "tag": name, "accn": f.get("accn"), "form": f.get("form"),
+                     "filed": f.get("filed"), "stamp": _stamp(f.get("stamp"), *marks)} for e, f in sorted(got.items())][-years:]
+            out[concept] = {"tags": [name], "values": vals}
+            absent.pop(concept, None)
+            break
 
 
 # F11 (F_SPEC_valuation_menu v1.3): year 1's year-to-date pair. A 10-Q's year-to-date period starts on the first day of its fiscal year; its
@@ -349,6 +584,78 @@ def ytd(cf, eligible, known, T, base):
     return out
 
 
+# WO_NC10 Part A: what happened to the balance sheet between the base fiscal year's end and the newest interim, from the cash-flow statement of the
+# latest 10-Q (its year-to-date period). Auxiliary: called by nothing in the menu path; no existing concept or series moves.
+CAPITAL_EVENT_CONCEPTS = {
+    "acquisitions_paid": [("us-gaap", "PaymentsToAcquireBusinessesNetOfCashAcquired"), ("us-gaap", "PaymentsToAcquireBusinessesGross"),
+                          ("ifrs-full", "CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities")],
+    "buybacks_paid": [("us-gaap", "PaymentsForRepurchaseOfCommonStock"), ("ifrs-full", "PaymentsToAcquireOrRedeemEntitysShares")],
+    "shares_issued_proceeds": [("us-gaap", "ProceedsFromIssuanceOfCommonStock"), ("ifrs-full", "ProceedsFromIssuingShares")],
+    "disposals_received": [("us-gaap", "ProceedsFromDivestitureOfBusinesses"), ("us-gaap", "ProceedsFromDivestitureOfBusinessesNetOfCashDivested"),
+                           ("ifrs-full", "CashFlowsFromLosingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities")],
+}
+CAPITAL_EVENT_GROSS_TAG = "PaymentsToAcquireBusinessesGross"
+CAPITAL_SHARES_COVER = ("dei", "EntityCommonStockSharesOutstanding")
+
+
+def capital_events(cf, T, fy0, subs=None):
+    """The year-to-date capital events of the latest 10-Q effective at T whose year to date starts the day after `fy0` (the filing rule of
+    ytd(): the latest year-to-date end of the revenue concept, then the latest filed date and accession). `subs` (the submissions) gives the
+    acceptance times that decide what was effective at T; without it the facts' own filed dates do (_eligible).
+    Returns {"fy0", "found": bool, "absent": None or why no such filing, the filing (accn, form, filed, start, end, quarter),
+    "events": {event: {"value", "tag", "accn", "start", "end", "form", "filed", "stamp"} or None}, "absent_events": {event: why},
+    "shares_outstanding": {"value", "tag", "accn", "end", ...} or None, "shares_absent": None or why}. A concept the filing does not hold is
+    absent with its reason, never a default: the caller decides that absent means no event, and stamps it."""
+    eligible = eligible_accessions(subs, T) if subs else {}
+    known = {r["accession"] for r in packet._filing_rows(subs)} if subs else set()
+    facts = cf.get("facts") or {}
+    y1_start = (date.fromisoformat(fy0) + timedelta(days=1)).isoformat()
+    out = {"fy0": fy0, "found": False, "absent": None, "year1_start": y1_start, "events": {}, "absent_events": {}, "shares_outstanding": None,
+           "shares_absent": None}
+
+    def rows(tax, tag, unit="USD"):
+        return [f for f in (((facts.get(tax) or {}).get(tag) or {}).get("units") or {}).get(unit) or []
+                if f.get("form") in YTD_FORMS and isinstance(f.get("val"), (int, float)) and not isinstance(f.get("val"), bool)
+                and _eligible(f, eligible, known, T)[0]]
+    current = [f for tax, tag, unit in CONCEPTS["revenue"][1] for f in rows(tax, tag, unit)
+               if f.get("start") == y1_start and f.get("end") and _quarter(f["start"], f["end"])]
+    if not current:
+        return dict(out, absent="no 10-Q of year 1 effective at T")
+    pick = max(current, key=lambda f: (f["end"], f.get("filed") or "", f["accn"]))
+    accn, end = pick["accn"], pick["end"]
+    out.update(found=True, accn=accn, form=pick.get("form"), filed=pick.get("filed"), start=y1_start, end=end, quarter=_quarter(y1_start, end))
+    for event, tags in CAPITAL_EVENT_CONCEPTS.items():
+        why = []
+        for tax, tag in tags:
+            got = [f for f in rows(tax, tag) if f["accn"] == accn and f.get("start") == y1_start and f.get("end") == end]
+            vals = {float(f["val"]) for f in got}
+            if not got:
+                continue
+            if len(vals) > 1:
+                why.append(f"{tag}: two different values {sorted(vals)} in {accn}")
+                continue
+            f, v = max(got, key=lambda f: (f.get("filed") or "", f["accn"])), next(iter(vals))
+            stamp = _stamp(_eligible(f, eligible, known, T)[1], "acquisitions_paid_gross_of_cash_acquired" if tag == CAPITAL_EVENT_GROSS_TAG else None,
+                           f"{event}_negative_as_filed" if v < 0 else None)
+            out["events"][event] = {"value": v, "tag": f"{tax}:{tag}", "accn": accn, "start": y1_start, "end": end, "form": f.get("form"), "filed": f.get("filed"),
+                                    "stamp": stamp}
+            break
+        else:
+            out["events"][event] = None
+            out["absent_events"][event] = "; ".join(why) or f"no year-to-date {tags[0][1]} (or its alternates) in {accn}"
+    tax, tag = CAPITAL_SHARES_COVER
+    cover = [f for f in rows(tax, tag, "shares") if f["accn"] == accn and not f.get("start")]
+    vals = {float(f["val"]) for f in cover}
+    if not cover:
+        out["shares_absent"] = f"no cover-page share count in {accn}"
+    elif len(vals) > 1:
+        out["shares_absent"] = f"the cover page of {accn} gives {len(vals)} different counts (classes of stock): {sorted(vals)}"
+    else:
+        f = max(cover, key=lambda f: (f.get("filed") or "", f["accn"]))
+        out["shares_outstanding"] = {"value": next(iter(vals)), "tag": f"{tax}:{tag}", "accn": accn, "end": f.get("end"), "form": f.get("form"), "filed": f.get("filed")}
+    return out
+
+
 def _stamp(*stamps):
     return ";".join(s for s in stamps if s) or None
 
@@ -364,6 +671,18 @@ def _reports_income_tax(cf, eligible, known, T):
         for tag, d in ((cf.get("facts") or {}).get(tax) or {}).items():
             if TAX_FACT_RX.search(tag) and any(f.get("form") in ANNUAL_FORMS and _eligible(f, eligible, known, T)[0]
                                                for f in ((d.get("units") or {}).get("USD") or [])):
+                return True
+    return False
+
+
+def _reports_discontinued(cf, eligible, known, T, end):
+    """WO_UV2: whether any us-gaap or ifrs-full flow fact under a tag naming a discontinued operation (DISCONTINUED_RX), for the period ending
+    `end`, in an annual form effective by T, has a value other than 0."""
+    for tax in ("us-gaap", "ifrs-full"):
+        for tag, d in ((cf.get("facts") or {}).get(tax) or {}).items():
+            if DISCONTINUED_RX.search(tag) and any(
+                    f.get("form") in ANNUAL_FORMS and f.get("end") == end and "start" in f and isinstance(f.get("val"), (int, float)) and f["val"] != 0
+                    and _eligible(f, eligible, known, T)[0] for rows in (d.get("units") or {}).values() for f in rows):
                 return True
     return False
 
@@ -448,6 +767,26 @@ def _derive(out, absent, cf, eligible, known, T, years):
         else:
             del out["da"]
             absent["da"] = f"only {DA_COST_LINE}, without cost of sales filed excluding D&A"
+    # (5) WO_UV2: pretax income where its tag is absent, or ends before this fiscal year: net income + NCI income + the filed tax provision of
+    # the year, only when no discontinued operation is filed for it. Net income plus NCI income is the consolidated profit: where NCI income is
+    # not filed for the year, the filed consolidated ProfitLoss is that sum; with neither, NCI counts as none only where no NCI income and no NCI
+    # balance is filed in any year (as step 3). A year without a filed provision, or whose ProfitLoss basis is unverified, is not derived
+    last_pt = max(by["pretax_income"], default=None)
+    for e, v in by["net_income"].items():
+        if (last_pt is not None and e <= last_pt) or e not in by["tax_provision"] or v.get("stamp") == "profitloss_basis_unverified":
+            continue
+        nci_v, plc = by["nci_income"].get(e), by["profit_loss_consolidated"].get(e)
+        if _reports_discontinued(cf, eligible, known, T, e):
+            continue
+        if nci_v is not None:
+            profit, tag = v["value"] + nci_v["value"], f"{v['tag']}+{nci_v['tag']}"
+        elif plc is not None:
+            profit, tag = plc["value"], plc["tag"]
+        elif not by["nci_income"] and not by["nci_equity"]:
+            profit, tag = v["value"], f"{v['tag']}+no_nci_filed"
+        else:
+            continue
+        put("pretax_income", e, profit + by["tax_provision"][e]["value"], f"{tag}+{by['tax_provision'][e]['tag']}", PRETAX_DERIVED, v)
 
 
 def fetch(cik, T, *, online, root=None):
@@ -463,8 +802,11 @@ def fetch(cik, T, *, online, root=None):
     return docs["companyfacts"], docs["submissions"], prov
 
 
-def build(cik, T, *, online, root=None, years=8):
+def build(cik, T, *, online, root=None, years=8, substitute_revenue=False, substitute_items=False, ix=True):
+    """ix (WO_UV3): the readings of ix_figures may use the newest annual filing's document, read through sec_store (online: fetched when it is
+    not stored); False: none is made."""
     cf, subs, prov = fetch(cik, T, online=online, root=root)
-    out = annual_facts(cf, subs, T, years=years)
-    out["_provenance"] = dict(prov, facts_version=FACTS_VERSION, T=T.astimezone(timezone.utc).isoformat())
+    out = annual_facts(cf, subs, T, years=years, substitute_revenue=substitute_revenue, substitute_items=substitute_items,
+                       ix=(lambda: ix_figures.load(cik, subs, T, online=online, root=root)) if ix else None)
+    out["_provenance"] = dict(prov, facts_version=FACTS_VERSION, T=T.astimezone(timezone.utc).isoformat(), **({"ix_document": out["_ix"]} if "_ix" in out else {}))
     return out

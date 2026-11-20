@@ -57,6 +57,10 @@ class FetchFailed(StoreError):
         self.detail = detail
 
 
+class TooLarge(FetchFailed):
+    """A document over MAX_BYTES: not transient, and never stored (so an offline read of the same url is NotInStore)."""
+
+
 def _root(root):
     return Path(root) if root is not None else RAW_DIR
 
@@ -148,7 +152,7 @@ def _fetch(url):
     if status != 200:
         raise FetchFailed(status, url)
     if len(data) > MAX_BYTES:
-        raise FetchFailed(status, f"{url} larger than {MAX_BYTES} bytes")
+        raise TooLarge(status, f"{url} larger than {MAX_BYTES} bytes")
     return status, data
 
 

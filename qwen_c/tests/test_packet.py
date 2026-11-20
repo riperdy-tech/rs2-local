@@ -389,6 +389,14 @@ def test_screener_refusals(world, ticker, code):
     assert e.value.code == code
 
 
+def test_a_name_without_a_profile_is_built_for_a_single_request_and_the_header_says_so(world):
+    full = packet._resolve_commit(world["repo"], world["commit"])
+    _, header, cik = packet._screener(world["repo"], full, "NOPROF", require_profile=False)
+    assert header["factor_profile"] is False and cik == "0000000789"
+    _, header, _ = packet._screener(world["repo"], full, "TEST", require_profile=False)
+    assert "factor_profile" not in header                       # a name with a profile: the header is what it was
+
+
 def test_a_screener_commit_dated_after_T_is_refused(world):
     record = [dict(world["record"][1], run_updated_at="2026-09-30T00:00:00Z")]     # the run-time check passes; the commit date does not
     with pytest.raises(packet.PacketRefused) as e:
@@ -837,6 +845,21 @@ def store_402(w, name, docs, extra_rows=(), extra_docs=None):
     """A store whose newest eligible Item 2.02 8-K is A402 (Items 2.02, 4.02, 9.01) with the given documents [(type, filename, html)]."""
     return with_docs(w, name, extra_rows=[ROW_402, *extra_rows],
                      docs_extra={f"{base(A402)}/{A402}.txt": eightk_txt(A402, docs), **(extra_docs or {})})
+
+
+def test_an_eight_k_over_the_size_cap_is_left_out_and_annotated_and_the_name_is_still_built(world, monkeypatch):
+    store = store_402(world, "big402", [("8-K", "f402.htm", BODY_402)])
+    big, get = f"{base(A402)}/{A402}.txt", packet.sec_store.get
+
+    def capped(url, **kw):
+        if url == big:
+            raise packet.sec_store.TooLarge(200, f"{url} larger than {packet.sec_store.MAX_BYTES} bytes")
+        return get(url, **kw)
+    monkeypatch.setattr(packet.sec_store, "get", capped)
+    pk = build(world, store=store)
+    assert not other(pk, A402) and not [e for e in pk["evidence"] if e["kind"] == "release"]
+    assert {f"filing_too_large_not_read: release {A402}", f"filing_too_large_not_read: other_8k {A402}"} <= set(pk["annotations"])
+    assert big not in [r["url"] for r in pk["raw_inputs"]]
 
 
 def test_builder_v5_constants():
