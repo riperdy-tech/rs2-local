@@ -635,6 +635,21 @@ def last_analysed():
     return out
 
 
+def method_stale():
+    """Names whose report was valued by the decided method on a version that is no longer the current one (WO_NC10: a change of method re-values
+    every name it touched through the worker, never by a hand-run batch). Empty where the decided method is off."""
+    if not decided():
+        return set()
+    current = {decided_value.DECIDED_VERSION, decided_financial.DECIDED_VERSION}
+    out = set()
+    for p in ONDEMAND.glob("*.json") if ONDEMAND.exists() else []:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        v = (d.get("decided") or {}).get("version")
+        if d.get("valued") and v is not None and v not in current:
+            out.add(d["ticker"])
+    return out
+
+
 def claim(t):
     """True when this process now holds name t (an exclusive file; a claim whose process is gone, or older than
     CLAIM_STALE_HOURS, is a dead worker's and is taken over)."""
@@ -665,7 +680,7 @@ def queue_file():
 def next_name():
     """(ticker, source, from_queue) claimed for this arm, or None: a queued request first (oldest first; from_queue True), then a name with
     a new filing (from_queue "filing", source its reason; an entry whose name was analysed since it was queued is dropped), then the next
-    due list name: gemini from the top of the list, any other arm from the bottom."""
+    due list name (30 days old, or valued on a method version that is no longer current): gemini from the top of the list, any other arm from the bottom."""
     for q in Q._jsonl(queue_file()):
         if claim(q["ticker"]):
             return q["ticker"], q.get("source") or "web", True
@@ -678,7 +693,10 @@ def next_name():
     cutoff = (datetime.now(timezone.utc) - timedelta(days=REFRESH_DAYS)).isoformat()
     seen = last_analysed()
     names = Q.list_names()
+    stale = method_stale()
     for t in names if ARM == "gemini" else reversed(names):
+        if t in stale and claim(t):
+            return t, "method_changed", False
         if seen.get(t, "") < cutoff and claim(t):
             return t, "list", False
     return None

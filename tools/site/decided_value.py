@@ -780,6 +780,12 @@ def run_gap(a, c):
     return None if d == 0 else abs(a - c) / d
 
 
+def valued_shares(res):
+    """The share count a run's values are per: the count after the capital events (apply_events) where they were applied, else the base's."""
+    ce = ((res.get("decided") or {}).get("adjustments") or {}).get("capital_events")
+    return ce["shares"]["after"] if ce else (res.get("base") or {}).get("shares")
+
+
 def combine_runs(results):
     """(valued, v): the report's values from the two runs, {seed: result}. Both runs must have a valued result: there is no fallback to a default
     and no single-run value. v = {"values": the mean of the two runs' bear, base and bull, "annotations", "decided"}."""
@@ -791,7 +797,19 @@ def combine_runs(results):
     unclear = len(set(cyc.values())) > 1
     flags = (["situation_unclear"] if unclear else []) + [f"run {s}: {fl}" for s, x in ok.items() for fl in x["decided"]["flags"]]
     d1 = a["decided"]
-    return True, {"values": {k: (a["values"][k] + c["values"][k]) / 2 for k in ("bear", "base", "bull")},
+    # v3.1: the equity value and the share count the report quotes are those the values are per (the interim count where it replaced the base's),
+    # never the base count times a per-share value made on another count. Two runs on different counts: the mean equity over the mean value.
+    sa, sc = valued_shares(a), valued_shares(c)
+    base = (a["values"]["base"] + c["values"]["base"]) / 2
+    if sa is None or sc is None:
+        shares = equity = None
+    elif sa == sc or base == 0:                               # one count: the equity value as before (the mean value times the count)
+        shares, equity = sa, base * sa
+    else:
+        equity = (a["values"]["base"] * sa + c["values"]["base"] * sc) / 2
+        shares = equity / base
+    return True, {"shares": shares, "equity_value": equity,
+                  "values": {k: (a["values"][k] + c["values"][k]) / 2 for k in ("bear", "base", "bull")},
                   "annotations": [f"seeds_disagree: situation.cyclical ({', '.join(f'{s} {y}' for s, y in cyc.items())})"] if unclear else [],
                   "decided": {"version": DECIDED_VERSION, "method": METHOD, "runs": {s: dict(x["decided"], values=x["values"]) for s, x in ok.items()},
                               "run_gap": run_gap(a["values"]["base"], c["values"]["base"]), "situation_unclear": unclear, "flags": flags,
