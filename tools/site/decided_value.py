@@ -45,7 +45,8 @@ from qwen_c import contract, runner, sec_store, tasks  # noqa: E402
 from qwen_c.value import checks, coe, desk, facts, inputs, menu, run as vrun, task as vtask  # noqa: E402
 import interest_from_filing as IFF  # noqa: E402                    # WO_NC9a: the digit-in-quote rule and the scales
 
-DECIDED_VERSION = "decided.v3 2026-11-20 WO_NC10a"         # v3: the capital events since the base year (v2: cash not free, base-year one-offs, tax and debt flags; the method label stays decided.v1)
+DECIDED_VERSION = "decided.v3.1 2026-11-20 WO_NC10a"       # v3.1: a checked read figure above the XBRL one is used (the XBRL concept is narrower).
+# v3: the capital events since the base year (v2: cash not free, base-year one-offs, tax and debt flags; the method label stays decided.v1)
 METHOD = "decided.v1"
 FAMILIES = vrun.ROUTED                    # the financial route keeps the menu until it is tested the same way
 VARIANTS = {}                             # WO_NC9c: family -> the module that registered itself here (decided_real_estate): record text, task text, extra checks
@@ -501,8 +502,10 @@ def _differs(code, read):
 
 def resolve_events(code, read, market_cap=None, price=None):
     """The capital events to apply, or None where there are none to apply (no 10-Q of year 1 in the filed data and no interim reading: the value is as v2's).
-    Per figure: the filed XBRL figure where code has it (a disagreement of the read over EVENT_DIFF_TOL of it is flagged, the number is code's); else the
-    read's checked figure; else 0 with the stamp `<event>_not_filed_taken_as_0`. The share count the same way. {"interim_end", "figures": {event: {"amount",
+    Per figure: the filed XBRL figure where code has it; else the read's checked figure; else 0 with the stamp `<event>_not_filed_taken_as_0`. Where both
+    give one and differ by over EVENT_DIFF_TOL, it is flagged, and the read's checked figure is used when it is the LARGER (v3.1): each XBRL concept is
+    narrower than the cash line it stands for (a business-combination tag at 0 while the statement prints "consideration for asset acquisitions"), and the
+    read's figure is a single printed line whose digits were found in the filing. A smaller read figure leaves code's. The share count the same way. {"interim_end", "figures": {event: {"amount",
     "source": xbrl|read|none, ...}}, "shares_outstanding": {"amount", "source", ...} or None, "stamps", "flags", "market_cap", "price"}."""
     found = bool(code and code.get("found"))
     if not found and read is None:
@@ -519,6 +522,9 @@ def resolve_events(code, read, market_cap=None, price=None):
                 fig["read_amount"] = r["amount"]
                 if _differs(c["value"], r["amount"]):
                     flags.append(f"capital_event_read_differs_from_xbrl: {k} xbrl {c['value']:,.0f}, read {r['amount']:,.0f}")
+                    if r["amount"] > c["value"]:
+                        fig = {"amount": r["amount"], "source": "read", "quotes": r["quotes"], "printed": r["printed"], "scale": r["scale"],
+                               "xbrl_amount": c["value"], "xbrl_tag": c["tag"], "read_above_xbrl": True}
         elif r is not None:
             fig = {"amount": r["amount"], "source": "read", "quotes": r["quotes"], "printed": r["printed"], "scale": r["scale"]}
         else:

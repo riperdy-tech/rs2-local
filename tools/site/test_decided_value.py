@@ -853,17 +853,30 @@ def test_null_since_base_year_is_allowed_where_the_packet_holds_no_interim_and_t
 
 def test_code_wins_and_a_disagreement_over_2_percent_is_flagged(tmp_path, monkeypatch):
     sby = since(acquisitions_paid=(3.1, "millions", "Cash paid for acquisitions was $3.1 million"), buybacks_paid=(500, "thousands"), shares_outstanding=(10_500_000, "units"))
-    res, b, *_ = ev_run(tmp_path, monkeypatch, [reply(since_base_year=sby)], code=xb({"acquisitions_paid": 3.0e6, "buybacks_paid": 0.5e6}, shares=10_500_000.0))
+    res, b, *_ = ev_run(tmp_path, monkeypatch, [reply(since_base_year=sby)], code=xb({"acquisitions_paid": 3.2e6, "buybacks_paid": 0.5e6}, shares=10_500_000.0))
     ce = ce_of(res)
-    # 3.1 against 3.0 is 3.3% of the xbrl figure: flagged, and the figure used is the xbrl one; 500 thousand against 500 thousand: no flag
-    assert ce["figures"]["acquisitions_paid"]["amount"] == 3.0e6 and ce["figures"]["acquisitions_paid"]["read_amount"] == pytest.approx(3.1e6)
-    assert ce["flags"][0] == "capital_event_read_differs_from_xbrl: acquisitions_paid xbrl 3,000,000, read 3,100,000" and not any("buybacks_paid" in x for x in ce["flags"])
+    # 3.1 against 3.2 is 3.1% of the xbrl figure and smaller: flagged, and the figure used is the xbrl one; 500 thousand against 500 thousand: no flag
+    assert ce["figures"]["acquisitions_paid"]["amount"] == 3.2e6 and ce["figures"]["acquisitions_paid"]["read_amount"] == pytest.approx(3.1e6)
+    assert ce["flags"][0] == "capital_event_read_differs_from_xbrl: acquisitions_paid xbrl 3,200,000, read 3,100,000" and not any("buybacks_paid" in x for x in ce["flags"])
     assert not any("shares_outstanding" in x for x in ce["flags"]) and ce["flags"][0] in res["decided"]["flags"]
     tol = ce_of(ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(acquisitions_paid=(3.0, "millions"), shares_outstanding=(10_500_000, "units")))],
                        code=xb({"acquisitions_paid": 2.95e6}))[0])
     assert not any(x.startswith("capital_event_read_differs") for x in tol["flags"])                         # 1.7%: inside the 2%
     sh = ce_of(ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(shares_outstanding=(10_500_000, "units")))], code=xb({}, shares=10_000_000.0))[0])
     assert any(x.startswith("capital_event_read_differs_from_xbrl: shares_outstanding") for x in sh["flags"]) and sh["shares"]["after"] == 10_000_000.0
+
+
+def test_a_checked_read_figure_above_the_xbrl_one_is_used(tmp_path, monkeypatch):
+    # v3.1: the business-combination tag filed at 0 while the cash-flow statement prints a payment for asset acquisitions; and a read above a nonzero tag
+    zero = ce_of(ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(acquisitions_paid=(3.1, "millions", "Cash paid for acquisitions was $3.1 million")))],
+                        code=xb({"acquisitions_paid": 0.0}))[0])
+    f = zero["figures"]["acquisitions_paid"]
+    assert f["source"] == "read" and f["amount"] == pytest.approx(3.1e6) and f["xbrl_amount"] == 0.0 and f["read_above_xbrl"] is True
+    assert zero["flags"][0] == "capital_event_read_differs_from_xbrl: acquisitions_paid xbrl 0, read 3,100,000"
+    above = ce_of(ev_run(tmp_path, monkeypatch, [reply(since_base_year=since(acquisitions_paid=(3.1, "millions", "Cash paid for acquisitions was $3.1 million")))],
+                         code=xb({"acquisitions_paid": 3.0e6}))[0])
+    assert above["figures"]["acquisitions_paid"]["source"] == "read" and above["figures"]["acquisitions_paid"]["amount"] == pytest.approx(3.1e6)
+    assert above["excess_cash_after"] == pytest.approx(above["excess_cash_before"] - 3.1e6)
 
 
 def test_the_interim_share_count_replaces_the_base_count_only_above_1_percent_and_is_stamped(tmp_path, monkeypatch):
