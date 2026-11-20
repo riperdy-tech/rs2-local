@@ -805,9 +805,10 @@ def test_each_event_from_the_read_when_code_found_no_filing(tmp_path, monkeypatc
     assert res["status"] == "ok" and all(v["source"] == "read" for v in ce["figures"].values()) and ce["interim_end"] == Q3END
     assert {k: v["amount"] for k, v in ce["figures"].items()} == pytest.approx({"acquisitions_paid": 3.0e6, "buybacks_paid": 0.5e6, "shares_issued_proceeds": 0.1e6,
                                                                                 "special_distributions": 0.4e6, "disposals_received": 0.2e6})
-    assert ce["excess_cash_after"] == pytest.approx(3.4e6) and ce["shares"]["source"] == "read" and ce["shares"]["replaced"] is True and ce["shares"]["after"] == 10_500_000
-    assert res["values"]["base"] == pytest.approx(D.value_inputs(hand_base(b, excess_cash=3.4e6, shares=10_500_000), C.R, reply()["inputs"])[0], rel=1e-12)
-    assert "shares_from_latest_interim" in ce["stamps"] and "shares_from_latest_interim" in res["decided"]["flags"]
+    # v3.1: the read's 10.5 million shares (+5%) after net buybacks is more than the events explain: the read-only count is not used
+    assert ce["excess_cash_after"] == pytest.approx(3.4e6) and ce["shares"]["source"] == "read" and ce["shares"]["replaced"] is False and ce["shares"]["after"] == b["shares"]
+    assert res["values"]["base"] == pytest.approx(D.value_inputs(hand_base(b, excess_cash=3.4e6), C.R, reply()["inputs"])[0], rel=1e-12)
+    assert "share_count_from_read_unexplained_base_count_kept" in ce["stamps"] and "shares_from_latest_interim" not in ce["stamps"]
 
 
 def test_an_event_the_filings_do_not_state_is_taken_as_0_and_stamped_and_a_filed_zero_is_a_value(tmp_path, monkeypatch):
@@ -956,12 +957,13 @@ def test_the_events_apply_on_the_same_copy_after_the_cash_not_free_step_and_with
     res, b, *_ = ev_run(tmp_path, monkeypatch, [reply(cash_not_free=cash(), base_year_one_offs=[one_off(1.2, "charge", Q_LOSS)], since_base_year=since(**FULL))],
                         pk=dict(PKQ, evidence=[PKQ["evidence"][0], PKQ["evidence"][1], PKQ["evidence"][2], PKQ["evidence"][3]]))
     a = res["decided"]["adjustments"]
-    # 7.0 - 2.5 (cash not free) - 3.0 - 0.5 - 0.4 + 0.1 + 0.2 = 0.9 million; k0 and x0 as in v2 for the cash and the charge; shares 10.5 million
+    # 7.0 - 2.5 (cash not free) - 3.0 - 0.5 - 0.4 + 0.1 + 0.2 = 0.9 million; k0 and x0 as in v2 for the cash and the charge; the read's 10.5 million
+    # shares after net buybacks is more than the events explain, so the base count stays (v3.1)
     assert res["status"] == "ok" and a["excess_cash_after"] == pytest.approx(0.9e6) and a["capital_events"]["excess_cash_before"] == pytest.approx(4.5e6)
     assert a["k0_after"] == pytest.approx(3.28e6 - 1.0e5 - 1.2e6) and a["x0_after"] == pytest.approx(10.176e6 + 1.3e6 * 0.8)
-    hb = hand_base(b, excess_cash=0.9e6, shares=10.5e6, k0=3.28e6 - 1.3e6, x0=10.176e6 + 1.04e6)
+    hb = hand_base(b, excess_cash=0.9e6, k0=3.28e6 - 1.3e6, x0=10.176e6 + 1.04e6)
     assert res["values"]["base"] == pytest.approx(D.value_inputs(hb, C.R, reply()["inputs"])[0], rel=1e-12)
-    assert "shares_from_latest_interim" in a["stamps"] and "cash_not_free_taken_out_of_excess_cash" in a["stamps"]
+    assert "share_count_from_read_unexplained_base_count_kept" in a["stamps"] and "cash_not_free_taken_out_of_excess_cash" in a["stamps"]
 
 
 def test_the_second_tax_rate_carries_the_events(tmp_path, monkeypatch):
@@ -971,7 +973,7 @@ def test_the_second_tax_rate_carries_the_events(tmp_path, monkeypatch):
     alt_b = D.vrun.alt_tax_base(TS.fb_facts(), b, 180e6)
     alt, _ = D.adjust_base(alt_b, None, [], ev)
     assert tr["status_alt"] == "ok" and tr["values_alt"]["base"] == D.value_inputs(alt, C.R, reply()["inputs"])[0]
-    assert alt["excess_cash"] == pytest.approx(alt_b["excess_cash"] - 3.6e6) and alt["shares"] == 10_500_000
+    assert alt["excess_cash"] == pytest.approx(alt_b["excess_cash"] - 3.6e6) and alt["shares"] == alt_b["shares"]       # v3.1: the read-only count is unexplained
     assert tr["values_alt"]["base"] != D.value_inputs(alt_b, C.R, reply()["inputs"])[0]
 
 

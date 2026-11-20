@@ -47,7 +47,8 @@ import interest_from_filing as IFF  # noqa: E402                    # WO_NC9a: t
 
 DECIDED_VERSION = "decided.v3.1 2026-11-20 WO_NC10a"       # v3.1: a checked read figure above the XBRL one is used (the XBRL concept is narrower);
 # where the XBRL is there, a read figure that fails its check is dropped and stamped, not a repair turn or a no call; a cover page with one
-# count per class of stock keeps the base share count (the read's figure is not used).
+# count per class of stock keeps the base share count (the read's figure is not used); so does a count only the read gives that moves more
+# than the buybacks and issues explain.
 # v3: the capital events since the base year (v2: cash not free, base-year one-offs, tax and debt flags; the method label stays decided.v1)
 METHOD = "decided.v1"
 FAMILIES = vrun.ROUTED                    # the financial route keeps the menu until it is tested the same way
@@ -395,9 +396,7 @@ def apply_events(b, a, ev):
     sh = ev["shares_outstanding"]
     sh_rec = {"before": b["shares"], "interim": sh["amount"] if sh else None, "source": sh["source"] if sh else None, "replaced": False, "after": b["shares"]}
     if sh is not None and abs(sh["amount"] / b["shares"] - 1) > SHARES_REPLACE_TOL:
-        a["shares"] = sh["amount"]
-        sh_rec.update(replaced=True, after=sh["amount"])
-        stamps.append("shares_from_latest_interim")
+        use = True
         price = ev.get("price")
         if price is not None and price > 0:                    # what the events explain, at any price from half to double the price at T (the interim's range is not known to code)
             expl = sorted((amt["shares_issued_proceeds"] - amt["buybacks_paid"]) / (price * m) for m in (0.5, 2.0))
@@ -406,8 +405,16 @@ def apply_events(b, a, ev):
             if not expl[0] - slack <= d <= expl[1] + slack:
                 flags.append(f"share_count_change_unexplained: shares {b['shares']:,.0f} to {sh['amount']:,.0f} ({d:+,.0f}); issuing and buying back at "
                              f"{price:.2f} (half to double) explains {expl[0]:+,.0f} to {expl[1]:+,.0f}")
+                # v3.1: a count only the read gives, moving more than the events explain, may sum classes of stock or mix shares and ADSs: not used
+                use = sh["source"] != "read"
+                if not use:
+                    stamps.append("share_count_from_read_unexplained_base_count_kept")
         else:
             stamps.append("share_change_not_assessed_no_price")
+        if use:
+            a["shares"] = sh["amount"]
+            sh_rec.update(replaced=True, after=sh["amount"])
+            stamps.append("shares_from_latest_interim")
     gross = sum(abs(x) for x in amt.values())
     mc = ev.get("market_cap")
     if mc is not None and mc > 0 and gross >= EVENTS_MATERIAL * mc:
