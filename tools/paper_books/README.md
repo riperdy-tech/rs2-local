@@ -63,6 +63,7 @@ from the repo root (`py` = `"C:\Program Files\Python312\python.exe"`):
 4b. From the 2026-11-30 formation the reader is the cloud reader (Qwen was retired 2026-11-20; ruling D3), not step 4: run
    `py tools/paper_books/formation_run_cloud.py --dry-run` (lists the names it would read, reads nothing), then
    `py tools/paper_books/formation_run_cloud.py [--map <path>] [--limit N]` by hand or from a scheduled task (the newest live map by default).
+   Run both from the tree the site worker runs from (task RS2-Gemini-Site; today `stocks-workspace/scratch/wt-gemini`): the lock is per tree.
    Per `to_run` / `pending` name it runs `qwen_c.runner.run(packet, seed=1000, task_ids=["material_events"])` in process with the site worker's model
    swap (`gemini_ondemand.swap`; Gemini, Claude Sonnet when Gemini's allowance is under its floor), into the run root `cache/m3m_formation/` of the
    main checkout (its own `runs/` and `ledger.jsonl`; `analysis.json` holds that one task, which is all the book rule reads). The bookkeeping is

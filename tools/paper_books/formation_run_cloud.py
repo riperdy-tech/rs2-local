@@ -4,12 +4,13 @@ bookkeeping as formation_run.py, with Gemini (Claude Sonnet when Gemini's allowa
     python tools/paper_books/formation_run_cloud.py [--map <formation_<T>.json>] [--limit N] [--dry-run]
 
 Per name in state `to_run` or `pending` (ticker order) one qwen_c run of the `material_events` task ONLY (the book rule reads nothing else; ruling 2),
-seed base 1000, thinking high (the runner enforces it), into cache/m3m_formation/ (its own run root and ledger: no site-worker cleanup touches it;
+seed base 1000, thinking high (the runner enforces it), into cache/m3m_formation/ of the main checkout (its own run root and ledger: no site-worker cleanup touches it;
 never delete it). The model call is swapped in this process exactly as the site worker does (gemini_ondemand.swap); the arm is chosen per name by
 the worker's own rule (gemini_ondemand.choose_arm). A run with the task ok is `complete` (the runner's status is `complete`, so no partial_analysis);
 any other is retried once (formation_run.settle, MAX_ATTEMPTS 2), then `analysis_incomplete`. Each name records `reader` (the model) and each
 `runs` entry too; the run's manifest holds it in model.tag.
-No GPU, no ollama. Takes the site worker's lock (cache/gemini_site/worker.lock), so it never runs beside a worker read. Exit 0 done (or the lock is
+No GPU, no ollama. Takes the site worker's lock (cache/gemini_site/worker.lock of the tree it runs from), so it never runs beside a worker read:
+RUN IT FROM THE TREE THE SITE WORKER RUNS FROM (the lock and the usage file are per tree; from another tree the lock excludes nothing). Exit 0 done (or the lock is
 held); 3 allowance under its floor (both arms), the unread names are left as they were and a later start resumes. The finished flag
 (cache/paper_books/formation/finished_<T>.flag, as formation_run) is written when no limit was given and no name is left.
 """
@@ -30,7 +31,7 @@ import formation_run as FR  # noqa: E402
 import gemini_ondemand as G  # noqa: E402
 from qwen_c import runner  # noqa: E402
 
-RUNS = ROOT / "cache" / "m3m_formation"                                  # the cloud formation's own run root (gitignored cache)
+RUNS = G._main_checkout() / "cache" / "m3m_formation"                    # the cloud formation's own run root: always the MAIN checkout's cache, whichever tree runs this
 TASK = "material_events"
 SEED = 1000
 HOME = "gemini"
