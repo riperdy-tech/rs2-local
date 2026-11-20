@@ -45,7 +45,8 @@ from qwen_c import contract, runner, sec_store, tasks  # noqa: E402
 from qwen_c.value import checks, coe, desk, facts, inputs, menu, run as vrun, task as vtask  # noqa: E402
 import interest_from_filing as IFF  # noqa: E402                    # WO_NC9a: the digit-in-quote rule and the scales
 
-DECIDED_VERSION = "decided.v3.1 2026-11-20 WO_NC10a"       # v3.1: a checked read figure above the XBRL one is used (the XBRL concept is narrower).
+DECIDED_VERSION = "decided.v3.1 2026-11-20 WO_NC10a"       # v3.1: a checked read figure above the XBRL one is used (the XBRL concept is narrower);
+# where the XBRL is there, a read figure that fails its check is dropped and stamped, not a repair turn or a no call.
 # v3: the capital events since the base year (v2: cash not free, base-year one-offs, tax and debt flags; the method label stays decided.v1)
 METHOD = "decided.v1"
 FAMILIES = vrun.ROUTED                    # the financial route keeps the menu until it is tested the same way
@@ -471,7 +472,7 @@ def code_capital_events(cik, T, fy0, root=None):
     return facts.capital_events(cf, T, fy0, subs)
 
 
-def read_events(obj, b, texts, interim):
+def read_events(obj, b, texts, interim, xbrl=False):
     """(problems, the checked reading or None). `interim` = interim_in_packet. A reply with no since_base_year (or null) where the packet holds an
     interim report dated after the base year is a problem (one repair turn); each figure is checked as an item is (quote found word for word, its digits in a
     found quote) and must be above 0; interim_date must fall after the base year."""
@@ -481,19 +482,23 @@ def read_events(obj, b, texts, interim):
             return [f"since_base_year is null, but the evidence holds an interim report for the period ended {interim}, after the base year ended {b['fy0']}: "
                     "give it from that report (null only for a single figure the filings do not state)"], None
         return [], None
-    problems, figs = [], {}
+    problems, figs, dropped = [], {}, []
     if sby["interim_date"] <= b["fy0"]:
         problems.append(f"since_base_year.interim_date {sby['interim_date']} is not after the base year's end {b['fy0']}")
     for k in SINCE_KEYS:
         if sby.get(k) is None:
             continue
         pr, rec = _checked_item(dict(sby[k], what=k), f"since_base_year.{k}", texts)
+        if pr and xbrl:                       # v3.1: where the 10-Q's XBRL is there the read's figure is a cross-check: one that fails its check is dropped, not a repair
+            dropped.append(k)
+            continue
         problems += pr
         if rec is not None:
             figs[k] = rec
     if problems:
         return problems, None
-    return [], {"interim_date": sby["interim_date"], "figures": {k: v for k, v in figs.items() if k != "shares_outstanding"}, "shares_outstanding": figs.get("shares_outstanding")}
+    return [], {"interim_date": sby["interim_date"], "figures": {k: v for k, v in figs.items() if k != "shares_outstanding"}, "shares_outstanding": figs.get("shares_outstanding"),
+                "dropped": dropped}
 
 
 def _differs(code, read):
@@ -510,7 +515,7 @@ def resolve_events(code, read, market_cap=None, price=None):
     found = bool(code and code.get("found"))
     if not found and read is None:
         return None
-    figs, stamps, flags = {}, [], []
+    figs, stamps, flags = {}, [f"{k}_read_figure_failed_its_check_dropped" for k in (read or {}).get("dropped") or []], []
     for k in EVENT_KEYS:
         c = (code.get("events") or {}).get(k) if found else None
         r = (read["figures"] if read else {}).get(k)
@@ -706,7 +711,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
             if not problems:
                 verified = verify_quotes(obj, texts)
                 problems = numeric_problems(obj, r) + quote_problems(verified)
-                ep, read_ev = read_events(obj, b, texts, interim)                        # WO_NC10a
+                ep, read_ev = read_events(obj, b, texts, interim, xbrl=bool(code_ev and code_ev.get("found")))  # WO_NC10a
                 ev = None if ep else resolve_events(code_ev, read_ev, market_cap, price)
                 ap, b_adj, adj, cash, offs = read_adjustments(obj, b, texts, ev)       # WO_NC9a
                 problems += ep + ap

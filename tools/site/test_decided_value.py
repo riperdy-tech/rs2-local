@@ -879,6 +879,18 @@ def test_a_checked_read_figure_above_the_xbrl_one_is_used(tmp_path, monkeypatch)
     assert above["excess_cash_after"] == pytest.approx(above["excess_cash_before"] - 3.1e6)
 
 
+def test_with_the_xbrl_there_a_read_figure_that_fails_its_check_is_dropped_not_repaired(tmp_path, monkeypatch):
+    # v3.1: a quote whose digits are not in the filing; with the 10-Q's XBRL the run is ok in one turn, XBRL used, the drop stamped
+    bad = since(acquisitions_paid=(9.9, "millions", "Cash paid for acquisitions was $3.1 million"))
+    res, *_rest, sent = ev_run(tmp_path, monkeypatch, [reply(since_base_year=bad)], code=xb({"acquisitions_paid": 3.0e6}))
+    ce = ce_of(res)
+    assert res["status"] == "ok" and len(sent) == 1 and ce["figures"]["acquisitions_paid"] == dict(ce["figures"]["acquisitions_paid"], source="xbrl", amount=3.0e6)
+    assert "acquisitions_paid_read_figure_failed_its_check_dropped" in ce["stamps"]
+    # with no XBRL the same figure is a problem: a repair turn, and with no good reply, no value
+    res2 = ev_run(tmp_path, monkeypatch, [reply(since_base_year=bad)] * 2, code={"found": False, "absent": "no 10-Q of year 1 effective at T"})[0]
+    assert res2["status"] == "no_call" and "since_base_year.acquisitions_paid" in res2["detail"]
+
+
 def test_the_interim_share_count_replaces_the_base_count_only_above_1_percent_and_is_stamped(tmp_path, monkeypatch):
     small = ce_of(ev_run(tmp_path, monkeypatch, [reply()], code=xb({}, shares=10.09e6), pk=PK)[0])
     assert small["shares"]["replaced"] is False and small["shares"]["after"] == 10.0e6 and "shares_from_latest_interim" not in small["stamps"]
