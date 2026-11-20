@@ -97,19 +97,17 @@ def _sanitize(msg):
 
 
 def _qwen_request(ticker, source):
-    """Operator 2026-11-06: Analyze runs the current Qwen analysis (tools/site/qwen_ondemand.py), not the paused depth path.
-    Queues the name and returns one human line; the worker task RS2-Qwen-Site runs it when the GPU is free."""
+    """Queues the name in cache/site/queue.jsonl and returns one human line. Qwen was retired on 2026-11-20 (operator): the cloud
+    worker (task RS2-Gemini-Site: Gemini, Sonnet when Gemini's allowance is low) takes the queue. The queue helpers still live in
+    tools/site/qwen_ondemand.py, which is why the names here say qwen."""
     if not re.fullmatch(r"[A-Z0-9.\-]{1,10}", ticker):
         return f"REFUSED: {ticker!r} is not a ticker"
     sys.path.insert(0, str(Path(__file__).resolve().parent / "tools" / "site"))
     import qwen_ondemand
     qwen_ondemand.request(ticker, source)
     pos = [q["ticker"] for q in qwen_ondemand._jsonl(qwen_ondemand.QUEUE)].index(ticker) + 1
-    if (qwen_ondemand.SITE / "GPU_HOLD").exists():          # Qwen's site worker is on hold: the cloud worker (Gemini, Sonnet when Gemini is out) takes requests
-        return (f"{ticker}: queued (position {pos}). Qwen's site worker is on hold, so the cloud worker takes it at its next "
-                f"15-minute check; a read takes about 15 to 25 minutes. The result appears on stockpeak.net/t/{ticker}.")
-    return (f"{ticker}: queued for Qwen analysis (position {pos}, about 75 minutes per name at high thinking once the GPU is free). "
-            f"The result appears on stockpeak.net/t/{ticker}.")
+    return (f"{ticker}: queued for AI analysis (position {pos}). The cloud worker takes it at its next 15-minute check; a read "
+            f"takes about 15 to 25 minutes. The result appears on stockpeak.net/t/{ticker}.")
 
 
 def _drain_web_queue(tok, chat):
