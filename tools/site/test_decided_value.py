@@ -1024,3 +1024,16 @@ def test_interim_cash_flow_in_packet():
     assert D.interim_cash_flow_in_packet(with_cf, "2025-12-31")
     assert not D.interim_cash_flow_in_packet(cut, "2025-12-31")
     assert not D.interim_cash_flow_in_packet(old, "2025-12-31")
+
+
+def test_a_wait_with_both_arms_low_ends_on_the_fallback_arm_once_its_allowance_is_back(monkeypatch):
+    left = {"gemini": 0.0, "sonnet": 0.0}
+    monkeypatch.setattr(G, "meter", lambda: {k: (left[G.ARM], None) for k in G.FLOORS})
+    monkeypatch.setattr(G, "log", lambda msg: None)
+    naps = []
+    monkeypatch.setattr(G.time, "sleep", lambda s: (naps.append(s), left.update(sonnet=0.5)))      # the fallback's allowance resets during the wait
+    try:
+        m = G.wait_for_quota("gemini")
+        assert G.ARM == "sonnet" and len(naps) == 1 and all(v[0] == 0.5 for v in m.values())
+    finally:
+        G.set_arm("gemini")

@@ -196,9 +196,13 @@ def meter():
             for g in d["command"]["data"]["groups"] for b in g["buckets"]}
 
 
-def wait_for_quota():
-    """Returns the meter once both Gemini allowances are at or above their floors; sleeps to the reset otherwise."""
+def wait_for_quota(home=None):
+    """Returns the meter once the current arm's allowances are at or above their floors; sleeps to the reset (an hour at most) otherwise.
+    With `home`, the arm is chosen again before every reading: both arms low used to wait on the home arm's reset alone, so the worker sat
+    out Gemini's weekly reset (days) after Sonnet's five-hour allowance had come back (2026-11-20)."""
     while True:
+        if home is not None:
+            choose_arm(home)
         try:
             m = meter()
             low = [(k, *m[k]) for k in FLOORS if m[k][0] < FLOORS[k]]
@@ -826,7 +830,7 @@ def work(max_names, do_publish):
         while max_names is None or done < max_names:
             choose_arm(home)
             maybe_check_filings()
-            before = wait_for_quota()       # before the name is claimed: a claim held through a long quota wait is taken over by another arm, and the name was then read twice (2026-11-18)
+            before = wait_for_quota(home)   # before the name is claimed: a claim held through a long quota wait is taken over by another arm, and the name was then read twice (2026-11-18)
             nxt = next_name()
             if nxt is None:
                 log("nothing to analyse")
