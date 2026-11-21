@@ -578,7 +578,9 @@ def publish():
     """The two site files to stock-screener main through the dedicated publish clone, under the shared publish lock."""
     build()
     repo = paths.resolve("screener_publish_repo")
-    g = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True, timeout=120)  # noqa: E731
+    # no sign-in prompt: a push that waited on the credential helper's window outlived its timeout and held the worker (2026-11-21)
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
+    g = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True, timeout=120, env=env)  # noqa: E731
     if "stock-screener" not in g("remote", "get-url", "origin").stdout:
         sys.exit("ABORT: the publish clone's origin is not stock-screener")
     qwen_site.LOCK = _main_checkout() / "cache" / "screener_publish.lock"
@@ -852,7 +854,7 @@ def work(max_names, do_publish):
             if do_publish:
                 try:
                     publish()
-                except SystemExit as e:
+                except (SystemExit, subprocess.TimeoutExpired) as e:      # a git step that timed out is a failed publish, not a dead worker
                     log(f"publish failed: {e}")
         return 0
     finally:
