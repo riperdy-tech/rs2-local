@@ -430,11 +430,12 @@ def test_the_evidence_of_a_re_read_is_the_lead_report_of_each_warning_serious_fi
 
     def fetch(url, title):
         if url.endswith("s1"):
-            return "  The whole article. " + "x" * 9000
+            return "  The whole article under the headline s1. " + "x" * 9000
         raise OSError("blocked")
     rows, ids = N.evidence_rows("AAA", "2026-11-25T21:00:00Z", fetch=fetch, log_rows=rows_log)
     assert ids == ["s1", "note"]
     assert rows[0]["text_from"] == "article" and len(rows[0]["text"]) == N.EVIDENCE_CHARS and rows[0]["date"] == "2026-11-23"
+    assert rows[0]["text"].startswith("headline s1.\n\nThe whole article")
     assert rows[1]["text"] == "headline note. The snippet the check read." and rows[1]["text_from"] == "headline_and_snippet"
     assert rows[1]["publisher"] == "news.example" and all(N.hashlib.sha256(r["text"].encode("utf-8")).hexdigest() == r["text_sha256"] for r in rows)
 
@@ -448,3 +449,10 @@ def test_the_valuation_is_given_the_reading_without_its_news_cited_claims():
     assert [c["claim"] for c in out["tasks"]["material_events"]["claims"]] == ["from a filing"]
     assert out["tasks"]["risks"]["claims"] == [{"claim": "no ids"}] and len(an["tasks"]["material_events"]["claims"]) == 3
     assert N.without_news_claims(None) == {}
+
+
+def test_a_shell_page_or_another_page_is_not_the_article():
+    headline = "Alpha Corp loses its largest customer to a rival"
+    assert not N.is_article("MSN", headline) and not N.is_article(None, headline)
+    assert not N.is_article("Cookie settings and navigation. " * 60, headline)
+    assert N.is_article("Alpha Corp said its largest customer left for a rival. " + "More of the report. " * 40, headline)

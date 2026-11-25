@@ -78,6 +78,7 @@ SHOW_DAYS = 14                    # the site shows a stock's warnings of this ma
 REVIEW_DAYS = 30                  # a serious warning older than this no longer marks the stock under review
 REREADS_A_DAY = 3                 # operator 2026-11-25 (ruling R2): at most this many re-reads queued by news a day
 GATHER_BATCH, GATHER_PAUSE_S = 26, 300      # the B2 gather's pacing: SearXNG suspended an engine asked too fast (2026-10-02)
+ARTICLE_MIN = 600                 # a fetched page shorter than this is not an article
 EVIDENCE_ROWS, EVIDENCE_CHARS = 6, 6000     # press reports handed to a re-read, and the characters of an article kept (qwen_c.news_packet caps the total)
 TELL_STOCKS = 20                  # stocks named in the day's Telegram message; the rest are counted
 DOWN_AFTER = 5                   # the first this-many searches all failing ends the gather: the search engine is down
@@ -663,11 +664,19 @@ def track(now=None, prices=None):
 
 
 # ---------------------------------------------------------------- the re-read: press reports as evidence of the reading
+def is_article(page, headline):
+    """True when a fetched page reads as the report itself: ARTICLE_MIN characters or more, and at least half of the headline's longer
+    words in it. A shell page (a site's name and nothing else) or another page is not the report (first live re-read, 2026-11-26)."""
+    text = norm(page or "")
+    words = {w for w in norm(headline).split() if len(w) >= 4}
+    return len(text) >= ARTICLE_MIN and bool(words) and sum(w in text for w in words) * 2 >= len(words)
+
+
 def evidence_rows(ticker, T, fetch=None, log_rows=None):
     """The press reports a re-read of `ticker` at decision time T is given: the lead report of each of the stock's warnings of the last
     KNOWN_WARNING_DAYS days (serious first, then newest; one row an address; EVIDENCE_ROWS at most), in qwen_c.news_packet's row shape.
-    The text is the article's (`fetch(url, title)`, the holdings monitor's page reader, EVIDENCE_CHARS kept) or, where the page cannot be
-    read, the headline and the snippet the check read (`text_from` says which). Returns (rows, warning ids)."""
+    The text is the headline and the snippet the check read, then the article (`fetch(url, title)`, the holdings monitor's page reader)
+    where the page reads as the report (is_article), EVIDENCE_CHARS in all; `text_from` says which. Returns (rows, warning ids)."""
     fetch = fetch or M.online_article
     day_T = str(T)[:10]
     cut = (datetime.strptime(day_T, "%Y-%m-%d") - timedelta(days=KNOWN_WARNING_DAYS)).strftime("%Y-%m-%d")
@@ -685,10 +694,12 @@ def evidence_rows(ticker, T, fetch=None, log_rows=None):
         except Exception as e:  # noqa: BLE001  an unreadable page is the snippet's case, never a reason to drop the report
             log(f"evidence {ticker}: page not read ({type(e).__name__}: {str(e)[:100]})")
             page = None
-        text = (page or "").strip()[:EVIDENCE_CHARS] or f"{w['headline']}. {snippet}".strip()
+        head = f"{w['headline']}. {snippet}".strip()
+        page = page.strip() if is_article(page, w["headline"]) else ""
+        text = (head + "\n\n" + page)[:EVIDENCE_CHARS] if page else head     # the headline and snippet the check read always lead
         rows.append({"title": w["headline"], "url": w["url"], "publisher": urllib.parse.urlparse(str(w["url"])).netloc.lower().removeprefix("www.") or w.get("source"),
                      "date": w["day"], "found_by": ["news_watch"], "text": text, "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-                     "text_from": "article" if page and page.strip() else "headline_and_snippet"})
+                     "text_from": "article" if page else "headline_and_snippet"})
         ids.append(w["id"])
     return rows, ids
 
