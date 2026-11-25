@@ -15,6 +15,7 @@ markers, rebase-and-push that never drops a remote commit, loud on every abort.
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -62,6 +63,22 @@ NO_VALUE = {
     "mortgage_reit_not_routed": "a mortgage REIT is a lender; this method does not value it yet",     # WO_NC9c
     "decision_invalid": "the cloud read's valuation inputs did not pass the code's checks, even after one repair, so no value is given",     # WO_NC7
 }
+
+# the kinds value_family does not build, in plain words (its SIC notes, and its filed-evidence note for a real estate trust)
+NOT_BUILT_KIND = {"reit_or_real_estate": "a real estate company or trust", "real estate investment trust": "a real estate company or trust",
+                  "blank_check_shell": "a blank-check shell company", "conglomerate_or_holding_company": "a holding company or conglomerate"}
+
+
+def not_routed(family_reason):
+    """family_not_routed in plain words for this company, from value_family's reason; the general line where the reason is not a known form."""
+    r = family_reason or ""
+    m = re.match(r"pre_profit: operating income <= 0 in (\d+) of the last (\d+) fiscal years", r)
+    if m:
+        return f"no valuation route yet for a company with no operating profit in {m[1]} of its last {m[2]} fiscal years"
+    kind = next((w for k, w in NOT_BUILT_KIND.items() if k in r), None)
+    return f"no valuation route yet for {kind}" if kind else NO_VALUE["family_not_routed"]
+
+
 FQ_ACTION = {"enter": "held", "enter_after_pending": "held (entered after its analysis finished)", "new_entry_restricted":
              "not bought: Qwen flagged a material event", "escalation": "held, with a material event flagged for review",
              "analysis_pending": "cash: analysis not finished at the fill", "operator_excluded": "excluded by the operator"}

@@ -319,7 +319,7 @@ def analyze(t, source):
     row = FV.stocks_rows(commit).get(t) or {}
     fam = FV.name_family(cik, datetime.fromisoformat(T.replace("Z", "+00:00"))) if cik else {"family": None}
     n = {"packet": packet, "packet_sha256": pk.get("packet_sha256"), "cik": cik, "sector": row.get("sector"),
-         "market_cap": row.get("marketCap"), "family": fam.get("family")}
+         "market_cap": row.get("marketCap"), "family": fam.get("family"), "family_reason": fam.get("reason")}
     if decided() and decided_real_estate.routes(fam):               # WO_NC9c: a real-estate name (not a mortgage REIT by the balance-sheet route) is valued by the decided method's real-estate variant
         n["family"] = decided_real_estate.FAMILY
     out_root = vrun.RUNS if ARM == "gemini" else ROOT / "cache" / f"m3q_{ARM}" / "runs"

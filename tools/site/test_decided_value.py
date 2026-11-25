@@ -447,6 +447,27 @@ def test_a_refused_name_reports_the_menu_reason(tmp_path, monkeypatch):
     assert rep["valued"] is False and rep["no_value_reason"] == qwen_site.NO_VALUE["tax_unavailable"] and sent == []
 
 
+def test_a_name_with_no_route_reports_this_companys_own_reason(tmp_path, monkeypatch):      # 2026-11-25: the fixed "(real estate, pre-profit biotech)" line named kinds the company was not
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, [])
+    rs = {str(s): run(tmp_path, packet, seed=s, family="family_not_built") for s in (1000, 3000)}
+    assert {r["reason"] for r in rs.values()} == {"family_not_routed"}
+    why = "pre_profit: operating income <= 0 in 4 of the last 4 fiscal years"
+    rep = Q.report("TEST", "list", "2026-11-18T00:00:00Z", {}, {**N(packet), "family": "family_not_built", "family_reason": why}, rs, "c")
+    assert rep["valued"] is False and rep["no_value_reason"] == "no valuation route yet for a company with no operating profit in 4 of its last 4 fiscal years"
+    rep = Q.report("TEST", "list", "2026-11-18T00:00:00Z", {}, {**N(packet), "family": "family_not_built"}, rs, "c")
+    assert rep["no_value_reason"] == qwen_site.NO_VALUE["family_not_routed"]              # no reason on the name: the general line
+
+
+def test_the_no_route_wording_covers_every_kind_the_classification_does_not_build():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "paper_books"))
+    import value_family
+    for _, kind in value_family._NOT_BUILT:
+        assert qwen_site.not_routed(f"SIC 1: {kind}; family not built") == "no valuation route yet for " + qwen_site.NOT_BUILT_KIND[kind]
+    reit = "SIC 7011: filed evidence of a real estate investment trust (real-estate schedule and balance-sheet property); family not built"
+    assert qwen_site.not_routed(reit) == "no valuation route yet for a real estate company or trust"
+    assert qwen_site.not_routed(None) == qwen_site.not_routed("something new") == qwen_site.NO_VALUE["family_not_routed"]
+
+
 def test_a_tax_fallback_report_carries_the_mean_second_rate_values_and_the_label(tmp_path, monkeypatch):
     packet, b, rs = two_runs(tmp_path, monkeypatch, facts=TS.fb_facts())
     rep = Q.report("TEST", "list", "2026-11-18T00:00:00Z", {}, N(packet), rs, "c")

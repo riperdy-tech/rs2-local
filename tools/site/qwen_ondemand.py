@@ -248,7 +248,7 @@ def report(t, source, T, q1, n, results, commit, interest_override=None):
             tax_range = _tax_range(f, b, ok, results, ids, bar, r, fy_ends, route, n, (next(iter(ok.values())).get("base") or {}).get("shares"))
     if not valued:
         codes = sorted({str(x.get("reason")) for x in results.values() if not (dec and str(x.get("status", "")).startswith("ok"))}) or ["not_valued"]
-        reason = "; ".join(qwen_site.NO_VALUE.get(c, c) for c in codes)
+        reason = "; ".join(qwen_site.not_routed(n.get("family_reason")) if c == "family_not_routed" else qwen_site.NO_VALUE.get(c, c) for c in codes)
     ss = an.get("support_summary") or {}
     rep = {"ticker": t, "date": T, "source": f"on request ({source})" if source != "list" else "screener list refresh",
            "screener_commit": commit, "model": "qwen", "analysis": an.get("status") or q1.get("status") or "failed",
