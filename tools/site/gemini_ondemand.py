@@ -368,6 +368,8 @@ def analyze(t, source):
     rep["release_truncated"] = [a.split()[1] for a in pkj.get("annotations") or [] if a.startswith("release_truncated:")]
     if source.startswith("new_filing:"):
         rep["source"] = f"new filing ({source})"
+    elif source.startswith("news:"):                                       # news_watch: a serious news warning, then a filing
+        rep["source"] = f"news warning ({source})"
     if why:
         rep["loss_record"] = why
     if ifl:
@@ -377,7 +379,7 @@ def analyze(t, source):
 
 
 def refusal(t, source, T, why):
-    _write_report({"ticker": t, "date": T, "source": "screener list refresh" if source == "list" else f"new filing ({source})" if source.startswith("new_filing:") else f"on request ({source})",
+    _write_report({"ticker": t, "date": T, "source": "screener list refresh" if source == "list" else f"new filing ({source})" if source.startswith("new_filing:") else f"news warning ({source})" if source.startswith("news:") else f"on request ({source})",
                    "based_on": None, "release_truncated": [],
                    "model": GEM_MODEL, "analysis": "not run", "claims": None, "claims_supported": None, "in_code_book": False,
                    "qwen_book": None, "flags": [], "valued": False, "no_value_reason": why, "family": None, "tasks": {},
@@ -544,6 +546,12 @@ def build():
         if row.get("tax_range"):
             for d in (row, rep):
                 d["verdict_differs_at_alt_tax_rate"] = verdict_differs_at_alt_tax_rate(row, ke, prob, v)
+    import news_watch                       # here, not at the top: news_watch imports this module
+    warned = news_watch.warnings_log()
+    for row, rep in rows.values():           # news on the stock since its analysis (news_watch.for_site); the value itself reads filings only
+        news, review = news_watch.for_site(rep, warned)
+        rep.update(news=news, under_review=review)
+        row.update(news_count=len(news), under_review=review)
     if REPORTS.exists():
         shutil.rmtree(REPORTS)
     REPORTS.mkdir(parents=True)
