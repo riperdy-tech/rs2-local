@@ -402,3 +402,11 @@ def test_the_reader_is_told_the_industry_and_a_later_day_is_told_the_earlier_day
 
 def test_a_company_with_no_industry_on_file_is_named_alone():
     assert N.company_line("ZZZ", "Zed Inc", {}) == "Zed Inc" and N.company_line("ZZZ", None, {}) == "ZZZ"
+
+
+def test_the_backup_copies_the_record_and_nothing_else(home):
+    warn(home, "AAA", "w1")
+    (home / "state.json").write_text("{}", encoding="utf-8")
+    (home / "usage.jsonl").write_text("{}", encoding="utf-8")
+    assert N.backup(dest=home / "state_repo" / "news_watch") == ["warnings.jsonl", "state.json"]
+    assert sorted(p.name for p in (home / "state_repo" / "news_watch").iterdir()) == ["state.json", "warnings.jsonl"]

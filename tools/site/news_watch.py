@@ -33,7 +33,8 @@ its newest serious warning raised after the report was made. The value itself re
 the number when the company files and the stock is read again.
 
 Everything is written under cache/gemini_site/news of this checkout: raw/<T>/<day>.json, seen/<T>.json, checks/<day>/<T>.json,
-warnings.jsonl, state.json, usage.jsonl, log.
+warnings.jsonl, track.json, state.json, usage.jsonl, log. The morning copies warnings.jsonl, track.json and state.json to the private
+state repository (paper_books/news_watch), where sync_state backs them up.
 """
 import argparse
 import hashlib
@@ -661,6 +662,21 @@ def track(now=None, prices=None):
     return done
 
 
+def backup(dest=None):
+    """The record that cannot be made again (the warnings, the track record, what was told and queued) copied to the private state
+    repository's paper_books/news_watch, which sync_state carries and commits. The gathered headlines and check files stay here."""
+    import shutil
+    dest = dest or Q.book_paths.books() / "news_watch"
+    dest.mkdir(parents=True, exist_ok=True)
+    done = []
+    for f in (WARNINGS, TRACK, STATE):
+        if f.exists():
+            shutil.copyfile(f, dest / f.name)
+            done.append(f.name)
+    log(f"backup: {done} to {dest.name}")
+    return done
+
+
 # ---------------------------------------------------------------- the site's fields
 def for_site(report, log_rows, now=None):
     """(news, under_review) of one report. news: the stock's warnings of the last SHOW_DAYS days, newest first. under_review: its newest
@@ -706,8 +722,9 @@ def morning(limit=None):
         act()
         try:
             track()
-        except Exception as e:  # noqa: BLE001  the track record is a log; its failure stops nothing
-            log(f"track failed: {type(e).__name__}: {str(e)[:160]}")
+            backup()
+        except Exception as e:  # noqa: BLE001  the track record is a log and the backup a copy; their failure stops nothing
+            log(f"track or backup failed: {type(e).__name__}: {str(e)[:160]}")
         try:
             G.publish()
         except (SystemExit, Exception) as e:  # noqa: BLE001  the worker's next publish carries the warnings
@@ -727,7 +744,7 @@ def status():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("gather", "check", "act", "track", "morning", "status"))
+    ap.add_argument("cmd", choices=("gather", "check", "act", "track", "backup", "morning", "status"))
     ap.add_argument("--limit", type=int)
     a = ap.parse_args()
     if a.cmd == "gather":
@@ -739,6 +756,8 @@ if __name__ == "__main__":
         act()
     elif a.cmd == "track":
         track()
+    elif a.cmd == "backup":
+        backup()
     elif a.cmd == "morning":
         sys.exit(morning(a.limit))
     else:
