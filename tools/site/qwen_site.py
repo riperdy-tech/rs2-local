@@ -80,7 +80,7 @@ def not_routed(family_reason):
 
 
 FQ_ACTION = {"enter": "held", "enter_after_pending": "held (entered after its analysis finished)", "new_entry_restricted":
-             "not bought: Qwen flagged a material event", "escalation": "held, with a material event flagged for review",
+             "not bought: the AI analyst flagged a material event", "escalation": "held, with a material event flagged for review",
              "analysis_pending": "cash: analysis not finished at the fill", "operator_excluded": "excluded by the operator"}
 
 
@@ -121,7 +121,7 @@ def formation_rows(T):
             codes = sorted({str(s.get("reason")) for s in (idx.get(t) or {}).get("slots", {}).values()}) or ["not_valued"]
             reason = "; ".join(NO_VALUE.get(c, c) for c in codes)
         ss = an.get("support_summary") or {}
-        row = {"date": m["decision_time_utc"], "source": f"formation {T}", "model": (an.get("model") or "qwen"), "analysis":
+        row = {"date": m["decision_time_utc"], "source": f"formation {T}", "model": (an.get("model") or "the AI analyst"), "analysis":
                an.get("status") or "pending", "claims": ss.get("claims"), "claims_supported": ss.get("supported"),
                "in_code_book": bool(acts.get(t, {}).get("F")), "qwen_book": FQ_ACTION.get(fq[-1], fq[-1]) if fq else None,
                "flags": flags[:3], "valued": valued, "no_value_reason": reason, "family": (idx.get(t) or {}).get("family")}
@@ -183,7 +183,7 @@ def books(T):
     m = json.loads((M3O / "inputs" / f"formation_{T}.json").read_text(encoding="utf-8"))
     return {"schema": "m3o_books_v1", "formation": T, "decision_time_utc": m["decision_time_utc"], "slots": len(slots),
             "generated_at": m["decision_time_utc"],   # the targets' age for the KIS freshness guard (G4) is the formation's decision time
-            "note": "Monthly books: code_book = the screener's code-only A0 book; qwen_book = the same slots after Qwen's filing check "
+            "note": "Monthly books: code_book = the screener's code-only A0 book; qwen_book = the same slots after the AI analyst's filing check "
                     "(a name with a material event is held as cash). Equal weight per slot. Paper only.",
             "books": {"code_book": {t: w for t in slots}, "qwen_book": {t: w for t in qwen}}}
 
