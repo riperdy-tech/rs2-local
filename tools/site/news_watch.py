@@ -3,7 +3,7 @@ stocks-workspace/docs/PLAN_news_monitor_redesign_2026-11-25.md).
 
     python tools/site/news_watch.py gather [--limit N]     # code only: the week's headlines of every analysed stock from SearXNG, new ones kept
     python tools/site/news_watch.py check  [--limit N]     # the reader: one small call a stock with new headlines
-    python tools/site/news_watch.py act                    # serious warnings: one Telegram message; a re-read queued once the company has filed
+    python tools/site/news_watch.py act                    # serious warnings: one Telegram message; re-reads queued (capped a day)
     python tools/site/news_watch.py track                  # the closes before and 1, 20 and 60 sessions after every warning (a log; nothing acts on it)
     python tools/site/news_watch.py morning                # gather, check, act, track, then the site files are published
     python tools/site/news_watch.py status
@@ -19,9 +19,12 @@ ids exist, and the quote is in the headline or snippet of the item it names; an 
 with its failure and raises nothing. What is critical is never a fixed list of event types (operator 2026-11-14: "it could be anything,
 so it should be a variable thing"): it is what the stock's own analysis named, or what the reader calls a new serious matter.
 (3) ACT, code: every checked event is a warning (warnings.jsonl, with the last close). The day's serious warnings go out in one Telegram
-message. A serious warning queues its stock for a re-read in the worker's filing queue once the company has filed an 8-K, a 6-K or a
-periodic report since the stock's report was made (the value and the reading use filings; a re-read before the filing would read what the
-report already read), at most REREADS_A_DAY stocks a day. Monitoring never sells and moves no money (operator 2026-10-01).
+message. A serious warning queues its stock for a re-read in the worker's filing queue, at most REREADS_A_DAY stocks a day, a stock whose
+company has filed since its report first. THE RE-READ (gemini_ondemand.analyze, a queue reason news:...): the reading is run on the SEC
+packet plus the press reports of the stock's warnings as items of kind news (packet_with_news; qwen_c tells the reader they are press
+reports and checks their quotes like any other); the valuation is run on the SEC packet alone and is given the reading without its
+news-cited claims (without_news_claims), so the number moves only on filings. Monitoring never sells and moves no money (operator
+2026-10-01).
 
 THE READER is READER (environment NEWS_READER). "cloud" (the default) reads through the worker's own calls, BATCH stocks a call (the
 call's fixed cost is shared; replay 2026-11-25: 8,560 tokens a stock-day against 19,640, the same answers): Gemini, or Claude Sonnet when
@@ -75,6 +78,7 @@ SHOW_DAYS = 14                    # the site shows a stock's warnings of this ma
 REVIEW_DAYS = 30                  # a serious warning older than this no longer marks the stock under review
 REREADS_A_DAY = 3                 # operator 2026-11-25 (ruling R2): at most this many re-reads queued by news a day
 GATHER_BATCH, GATHER_PAUSE_S = 26, 300      # the B2 gather's pacing: SearXNG suspended an engine asked too fast (2026-10-02)
+EVIDENCE_ROWS, EVIDENCE_CHARS = 6, 6000     # press reports handed to a re-read, and the characters of an article kept (qwen_c.news_packet caps the total)
 TELL_STOCKS = 20                  # stocks named in the day's Telegram message; the rest are counted
 DOWN_AFTER = 5                   # the first this-many searches all failing ends the gather: the search engine is down
 CHECK_KEEP_DAYS = 3               # a gathered stock-day no reader took within this many days is no longer checked (it is old news)
@@ -543,11 +547,12 @@ def filed_since(ticker, since, now, get=None, ciks=None):
 
 
 def act(now=None, notify=None, enqueue=None, filed=None):
-    """What follows a serious warning. (a) Each is told once, the day's lot in one Telegram message. (b) Its stock is queued for a re-read
-    once the company has filed something since the report was made (filed_since): a re-read with no new filing reads what the report
-    already read. Until then the warning waits (the site shows it and marks the stock under review) and is looked at again each run for
-    REVIEW_DAYS days. At most REREADS_A_DAY stocks are queued a day, the worst direction first; a stock whose report was made after the
-    warning, or that is already in a queue, is settled. Returns {told, queued, waiting, over_cap}."""
+    """What follows a serious warning (operator ruling R2, 2026-11-25). (a) Each is told once, the day's lot in one Telegram message.
+    (b) Its stock is queued for a re-read, at most REREADS_A_DAY stocks a day: stocks whose company has filed since the report was made
+    first (filed_since: that re-read has a filing to read as well), then the worst direction. The re-read's reading is given the press
+    reports as evidence (packet_with_news); its valuation reads filings only. A stock over the day's cap is taken on a later day, for
+    REVIEW_DAYS days; one whose report was made after the warning, or that is already in a queue, is settled. Returns {told, queued,
+    over_cap}."""
     now = now or datetime.now(timezone.utc)
     st = _read(STATE, {}) or {}
     told, settled = set(st.get("told") or []), set(st.get("settled") or [])
@@ -556,33 +561,30 @@ def act(now=None, notify=None, enqueue=None, filed=None):
     serious = [w for w in warnings_log() if w["serious"] and w["day"] >= since]
     reps = reports()
     order = {"worse": 0, "unclear": 1, "better": 2}
-    open_w = sorted((w for w in serious if w["id"] not in settled), key=lambda w: (order[w["direction"]], w["day"], w["ticker"]))
-    used = sum(1 for d in (st.get("queued_days") or []) if d == day)
     enqueue, filed = enqueue or enqueue_reread, filed or filed_since
-    out = {"told": 0, "queued": [], "waiting": [], "over_cap": []}
-    seen_t = set()
-    for w in open_w:
-        t = w["ticker"]
-        rep = reps.get(t)
+    lead = {}                                              # one candidate a stock: its worst open warning
+    for w in sorted((w for w in serious if w["id"] not in settled), key=lambda w: (order[w["direction"]], w["day"], w["ticker"])):
+        rep = reps.get(w["ticker"])
         if rep is None or G.decision_time(rep) > w["at"]:           # no report to redo, or it was redone after the warning
             settled.add(w["id"])
-            continue
-        if t in seen_t:
-            continue
-        seen_t.add(t)
-        try:
-            hit = filed(t, G._dt(G.decision_time(rep)), now)
-        except Exception as e:  # noqa: BLE001  the SEC list could not be read: the warning waits for the next run
-            log(f"act {t}: {type(e).__name__}: {str(e)[:120]}")
-            hit = None
-        if hit is None:
-            out["waiting"].append(t)
-        elif used + len(out["queued"]) >= REREADS_A_DAY:
-            out["over_cap"].append(t)
         else:
-            if enqueue(w, hit):
-                out["queued"].append(t)
-            settled.update(x["id"] for x in open_w if x["ticker"] == t)       # queued now, or already in a queue
+            lead.setdefault(w["ticker"], w)
+    hits = {}
+    for t, w in lead.items():
+        try:
+            hits[t] = filed(t, G._dt(G.decision_time(reps[t])), now)
+        except Exception as e:  # noqa: BLE001  the SEC list could not be read: the stock is ranked as one that has not filed
+            log(f"act {t}: {type(e).__name__}: {str(e)[:120]}")
+            hits[t] = None
+    used = sum(1 for d in (st.get("queued_days") or []) if d == day)
+    out = {"told": 0, "queued": [], "over_cap": []}
+    for t, w in sorted(lead.items(), key=lambda kv: (hits[kv[0]] is None, order[kv[1]["direction"]], kv[1]["day"], kv[0])):
+        if used + len(out["queued"]) >= REREADS_A_DAY:
+            out["over_cap"].append(t)
+            continue
+        if enqueue(w, hits[t]):
+            out["queued"].append(t)
+        settled.update(x["id"] for x in serious if x["ticker"] == t)          # queued now, or already in a queue
     fresh = sorted((w for w in serious if w["id"] not in told), key=lambda w: (order[w["direction"]], w["day"], w["ticker"]))
     if fresh:
         first = {}                                          # one line a stock: its first (worst) warning, and how many more it has
@@ -593,30 +595,28 @@ def act(now=None, notify=None, enqueue=None, filed=None):
         if len(first) > TELL_STOCKS:
             lines.append(f"and {len(first) - TELL_STOCKS} more stocks (all are on the site)")
         if out["queued"]:
-            lines.append("Re-read queued (the company has filed since its analysis): " + ", ".join(out["queued"]))
-        if out["waiting"]:
-            lines.append("Waiting for a filing: " + ", ".join(out["waiting"]))
+            lines.append("Re-read queued, with the press reports as evidence: " + ", ".join(out["queued"]))
         if out["over_cap"]:
-            lines.append(f"Over today's cap of {REREADS_A_DAY}, taken tomorrow: " + ", ".join(out["over_cap"]))
+            lines.append(f"Over today's cap of {REREADS_A_DAY}, taken on a later day: " + ", ".join(out["over_cap"]))
         if (notify or notify_telegram)("\n".join(lines)):
             told.update(w["id"] for w in fresh)
             out["told"] = len(fresh)
     week = (now - timedelta(days=7)).strftime("%Y-%m-%d")
     _write(STATE, {**st, "told": sorted(told)[-5000:], "settled": sorted(settled)[-5000:],
                    "queued_days": [d for d in (st.get("queued_days") or []) if d >= week] + [day] * len(out["queued"])})
-    log(f"act: {len(open_w)} serious open, told {out['told']}, queued {out['queued']}, waiting {out['waiting']}, over cap {out['over_cap']}")
+    log(f"act: {len(lead)} stocks with an open serious warning, told {out['told']}, queued {out['queued']}, over cap {out['over_cap']}")
     return out
 
 
 def enqueue_reread(w, hit):
-    """The stock into the worker's filing queue with the reason news:<day>:<warning id>:<form>:<accession> (next_name takes it after operator
-    requests); False where it already waits in a queue."""
+    """The stock into the worker's filing queue with the reason news:<day>:<warning id>, and :<form>:<accession> where the company has filed
+    since its report (next_name takes it after operator requests); False where it already waits in a queue."""
     f = G.filing_queue_file()
     if any(q["ticker"] == w["ticker"] for q in Q._jsonl(f) + Q._jsonl(G.queue_file())):
         return False
     f.parent.mkdir(parents=True, exist_ok=True)
     with f.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"ticker": w["ticker"], "source": "news", "reason": f"news:{w['day']}:{w['id']}:{hit[0]}:{hit[1]}",
+        fh.write(json.dumps({"ticker": w["ticker"], "source": "news", "reason": f"news:{w['day']}:{w['id']}" + (f":{hit[0]}:{hit[1]}" if hit else ""),
                              "queued_at": Q.now_z()}) + "\n")
     return True
 
@@ -660,6 +660,72 @@ def track(now=None, prices=None):
     _write(TRACK, done)
     log(f"track: {len(open_rows)} warnings open, {len(done)} logged")
     return done
+
+
+# ---------------------------------------------------------------- the re-read: press reports as evidence of the reading
+def evidence_rows(ticker, T, fetch=None, log_rows=None):
+    """The press reports a re-read of `ticker` at decision time T is given: the lead report of each of the stock's warnings of the last
+    KNOWN_WARNING_DAYS days (serious first, then newest; one row an address; EVIDENCE_ROWS at most), in qwen_c.news_packet's row shape.
+    The text is the article's (`fetch(url, title)`, the holdings monitor's page reader, EVIDENCE_CHARS kept) or, where the page cannot be
+    read, the headline and the snippet the check read (`text_from` says which). Returns (rows, warning ids)."""
+    fetch = fetch or M.online_article
+    day_T = str(T)[:10]
+    cut = (datetime.strptime(day_T, "%Y-%m-%d") - timedelta(days=KNOWN_WARNING_DAYS)).strftime("%Y-%m-%d")
+    mine = [w for w in (warnings_log() if log_rows is None else log_rows) if w["ticker"] == ticker and cut <= w["day"] <= day_T and w.get("url")]
+    mine.sort(key=lambda w: w["day"], reverse=True)
+    mine.sort(key=lambda w: not w["serious"])
+    rows, ids, seen = [], [], set()
+    for w in mine:
+        if w["url"] in seen or len(rows) == EVIDENCE_ROWS:
+            continue
+        seen.add(w["url"])
+        snippet = next((r.get("snippet") or "" for r in ((_read(RAW / ticker / f"{w['day']}.json") or {}).get("rows") or []) if r.get("url") == w["url"]), "")
+        try:
+            page = fetch(w["url"], w["headline"])
+        except Exception as e:  # noqa: BLE001  an unreadable page is the snippet's case, never a reason to drop the report
+            log(f"evidence {ticker}: page not read ({type(e).__name__}: {str(e)[:100]})")
+            page = None
+        text = (page or "").strip()[:EVIDENCE_CHARS] or f"{w['headline']}. {snippet}".strip()
+        rows.append({"title": w["headline"], "url": w["url"], "publisher": urllib.parse.urlparse(str(w["url"])).netloc.lower().removeprefix("www.") or w.get("source"),
+                     "date": w["day"], "found_by": ["news_watch"], "text": text, "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                     "text_from": "article" if page and page.strip() else "headline_and_snippet"})
+        ids.append(w["id"])
+    return rows, ids
+
+
+def packet_with_news(ticker, packet_path, fetch=None):
+    """(the packet the READING of a news re-read is run on, what was added) for a stock's SEC packet: the same packet with the press reports
+    of its warnings as items of kind news (qwen_c.news_packet.add_news: ids N1.., their own text budget, the SEC items untouched), saved
+    beside the SEC packets. The valuation is run on the SEC packet as before; it refuses a packet that holds news. With no report to add,
+    or when the news packet is refused, this is (packet_path, None) and the re-read is an ordinary one."""
+    from qwen_c import news_packet
+    pk = json.loads(Path(packet_path).read_text(encoding="utf-8"))
+    rows, ids = evidence_rows(ticker, pk["decision_time_utc"], fetch)
+    if not rows:
+        return str(packet_path), None
+    obj = {"ticker": ticker, "T": pk["decision_time_utc"], "rows": rows}
+    raw = json.dumps(obj, ensure_ascii=False, indent=1).encode("utf-8")
+    f = NEWS / "evidence" / f"{ticker}_{G.runner.t_compact(pk['decision_time_utc'])}.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_bytes(raw)
+    try:
+        out = news_packet.add_news(pk, obj, hashlib.sha256(raw).hexdigest())
+        path = G.P.save(out, news_packet.NEWS_DIR)
+    except Exception as e:  # noqa: BLE001  PacketRefused and PacketError: the re-read goes on without the news
+        log(f"evidence {ticker}: news packet refused ({type(e).__name__}: {str(e)[:160]})")
+        return str(packet_path), None
+    return str(path), {"warnings": ids, "rows": out["news"]["rows_used"], "rows_left_out": out["news"]["rows_left_out"],
+                       "text_from": [r["text_from"] for r in rows], "evidence_file": f.name}
+
+
+def without_news_claims(analysis):
+    """A reading with every claim that cites a news item (a fact id N<number>) left out: what the valuation is given as the earlier
+    read, so that a press report never reaches the valuation, which reads filings only."""
+    out = json.loads(json.dumps(analysis or {}))
+    for t in (out.get("tasks") or {}).values():
+        if isinstance(t, dict) and isinstance(t.get("claims"), list):
+            t["claims"] = [c for c in t["claims"] if not any(re.fullmatch(r"N\d+", str(i)) for i in (c.get("fact_ids") or []))]
+    return out
 
 
 def backup(dest=None):

@@ -312,7 +312,12 @@ def analyze(t, source):
     packet = pk["packet"]
     t0 = time.time()
     STATE["label"] = f"{t}:q1"
-    q1 = runner.run(packet, seed=1000)
+    read_packet, news_read = packet, None
+    if source.startswith("news:"):              # news_watch: the reading also gets the press reports of the stock's warnings; the valuation does not
+        import news_watch
+        read_packet, news_read = news_watch.packet_with_news(t, packet)
+        log(f"{t} news re-read: {news_read or 'no press report added'}")
+    q1 = runner.run(read_packet, seed=1000)
     log(f"{t} Q1 {q1.get('status')} {round(time.time() - t0)} s")
     pkj = json.loads(Path(packet).read_text(encoding="utf-8"))
     cik = pkj.get("cik")
@@ -352,6 +357,8 @@ def analyze(t, source):
     results = {}
     use_decided = decided() and (n["family"] in decided_value.FAMILIES + decided_financial.FAMILIES or n["family"] in decided_value.VARIANTS)      # WO_NC7, WO_NC9b: every other family keeps the menu; WO_NC9c: real estate
     an = decided_value.read_analysis(q1) if use_decided else None
+    if an and news_read:
+        an = news_watch.without_news_claims(an)       # the valuation is given the reading without its news-cited claims: it reads filings only
     for seed in (() if why_reason else Q.SEEDS):
         STATE["label"] = f"{t}:value{seed}"
         if use_decided:
@@ -368,8 +375,9 @@ def analyze(t, source):
     rep["release_truncated"] = [a.split()[1] for a in pkj.get("annotations") or [] if a.startswith("release_truncated:")]
     if source.startswith("new_filing:"):
         rep["source"] = f"new filing ({source})"
-    elif source.startswith("news:"):                                       # news_watch: a serious news warning, then a filing
+    elif source.startswith("news:"):                                       # news_watch: a serious news warning
         rep["source"] = f"news warning ({source})"
+        rep["news_read"] = news_read
     if why:
         rep["loss_record"] = why
     if ifl:

@@ -227,10 +227,10 @@ def acting(home, monkeypatch, tickers):
 HIT = ("8-K", "0001-26-000001")
 
 
-def test_act_tells_once_and_queues_a_stock_only_after_a_new_filing(home, monkeypatch):
-    acting(home, monkeypatch, ["AAA", "BBB"])
-    warn(home, "AAA", "a1")
-    warn(home, "BBB", "b1")
+def test_act_tells_once_and_queues_the_stock_that_has_filed_first(home, monkeypatch):
+    acting(home, monkeypatch, ["AAA", "BBB", "CCC", "DDD"])
+    for t in ("AAA", "BBB", "CCC", "DDD"):
+        warn(home, t, t.lower() + "1")
     warn(home, "BBB", "b2", serious=False)
     queued, told = [], []
 
@@ -241,12 +241,12 @@ def test_act_tells_once_and_queues_a_stock_only_after_a_new_filing(home, monkeyp
     def notify(text):
         told.append(text)
         return True
-    out = N.act(now=NOW, notify=notify, enqueue=enqueue, filed=lambda t, since, now: HIT if t == "BBB" else None)
-    assert queued == [("BBB", HIT)] and out["waiting"] == ["AAA"] and out["told"] == 2 and len(told) == 1
-    assert "Waiting for a filing: AAA" in told[0] and "why b2" not in told[0]
-    out = N.act(now=NOW, notify=never, enqueue=enqueue, filed=lambda t, since, now: HIT)       # the next run: AAA has filed; nothing is told twice
-    assert queued[-1] == ("AAA", HIT) and out["queued"] == ["AAA"] and out["told"] == 0
-    assert N.act(now=NOW, notify=never, enqueue=never, filed=never)["queued"] == []           # both settled
+    out = N.act(now=NOW, notify=notify, enqueue=enqueue, filed=lambda t, since, now: HIT if t == "DDD" else None)
+    assert queued == [("DDD", HIT), ("AAA", None), ("BBB", None)] and out["over_cap"] == ["CCC"] and out["told"] == 4 and len(told) == 1
+    assert "why b2" not in told[0] and "Over today's cap of 3, taken on a later day: CCC" in told[0]
+    later = datetime(2026, 11, 26, 21, 0, tzinfo=timezone.utc)
+    assert N.act(now=later, notify=never, enqueue=enqueue, filed=lambda t, since, now: None)["queued"] == ["CCC"]      # nothing is told twice
+    assert N.act(now=later, notify=never, enqueue=never, filed=never)["queued"] == []           # all settled
 
 
 def test_act_queues_up_to_the_cap_worst_first(home, monkeypatch):
@@ -270,20 +270,25 @@ def test_a_stock_already_queued_is_settled_and_does_not_use_the_cap(home, monkey
         warn(home, t, t.lower())
     out = N.act(now=NOW, notify=lambda text: True, enqueue=lambda w, hit: w["ticker"] != "AAA", filed=lambda t, since, now: HIT)
     assert out["queued"] == ["BBB", "CCC", "DDD"] and out["over_cap"] == []
-    assert N.act(now=NOW, notify=never, enqueue=never, filed=never)["waiting"] == []
+    assert N.act(now=NOW, notify=never, enqueue=never, filed=never)["queued"] == []
 
 
-def test_a_report_made_after_the_warning_settles_it_and_an_unreadable_sec_list_waits(home, monkeypatch):
+def test_a_report_made_after_the_warning_settles_it_and_an_unreadable_sec_list_still_queues(home, monkeypatch):
     monkeypatch.setattr(N, "reports", lambda: {"AAA": report(date="2026-11-26T00:00:00Z"), "BBB": report("BBB")})
     warn(home, "AAA", "a1")
     warn(home, "BBB", "b1")
     warn(home, "CCC", "c1")                                       # no report any more
+    queued = []
 
     def filed(t, since, now):
         raise OSError("SEC unreachable")
-    out = N.act(now=NOW, notify=lambda text: True, enqueue=never, filed=filed)
-    assert out["waiting"] == ["BBB"] and out["queued"] == []
-    assert sorted(json.loads((home / "state.json").read_text(encoding="utf-8"))["settled"]) == ["a1", "c1"]
+
+    def enqueue(w, hit):
+        queued.append((w["ticker"], hit))
+        return True
+    out = N.act(now=NOW, notify=lambda text: True, enqueue=enqueue, filed=filed)
+    assert out["queued"] == ["BBB"] and queued == [("BBB", None)]
+    assert sorted(json.loads((home / "state.json").read_text(encoding="utf-8"))["settled"]) == ["a1", "b1", "c1"]
 
 
 def test_filed_since_takes_the_newest_event_or_periodic_filing_after_the_report(home):
@@ -410,3 +415,36 @@ def test_the_backup_copies_the_record_and_nothing_else(home):
     (home / "usage.jsonl").write_text("{}", encoding="utf-8")
     assert N.backup(dest=home / "state_repo" / "news_watch") == ["warnings.jsonl", "state.json"]
     assert sorted(p.name for p in (home / "state_repo" / "news_watch").iterdir()) == ["state.json", "warnings.jsonl"]
+
+
+# ------------------------------------------------------------ the re-read with press reports
+def test_the_evidence_of_a_re_read_is_the_lead_report_of_each_warning_serious_first(home):
+    warn(home, "AAA", "note", day="2026-11-24", serious=False)
+    warn(home, "AAA", "s1", day="2026-11-23")
+    warn(home, "AAA", "old", day="2026-11-01")
+    warn(home, "BBB", "other")
+    rows_log = N.warnings_log()
+    for w in rows_log:
+        w["url"] = "https://news.example/" + w["id"]
+    N._write(home / "raw" / "AAA" / "2026-11-24.json", {"rows": [{"url": "https://news.example/note", "snippet": "The snippet the check read."}]})
+
+    def fetch(url, title):
+        if url.endswith("s1"):
+            return "  The whole article. " + "x" * 9000
+        raise OSError("blocked")
+    rows, ids = N.evidence_rows("AAA", "2026-11-25T21:00:00Z", fetch=fetch, log_rows=rows_log)
+    assert ids == ["s1", "note"]
+    assert rows[0]["text_from"] == "article" and len(rows[0]["text"]) == N.EVIDENCE_CHARS and rows[0]["date"] == "2026-11-23"
+    assert rows[1]["text"] == "headline note. The snippet the check read." and rows[1]["text_from"] == "headline_and_snippet"
+    assert rows[1]["publisher"] == "news.example" and all(N.hashlib.sha256(r["text"].encode("utf-8")).hexdigest() == r["text_sha256"] for r in rows)
+
+
+def test_the_valuation_is_given_the_reading_without_its_news_cited_claims():
+    an = {"status": "ok", "tasks": {"material_events": {"claims": [{"claim": "from a filing", "fact_ids": ["P1"]},
+                                                                  {"claim": "from the press", "fact_ids": ["N1"]},
+                                                                  {"claim": "both", "fact_ids": ["F2", "N3"]}]},
+                                    "risks": {"claims": [{"claim": "no ids"}]}, "thesis_change": None}}
+    out = N.without_news_claims(an)
+    assert [c["claim"] for c in out["tasks"]["material_events"]["claims"]] == ["from a filing"]
+    assert out["tasks"]["risks"]["claims"] == [{"claim": "no ids"}] and len(an["tasks"]["material_events"]["claims"]) == 3
+    assert N.without_news_claims(None) == {}
