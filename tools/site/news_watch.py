@@ -162,9 +162,7 @@ def known_events(report):
 
 
 def companies():
-    s = json.loads((paths.resolve("screener_data_dir") / "stocks.json").read_text(encoding="utf-8"))
-    s = s if isinstance(s, list) else s.get("stocks", s)
-    return {r["symbol"]: r.get("name") for r in s if isinstance(r, dict) and r.get("symbol")}
+    return {t: r.get("name") for t, r in stock_rows().items()}
 
 
 def warnings_log():
@@ -459,13 +457,28 @@ def last_close(ticker, stocks=None):
     return v if isinstance(v, (int, float)) else None
 
 
+def stock_rows():
+    s = json.loads((paths.resolve("screener_data_dir") / "stocks.json").read_text(encoding="utf-8"))
+    return {r["symbol"]: r for r in (s if isinstance(s, list) else s.get("stocks", s)) if isinstance(r, dict) and r.get("symbol")}
+
+
+def company_line(ticker, name, stocks):
+    """The company as the reader is told it: its name and, where the screener has them, its industry and sector, so a headline about
+    another thing of the same name (a ticker that is also a word or an abbreviation) can be told apart."""
+    r = stocks.get(ticker) or {}
+    kind = ", ".join(str(r[k]) for k in ("industry", "sector") if r.get(k))
+    return f"{name or ticker} ({kind})" if kind else str(name or ticker)
+
+
 def check(limit=None, now=None, **readers):
-    """Checks every gathered stock-day that has new headlines and no check file yet. Writes the
-    check file and appends one warning per event that passed code's checks. Returns {checked, warnings, serious, unread}."""
+    """Checks every gathered stock-day that has new headlines and no check file yet, the oldest day first, so a later day is told the
+    warnings an earlier day raised. Writes the check file and appends one warning per event that passed code's checks. Returns {checked,
+    warnings, serious, unread}."""
     reps = reports()
     log_rows = warnings_log()
-    todo = []
+    stocks = stock_rows()
     oldest = ((now or datetime.now(timezone.utc)) - timedelta(days=CHECK_KEEP_DAYS)).strftime("%Y-%m-%d")
+    by_day = {}
     for d in sorted(RAW.glob("*/*.json")) if RAW.exists() else []:
         if d.stem < oldest:
             continue
@@ -473,39 +486,42 @@ def check(limit=None, now=None, **readers):
         t, day = raw.get("ticker"), raw.get("day")
         if not raw.get("rows") or raw.get("error") or t not in reps or (CHECKS / day / f"{t}.json").exists():
             continue
-        cut = (datetime.strptime(day, "%Y-%m-%d") - timedelta(days=KNOWN_WARNING_DAYS)).strftime("%Y-%m-%d")
-        prior = [w for w in log_rows if w["ticker"] == t and cut <= w["day"] < day]
-        todo.append((t, raw.get("company") or t, reps[t], day, raw["rows"][:MAX_ROWS], prior, len(raw["rows"]) - len(raw["rows"][:MAX_ROWS])))
-    todo = todo[:limit]
+        by_day.setdefault(day, []).append(raw)
     out = {"checked": 0, "warnings": 0, "serious": 0, "unread": 0}
-    stocks = None
-    for i in range(0, len(todo), 20):                      # in slices, so a broken run keeps what it has read
-        part = todo[i:i + 20]
-        answers = read_jobs([j[:6] for j in part], **readers)
-        for t, company, rep, day, rows, prior, dropped in part:
-            if answers.get(t) is None:
-                out["unread"] += 1
-                continue
-            reader, raw_events = answers[t]
-            ids = {i for i, _ in points(rep)}
-            events = [checked_event(e, rows, ids) for e in raw_events if isinstance(e, dict)]
-            _write(CHECKS / day / f"{t}.json", {"ticker": t, "day": day, "reader": reader, "report_date": rep.get("date"), "rows": len(rows),
-                                                 "rows_dropped": dropped, "events": events})
-            out["checked"] += 1
-            claims = dict(points(rep))
-            for e in (e for e in events if e["ok"]):
-                if stocks is None:
-                    s = json.loads((paths.resolve("screener_data_dir") / "stocks.json").read_text(encoding="utf-8"))
-                    stocks = {r["symbol"]: r for r in (s if isinstance(s, list) else s.get("stocks", s)) if isinstance(r, dict) and r.get("symbol")}
-                w = {"id": warning_id(t, day, e), "ticker": t, "day": day, "at": Q.now_z(), "reader": reader, "serious": e["serious"],
-                     "direction": e["direction"], "new_matter": e["new_matter"], "why": e["why"], "quote": e["quote"],
-                     "touches": [{"id": p, "claim": claims[p]} for p in e["touches"]],
-                     "headline": e["headlines"][0]["title"], "url": e["headlines"][0]["url"], "source": e["headlines"][0].get("source"),
-                     "outlets": len(e["headlines"]), "report_date": rep.get("date"), "close_at_warning": last_close(t, stocks)}
-                with WARNINGS.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(w, ensure_ascii=False) + "\n")
-                out["warnings"] += 1
-                out["serious"] += e["serious"]
+    left = limit
+    for day in sorted(by_day):
+        cut = (datetime.strptime(day, "%Y-%m-%d") - timedelta(days=KNOWN_WARNING_DAYS)).strftime("%Y-%m-%d")
+        raws = by_day[day] if left is None else by_day[day][:left]
+        left = None if left is None else left - len(raws)
+        for i in range(0, len(raws), 20):                  # in slices, so a broken run keeps what it has read
+            part = [(raw["ticker"], company_line(raw["ticker"], raw.get("company"), stocks), reps[raw["ticker"]], day, raw["rows"][:MAX_ROWS],
+                     [w for w in log_rows if w["ticker"] == raw["ticker"] and cut <= w["day"] < day], len(raw["rows"]) - len(raw["rows"][:MAX_ROWS]))
+                    for raw in raws[i:i + 20]]
+            answers = read_jobs([j[:6] for j in part], **readers)
+            for t, company, rep, day_, rows, prior, dropped in part:
+                if answers.get(t) is None:
+                    out["unread"] += 1
+                    continue
+                reader, raw_events = answers[t]
+                ids = {i for i, _ in points(rep)}
+                events = [checked_event(e, rows, ids) for e in raw_events if isinstance(e, dict)]
+                _write(CHECKS / day / f"{t}.json", {"ticker": t, "day": day, "reader": reader, "report_date": rep.get("date"), "rows": len(rows),
+                                                     "rows_dropped": dropped, "events": events})
+                out["checked"] += 1
+                claims = dict(points(rep))
+                for e in (e for e in events if e["ok"]):
+                    w = {"id": warning_id(t, day, e), "ticker": t, "day": day, "at": Q.now_z(), "reader": reader, "serious": e["serious"],
+                         "direction": e["direction"], "new_matter": e["new_matter"], "why": e["why"], "quote": e["quote"],
+                         "touches": [{"id": p, "claim": claims[p]} for p in e["touches"]],
+                         "headline": e["headlines"][0]["title"], "url": e["headlines"][0]["url"], "source": e["headlines"][0].get("source"),
+                         "outlets": len(e["headlines"]), "report_date": rep.get("date"), "close_at_warning": last_close(t, stocks)}
+                    with WARNINGS.open("a", encoding="utf-8") as f:
+                        f.write(json.dumps(w, ensure_ascii=False) + "\n")
+                    log_rows.append(w)
+                    out["warnings"] += 1
+                    out["serious"] += e["serious"]
+        if left is not None and left <= 0:
+            break
     log(f"check: {out['checked']} stock-days checked, {out['warnings']} warnings ({out['serious']} serious), {out['unread']} left unread")
     return out
 

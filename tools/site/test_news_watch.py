@@ -47,7 +47,8 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(N, "last_close", lambda t, stocks=None: 12.5)
     monkeypatch.setattr(N.paths, "resolve", lambda key: tmp_path / "screener")
     (tmp_path / "screener").mkdir()
-    (tmp_path / "screener" / "stocks.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "screener" / "stocks.json").write_text(json.dumps(
+        [{"symbol": "AAA", "name": "Alpha Corp", "industry": "Steel", "sector": "Basic Materials", "price": 12.5}]), encoding="utf-8")
     return tmp_path
 
 
@@ -384,3 +385,20 @@ def test_the_gather_stops_when_the_first_searches_all_fail(home, monkeypatch):
         raise RuntimeError("every news query failed")
     out = N.gather(search=down, now=NOW, sleep=never)
     assert len(calls) == N.DOWN_AFTER and len(out["errors"]) == 40 and out["gathered"] == 0
+
+
+def test_the_reader_is_told_the_industry_and_a_later_day_is_told_the_earlier_days_warning(home):
+    gathered(home, day="2026-11-24", rows=ROWS[:1])
+    gathered(home, rows=ROWS[1:])
+    seen = []
+
+    def ollama(model, text, label):
+        seen.append(text)
+        return json.dumps({"events": [event(items=["N1"])]}) if label.endswith("2026-11-24") else '{"events": []}'
+    assert N.check(now=NOW, reader="ollama:m", ollama=ollama)["warnings"] == 1
+    assert "COMPANY AAA: Alpha Corp (Steel, Basic Materials)." in seen[0] and "Today is 2026-11-24" in seen[0]
+    assert "(warning already raised 2026-11-24) The largest customer will not renew." in seen[1] and "(warning already raised" not in seen[0]
+
+
+def test_a_company_with_no_industry_on_file_is_named_alone():
+    assert N.company_line("ZZZ", "Zed Inc", {}) == "Zed Inc" and N.company_line("ZZZ", None, {}) == "ZZZ"
