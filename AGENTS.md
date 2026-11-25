@@ -1,8 +1,9 @@
 # rs2-local
 
-The depth underwriting pipeline. Runs the RS2 expectations-investing framework over the screener's
-research_now / watchlist book on a local Ollama model, publishes verdicts to the screener site
-overlay, and keeps an append-only, graded track record.
+The AI analyst's pipeline. It reads each company's SEC filings with a cloud model, values the company with
+code, publishes the result to the screener site, watches the news on the stocks it has analysed, and keeps the
+monthly paper books. Since 2026-11-20 the reader is Gemini, with Claude Sonnet as the fallback; the local model
+(Qwen through Ollama) is retired and no GPU is used (operator, 2026-11-20). The older depth tier (section 2b) is paused.
 
 Workspace-wide rules — path resolution between repositories, the ten non-negotiables, working
 style — are in [../AGENTS.md](../AGENTS.md) and are not repeated here. This file carries only what
@@ -113,9 +114,28 @@ the pack's reference and the desk. Cost of equity
 must sit within ±150 bp of the pack's SECTION 1.5 anchor or declare `coe_source: "own"` with a
 reason.
 
-## 2. Architecture
+## 2. What runs today (since 2026-11-20)
 
-The depth tier is production. The model produces its own valuation from the static data the pack
+The reader reads; code values. A model never does valuation arithmetic and never writes the published number.
+
+| Part | Where | What it does |
+| --- | --- | --- |
+| Packet | `qwen_c/packet.py`, `qwen_c/sec_store.py` | builds one company's evidence packet from its SEC filings at a decision time |
+| Reading | `qwen_c/runner.py`, `qwen_c/tasks.py`, `qwen_c/contract.py` | runs the reading tasks on a packet; every claim carries a quote that code checks against the packet. Thinking effort is high, always |
+| Valuation | `qwen_c/value/`, `tools/site/decided_*.py` | code values the company from the filings and the reading's checked claims, at two seeds |
+| Site worker | `tools/site/gemini_ondemand.py` (task `RS2-Gemini-Site`) | analyses the screener list and the requests, re-reads a stock after a new filing, publishes to the site. It swaps only the function that sends a request to the model: Gemini through `agy`, Claude Sonnet when Gemini's allowance is under its floor |
+| News watch | `tools/site/news_watch.py` (task `RS2-News-Watch`, 06:00 KST) | gathers the day's news on every analysed stock, has the reader check it against that stock's own points, warns once by Telegram and on the site, queues a capped re-read. It never sells |
+| Paper books | `tools/paper_books/` | the monthly formation, the forward ledger and the engine marks, kept in `rs2-state` |
+
+The package is still named `qwen_c` and some files and data keys still say `qwen`: that is a name, not the model in use.
+`tools/site/qwen_ondemand.py` and `qwen_site.py` supply shared code to the cloud worker; their own scheduled task is disabled.
+
+The site worker runs from its own working tree, not from this checkout; its lock is `cache/gemini_site/worker.lock` in that tree.
+Change that tree only when the lock is absent. Requests and the filing queue live in this checkout's `cache/site/`.
+
+## 2b. The depth tier (paused by `cache/DEPTH_PAUSED`; kept, not running)
+
+The depth tier was production until the cloud readers replaced it for the site. The model produces its own valuation from the static data the pack
 supplies plus live primary-source research; code supplies the data and judges the output with two
 guards — plausibility and repeatability. Every verdict ends in a machine-readable Section 12
 contract.
@@ -148,8 +168,8 @@ The pre-Charter five-stage pipeline (`run_rs2.py`, `orchestrate.py` and their Mo
 retired under `_archive/retired_20260920/`. It is history, not a fallback — do not restore a path
 from it to work around a defect in the depth tier.
 
-The analyst model is served through `tools/audit_202608/llm_provider.py` with `depth_provider` `ollama` or
-`ollama_raw` only. The Muse / llama.cpp provider (`llamacpp_server.py`, `llamacpp` config block) and the retired
+The depth tier's analyst model is served through `tools/audit_202608/llm_provider.py` with `depth_provider` `ollama` or
+`ollama_raw` only; with the local model retired on 2026-11-20 nothing calls it now. The Muse / llama.cpp provider (`llamacpp_server.py`, `llamacpp` config block) and the retired
 Modelfiles (plain MTP5, v31, v32, the Q4 family) were archived 2026-11-03 under `_archive/retired_20261103/`
 (`README_muse.md`); `"llamacpp"` in config is refused.
 
@@ -168,7 +188,14 @@ No single virtual environment covers this repository, so the interpreter matters
 
 ```bash
 "C:\Program Files\Python312\python.exe" -m pytest tests tools/audit_202608/tests -q
+"C:\Program Files\Python312\python.exe" -m pytest qwen_c/tests -q
+"C:\Program Files\Python312\python.exe" -m pytest tools/site -q
+"C:\Program Files\Python312\python.exe" -m pytest tools/paper_books -q
+"C:\Program Files\Python312\python.exe" -m pytest tools/holdings_monitor -q
 ```
+
+Run the suite of the part you touched, one pytest process at a time (the machine has about 12 GB of memory), and run it in a
+separate working tree (`git worktree`), not in this checkout: scheduled tasks read and write this checkout's `cache/` while they run.
 
 `tests/test_sync_state.py` shells out to `git clone` of a local bare repository. Under a restrictive
 sandbox that fails with `sh.exe: couldn't create signal pipe, Win32 error 5` — an environment
