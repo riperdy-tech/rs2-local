@@ -117,3 +117,13 @@ def test_the_fill_is_complete_only_when_every_list_name_has_a_report(monkeypatch
         raise RuntimeError("no verified screener run")
     monkeypatch.setattr(G.Q, "list_names", boom)
     assert G.fill_state({"A"}) == (None, None)            # an unreadable list is never a complete fill
+
+
+def test_a_formation_hold_counts_only_while_its_process_lives(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setattr(G, "SITE", tmp_path)
+    assert not G.formation_hold()
+    (tmp_path / "formation.hold").write_text(str(os.getpid()))
+    assert G.formation_hold()
+    (tmp_path / "formation.hold").write_text("not a pid")
+    assert not G.formation_hold()

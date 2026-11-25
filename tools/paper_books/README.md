@@ -74,6 +74,13 @@ from the repo root (`py` = `"C:\Program Files\Python312\python.exe"`):
    `py tools/paper_books/publish_books.py <T> --dry-run` (writes `cache/site/m3o_books.json`, prints the difference against the published copy), and
    without `--dry-run` it commits that one file through the publish clone and pushes. Tests: `tests/test_formation_cloud.py`.
    **The run folders in `stocks-workspace/scratch/rev23/wt-m3o*` and `cache/m3m_formation` must never be deleted: the daily engine reads them.**
+4c. Steps 1, 2, 3, 4b and 5 and the books file run by themselves: `tools\paper_books\register_formation_chain_task.ps1 -Formation <T>`,
+   run from the site worker's tree, registers `RS2-Formation-Chain`: `formation_chain.py <T>` every 30 minutes from 06:20 local time on
+   the day after `<T>`. Each pass does what is due (its docstring lists the rules): decide once a verified decision run exists, packets, the
+   cloud read (the site worker stands aside while `cache/gemini_site/formation.hold` names the live chain process), the freeze when no
+   name is left or one hour before the fill open (never after it), and `publish_books.py` once the engine has marked the fill session.
+   A failed step writes `cache/paper_books/formation/chain_STOP_<T>.flag` in that tree, tells Telegram once and waits for a person.
+   `formation_chain.py <T> --dry-run` prints what is due. The witness push stays by hand. Tests: `tests/test_formation_chain.py`.
 5. Before the fill open: `py tools/paper_books/formation_freeze.py <T>` copies the map to `formation_<T>.frozen.json` (refuses a second
    freeze), writes the one-line witness to `<books>/m3o/witness/formation_<T>.txt` and prints it. Publishing the witness (a public commit
    and push) is by hand, after a scan.

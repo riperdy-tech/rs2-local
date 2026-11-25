@@ -836,6 +836,16 @@ def take_lock():
     return True
 
 
+def formation_hold():
+    """True while a month-end formation read asks this worker to stand aside: cache/gemini_site/formation.hold holds the process id of
+    tools/paper_books/formation_chain.py and that process is alive (a hold left by a dead process asks nothing)."""
+    import formation_run as FR
+    try:
+        return FR.pid_alive(int((SITE / "formation.hold").read_text().strip()))
+    except (OSError, ValueError):
+        return False
+
+
 def work(max_names, do_publish):
     decided()                                   # WO_NC7: an unknown VALUE_METHOD stops the worker before it claims a name
     if not take_lock():
@@ -846,6 +856,9 @@ def work(max_names, do_publish):
         swap()
         done = 0
         while max_names is None or done < max_names:
+            if formation_hold():
+                log("standing aside for the formation read")
+                break
             choose_arm(home)
             maybe_check_filings()
             before = wait_for_quota(home)   # before the name is claimed: a claim held through a long quota wait is taken over by another arm, and the name was then read twice (2026-11-18)
