@@ -199,7 +199,7 @@ def test_check_writes_the_check_file_and_one_warning_an_event(home):
     gathered(home)
     reply = json.dumps({"events": [event(), event(items=["N3"], quote_item="N3", quote="no such words in the item")]})
     out = N.check(now=NOW, reader="ollama:m", ollama=lambda m, text, label: reply)
-    assert out == {"checked": 1, "warnings": 1, "serious": 1, "unread": 0}
+    assert out == {"checked": 1, "warnings": 1, "serious": 1, "unread": 0, "calls": 0, "tokens": 0}     # the test reader writes no usage row
     w = N.warnings_log()[0]
     assert (w["ticker"], w["day"], w["outlets"], w["touches"][0]["id"], w["close_at_warning"]) == ("AAA", DAY, 2, "R1", 12.5)
     assert w["touches"][0]["claim"].startswith("Loss of the largest customer")

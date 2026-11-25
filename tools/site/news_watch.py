@@ -479,7 +479,8 @@ def company_line(ticker, name, stocks):
 def check(limit=None, now=None, **readers):
     """Checks every gathered stock-day that has new headlines and no check file yet, the oldest day first, so a later day is told the
     warnings an earlier day raised. Writes the check file and appends one warning per event that passed code's checks. Returns {checked,
-    warnings, serious, unread}."""
+    warnings, serious, unread, calls, tokens}: the reader calls of this run and the tokens they used, from the usage file."""
+    started = Q.now_z()
     reps = reports()
     log_rows = warnings_log()
     stocks = stock_rows()
@@ -528,7 +529,10 @@ def check(limit=None, now=None, **readers):
                     out["serious"] += e["serious"]
         if left is not None and left <= 0:
             break
-    log(f"check: {out['checked']} stock-days checked, {out['warnings']} warnings ({out['serious']} serious), {out['unread']} left unread")
+    used = [u for u in (json.loads(ln) for ln in USAGE.read_text(encoding="utf-8").splitlines() if ln.strip()) if u["at"] >= started] if USAGE.exists() else []
+    out["calls"], out["tokens"] = len(used), sum(u.get("total_tokens") or 0 for u in used)
+    log(f"check: {out['checked']} stock-days checked, {out['warnings']} warnings ({out['serious']} serious), {out['unread']} left unread, "
+        f"{out['calls']} reader calls, {out['tokens']} tokens")
     return out
 
 
