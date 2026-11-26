@@ -369,3 +369,51 @@ def test_real_estate_keeps_the_depreciation_above_upkeep_whole_every_year_and_in
     assert abs(b["flows_all"][n - 1] - (b["x_all"][n - 1] * (1 - 0.03 / desk.equity_ronic(0.08, 0.4, 0.05, 0.05)) + 0.06 * rN)) < 1e-6
     assert b["value_per_share"] > a["value_per_share"]
     checks._recompute(dict(inp, real_estate=True), b)
+
+
+# ---- a thin profit record (the family rule's pre-profit) on the site -----------------------------------------------------------------
+
+THIN = {"family": "family_not_built", "sic": "7372", "route": "operating", "classification": "family_not_built",
+        "reason": "pre_profit: operating income <= 0 in 3 of the last 4 fiscal years"}
+
+
+def _thin(tmp_path, monkeypatch, oi0, fam=THIN, method="decided"):
+    seeds, reports, prepared, calls = switch(tmp_path, monkeypatch, method, fam)
+    f = {"operating_income": {"values": [{"end": "2025-12-31", "value": oi0}]}}
+    monkeypatch.setattr(G.vrun, "prepare", lambda *a, **k: prepared.append(k) or (f, {"fy0": "2025-12-31"}, None, None, None, None, None))
+    asked = []
+    monkeypatch.setattr(G.why_losses, "ask", lambda *a: asked.append(1) or ASKED[0])
+    return seeds, reports, prepared, calls, asked
+
+
+ASKED = [({"cause": "one_off_charges", "label": "the losses came from write-downs", "explanation": "x", "quotes": [], "version": "v"}, None)]
+
+
+def test_a_thin_record_with_a_profit_in_the_newest_year_is_valued_as_its_sic_family_and_says_so_without_a_question(tmp_path, monkeypatch):
+    seeds, reports, prepared, calls, asked = _thin(tmp_path, monkeypatch, 5.0)
+    assert G.analyze("TEST", "list") == "ok"
+    assert asked == [] and [k["family"] for _, k in calls] == ["operating", "operating"] and prepared[0]["family"] == "operating"
+    import test_why_losses as TW
+    lr = TW.written(tmp_path)["loss_record"]
+    assert lr["cause"] == "profit_in_newest_year" and "3 of the last 4 fiscal years" in lr["label"] and lr["version"] == G.THIN_VERSION
+
+
+def test_a_thin_record_still_losing_is_asked_why_and_valued_only_where_the_cause_does_not_recur(tmp_path, monkeypatch):
+    seeds, reports, prepared, calls, asked = _thin(tmp_path, monkeypatch, -5.0)
+    assert G.analyze("TEST", "list") == "ok"
+    import test_why_losses as TW
+    assert asked == [1] and len(calls) == 2 and TW.written(tmp_path)["loss_record"]["cause"] == "one_off_charges"
+    (tmp_path / "b").mkdir()
+    seeds, reports, prepared, calls, asked = _thin(tmp_path / "b", monkeypatch, 0.0)              # zero is a value: not a profit
+    monkeypatch.setattr(G.why_losses, "ask", lambda *a: asked.append(1) or ({"cause": "operating_losses", "label": "x", "explanation": "x", "quotes": [], "version": "v"}, "loss_record_operating"))
+    assert G.analyze("TEST", "list") == "ok"
+    assert asked == [1] and calls == [] and reports[-1]["loss_record"] == {"status": "no_call", "reason": "loss_record_operating"}
+
+
+def test_a_thin_record_stays_refused_on_the_menu_and_other_names_are_not_touched(tmp_path, monkeypatch):
+    seeds, reports, prepared, calls, asked = _thin(tmp_path, monkeypatch, 5.0, method="menu")
+    G.analyze("TEST", "list")
+    assert calls == [] and asked == [] and prepared[0]["family"] == "family_not_built"
+    monkeypatch.setattr(G, "VALUE_METHOD", "decided")
+    assert G.thin_record(dict(THIN, sic="1311"))[0] == "commodity" and G.thin_record(dict(THIN, sic=None))[0] == "operating"
+    assert G.thin_record(REIT) is None and G.thin_record({"family": "operating", "reason": THIN["reason"]}) is None

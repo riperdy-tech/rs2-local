@@ -42,6 +42,7 @@ first rule, 2026-11-16 18:00, read BUY below the bear value and WATCH from bear 
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -303,6 +304,24 @@ def swap():
         runner.M3M_DIR = ROOT / "cache" / f"m3m_{ARM}"
 
 
+THIN_RECORD = re.compile(r"pre_profit: operating income <= 0 in (\d+) of the last (\d+) fiscal years")
+THIN_VERSION = "thin_record.v1 2026-11-27"
+THIN_LABEL = "operating income was at or below zero in {n} of the last {m} fiscal years; the newest year earned an operating profit, and the value rests on it"
+
+
+def thin_record(fam):
+    """(family by the SIC, loss years, years looked at) for a name value_family calls pre-profit, else None. The rule (operating income at or below
+    zero in 3 of the last 4 fiscal years) kept 14 site stocks without a value on 2026-11-26: 9 had earned an operating profit in their newest year
+    and one loses only by the amortisation and write-downs of an acquisition, which the earnings base adds back. So on the site (decided method
+    only; the formation keeps value_family's family) such a name is prepared as its SIC family: the code's own rules refuse it where there is no
+    earnings base or no revenue, and what the loss record is, is said with the value (analyze)."""
+    m = THIN_RECORD.match(fam.get("reason") or "")
+    if not (decided() and fam.get("family") == "family_not_built" and m):
+        return None
+    import value_family
+    return value_family.sic_family(fam.get("sic"))[0] or "operating", int(m[1]), int(m[2])
+
+
 def analyze(t, source):
     """One name end to end, as qwen_ondemand.analyze, in process; writes ondemand/<t>.json; returns its status."""
     import formation_value as FV
@@ -333,6 +352,9 @@ def analyze(t, source):
          "market_cap": row.get("marketCap"), "family": fam.get("family"), "family_reason": fam.get("reason")}
     if decided() and decided_real_estate.routes(fam):               # WO_NC9c: a real-estate name (not a mortgage REIT by the balance-sheet route) is valued by the decided method's real-estate variant
         n["family"] = decided_real_estate.FAMILY
+    thin = thin_record(fam)
+    if thin:
+        n["family"] = thin[0]
     out_root = vrun.RUNS if ARM == "gemini" else ROOT / "cache" / f"m3q_{ARM}" / "runs"
     why, why_reason = None, None                  # WO_NC5: why a thin profit record is thin, asked once, before the two seeds (a base with a statutory tax fallback only)
     ifl, override = None, None                    # WO_NC8: the interest on borrowings from the filing text, asked once, only where the tagged interest gives a cost of debt outside the band
@@ -351,7 +373,10 @@ def analyze(t, source):
                 raise
             f, b = prep(interest_override=override)           # the band still applies to the new rate: outside it, this raises kd_out_of_band again
             ifl["kd_used"] = b["interest_from_filing"]["kd_used"]
-        if b.get("tax_fallback"):
+        oi0 = {v["end"]: v["value"] for v in (f.get("operating_income") or {}).get("values", [])}.get(b.get("fy0"))
+        if thin and oi0 is not None and oi0 > 0:                  # a thin record whose newest year earned a profit: a filed fact, said with the value, nothing asked
+            why = {"cause": "profit_in_newest_year", "label": THIN_LABEL.format(n=thin[1], m=thin[2]), "explanation": "", "quotes": [], "version": THIN_VERSION}
+        if b.get("tax_fallback") or (thin and not why):           # a thin record still losing by operating income: why, from the filings (valued only where the cause does not recur)
             STATE["label"] = f"{t}:why_losses"
             raw = out_root / f"{pkj['ticker']}_{runner.t_compact(pkj['decision_time_utc'])}_{runner.sha256_bytes(Path(packet).read_bytes())[:12]}_why_losses"
             why, why_reason = why_losses.ask(pkj, f, raw)
@@ -663,8 +688,9 @@ def last_analysed():
     return out
 
 
-# A no-value line whose cause was fixed, and when: a report that carries it and is older than the fix is read again, once (its new report is newer).
+# The start of a no-value line whose cause was fixed, and when: a report that carries it and is older than the fix is read again, once (its new report is newer).
 FIXED_REFUSALS = {
+    "no valuation route yet for a company with no operating profit": "2026-11-26T18:00:00Z",       # thin_record
     qwen_site.NO_VALUE["decision_invalid"]: "2026-11-26T18:00:00Z",                              # the request no longer loses its task (decided_value.fitted)
     "no valuation route yet for " + qwen_site.NOT_BUILT_KIND["reit_or_real_estate"]: "2026-11-20T00:00:00Z",     # WO_NC9c: the real-estate route
 }
@@ -683,7 +709,7 @@ def method_stale():
         v = (d.get("decided") or {}).get("version")
         if d.get("valued") and v is not None and v not in current:
             out.add(d["ticker"])
-        elif not d.get("valued") and str(d.get("date") or "") < FIXED_REFUSALS.get(d.get("no_value_reason"), ""):
+        elif not d.get("valued") and str(d.get("date") or "") < next((when for line, when in FIXED_REFUSALS.items() if str(d.get("no_value_reason") or "").startswith(line)), ""):
             out.add(d["ticker"])
     return out
 
