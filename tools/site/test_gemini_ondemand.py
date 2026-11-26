@@ -127,3 +127,30 @@ def test_a_formation_hold_counts_only_while_its_process_lives(tmp_path, monkeypa
     assert G.formation_hold()
     (tmp_path / "formation.hold").write_text("not a pid")
     assert not G.formation_hold()
+
+
+def test_a_request_over_the_command_lines_limit_is_not_sent(monkeypatch):
+    asked = []
+    monkeypatch.setattr(G, "_ask_gemini", lambda *a: asked.append(a))
+    monkeypatch.setattr(G, "log", lambda m: None)
+    kind, resp, detail = G.gemini_call({"messages": [{"role": "user", "content": "x" * (G.AGY_MAX_BYTES + 1)}]}, None, 10)
+    assert kind == "infra_fatal" and resp is None and "over the limit" in detail and asked == []
+    assert G.PROMPT_BYTE_LIMIT < G.AGY_MAX_BYTES < 191_578
+
+
+def test_a_report_left_without_a_value_by_a_cause_fixed_since_is_due_once_also_off_the_list(tmp_path, monkeypatch):
+    monkeypatch.setattr(G, "ONDEMAND", tmp_path)
+    monkeypatch.setattr(G, "CLAIMS", tmp_path / "claims")
+    monkeypatch.setattr(G, "queue_file", lambda: tmp_path / "no_queue.jsonl")
+    monkeypatch.setattr(G, "VALUE_METHOD", "decided")
+    line, fixed = next(iter(G.FIXED_REFUSALS.items()))
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    for t, date, why in (("BEFORE", "2026-11-21T00:00:00Z", line), ("OFFLIST", "2026-11-21T00:00:00Z", line), ("AFTER", "2027-01-01T00:00:00Z", line), ("SHUT", "2026-11-21T00:00:00Z", line),
+                         ("OTHER", "2026-11-21T00:00:00Z", "share count does not reconcile with filed EPS")):
+        (tmp_path / f"{t}.json").write_text(json.dumps({"ticker": t, "date": date, "analysis": "complete", "valued": False, "no_value_reason": why}), encoding="utf-8")
+    monkeypatch.setattr(G.Q, "list_names", lambda: ["AFTER", "BEFORE"])
+    monkeypatch.setattr(G.Q.book_paths, "operator_excluded", lambda: ["SHUT"])            # an excluded name is never taken
+    monkeypatch.setattr(G, "last_analysed", lambda: {"AFTER": now, "BEFORE": now, "OTHER": now, "OFFLIST": now})
+    assert fixed > "2026-11-21" and G.method_stale() == {"BEFORE", "OFFLIST", "SHUT"}
+    assert [G.next_name(), G.next_name(), G.next_name()] == [("BEFORE", "method_changed", False), ("OFFLIST", "method_changed", False), None]
+    assert "no valuation route yet for a real estate company or trust" in G.FIXED_REFUSALS

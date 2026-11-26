@@ -1058,3 +1058,46 @@ def test_a_wait_with_both_arms_low_ends_on_the_fallback_arm_once_its_allowance_i
         assert G.ARM == "sonnet" and len(naps) == 1 and all(v[0] == 0.5 for v in m.values())
     finally:
         G.set_arm("gemini")
+
+
+# ---- the request fits the reader's channel (2026-11-26) -------------------------------------------------------------------------------
+
+def _build(p):
+    return [{"role": "system", "content": "S" * 10}, {"role": "user", "content": "E" * 100 + "\nPRIOR\n" + p + "\nTASK"}]
+
+
+def test_a_request_under_the_limit_or_with_no_limit_is_sent_whole(monkeypatch):
+    prior = "- [t1] one\n- [t2] two"
+    monkeypatch.setattr(runner, "PROMPT_BYTE_LIMIT", None, raising=False)
+    assert D.fitted(_build, prior) == (_build(prior), 0, True)
+    monkeypatch.setattr(runner, "PROMPT_BYTE_LIMIT", 10_000, raising=False)
+    assert D.fitted(_build, prior) == (_build(prior), 0, True)
+
+
+def test_a_request_over_the_limit_loses_the_last_notes_of_the_prior_read_and_keeps_its_task(monkeypatch):
+    notes = [f"- [t{i}] note {i} " + "x" * 50 + "\nits second line" for i in range(10)]
+    prior = "\n".join(notes)
+    whole = sum(len(m["content"]) for m in _build(prior))
+    monkeypatch.setattr(runner, "PROMPT_BYTE_LIMIT", whole - 100, raising=False)
+    msgs, cut, fits = D.fitted(_build, prior)
+    user = msgs[1]["content"]
+    assert fits and 1 <= cut < 10 and sum(len(m["content"]) for m in msgs) <= whole - 100 and user.endswith("\nTASK")
+    assert all(n in user for n in notes[:10 - cut]) and not any(n in user for n in notes[10 - cut:]) and D.LEFT_OUT.format(n=cut) in user     # whole notes go, the last ones first
+
+
+def test_a_request_too_long_even_with_no_note_is_a_no_call_and_is_not_sent(tmp_path, monkeypatch):
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, [reply()])
+    monkeypatch.setattr(runner, "PROMPT_BYTE_LIMIT", 500, raising=False)
+    res = run(tmp_path, packet)
+    assert res["status"] == "no_call" and res["reason"] == "request_too_long" and sent == [] and qwen_site.NO_VALUE["request_too_long"]
+
+
+def test_the_notes_left_out_are_recorded_on_the_attempt(tmp_path, monkeypatch):
+    packet, b, bar, sent, _ = arrange(tmp_path, monkeypatch, [reply(), reply()])
+    monkeypatch.setattr(runner, "PROMPT_BYTE_LIMIT", None, raising=False)
+    res = run(tmp_path, packet)
+    assert res["status"] == "ok" and "prior_notes_left_out" not in res["attempts"][0]
+    full = sum(len(m["content"].encode("utf-8")) for m in sent[0])
+    monkeypatch.setattr(runner, "PROMPT_BYTE_LIMIT", full - 1, raising=False)
+    res = run(tmp_path, packet, seed=3000)
+    assert res["status"] == "ok" and res["attempts"][0]["prior_notes_left_out"] == 1 and D.LEFT_OUT.format(n=1) in sent[1][1]["content"]

@@ -276,7 +276,9 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
     prior, n_kept, n_dropped = D.prior_read(analysis)
     attempts, retry, out = [], None, None
     for n in (1, 2):
-        msgs = messages(packet, rec_text, prior, retry)
+        msgs, left_out, fits = D.fitted(lambda p: messages(packet, rec_text, p, retry), prior)
+        if not fits:
+            return D.too_long(result, run_dir, attempts)
         t0 = time.monotonic()
         kind, resp, detail = runner.call({"model": runner.MODEL, "stream": False, "messages": msgs}, runner.llm_provider.OLLAMA_URL, runner.TASK_TIMEOUT_S)
         secs = round(time.monotonic() - t0, 3)
@@ -284,7 +286,8 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
             raise RuntimeError(f"decided call failed: {kind}: {detail}")
         content = ((resp or {}).get("message") or {}).get("content")
         obj, perr = runner.parse_reply(content)
-        att = {"attempt": n, "seconds": secs, **{k: (resp or {}).get(k) for k in ("prompt_eval_count", "eval_count", "done_reason")}}
+        att = {"attempt": n, "seconds": secs, **{k: (resp or {}).get(k) for k in ("prompt_eval_count", "eval_count", "done_reason")},
+               **({"prior_notes_left_out": left_out} if left_out else {})}
         verified = vals = base_v = None
         if perr:
             problems = [f"not valid JSON: {perr}"]

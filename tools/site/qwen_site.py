@@ -62,6 +62,7 @@ NO_VALUE = {
     "loss_record_unexplained": "the filings in the packet do not explain why the profit record is thin, so no value is given",
     "mortgage_reit_not_routed": "a mortgage REIT is a lender; this method does not value it yet",     # WO_NC9c
     "decision_invalid": "the cloud read's valuation inputs did not pass the code's checks, even after one repair, so no value is given",     # WO_NC7
+    "request_too_long": "the filings are too long for one request to the reader, so no value is given",
 }
 
 # the kinds value_family does not build, in plain words (its SIC notes, and its filed-evidence note for a real estate trust)

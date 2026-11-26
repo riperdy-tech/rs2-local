@@ -167,6 +167,36 @@ def prior_read(an):
     return ("\n".join(out) if out else "(none)"), len(out), dropped
 
 
+LEFT_OUT = "(the last {n} notes are left out for length)"
+
+
+def fitted(build, prior):
+    """(messages, notes left out, fits). `build(prior text)` gives the messages. A reader's channel may cut a long request (runner.PROMPT_BYTE_LIMIT,
+    set by the cloud worker; absent or None: no limit), and the cut takes the request's tail, which is the task and its schema (2026-11-26: every
+    `decision_invalid` of the cloud arm was such a request). So PRIOR READ, another analyst's notes and not evidence, loses its last notes until
+    the request fits. fits is False when it is too long even with no note."""
+    limit = getattr(runner, "PROMPT_BYTE_LIMIT", None)
+    size = lambda ms: sum(len(m["content"].encode("utf-8")) for m in ms)  # noqa: E731
+    msgs = build(prior)
+    if not limit or size(msgs) <= limit:
+        return msgs, 0, True
+    notes = re.split(r"\n(?=- \[)", prior) if prior.startswith("- [") else []
+    over, cut = size(msgs) - limit + len(LEFT_OUT.format(n=len(notes))) + 1, 0
+    while over > 0 and cut < len(notes):
+        cut += 1
+        over -= len(notes[-cut].encode("utf-8")) + 1
+    if cut:
+        msgs = build("\n".join(notes[:len(notes) - cut] + [LEFT_OUT.format(n=cut)]))
+    return msgs, cut, size(msgs) <= limit
+
+
+def too_long(result, run_dir, attempts):
+    """The no-call of a request that does not fit the reader's channel even with no note of the prior read."""
+    result.update(status="no_call", reason="request_too_long", attempts=attempts,
+                  detail=f"the request is over {runner.PROMPT_BYTE_LIMIT} bytes with no note of the prior read; a longer request loses its task")
+    return _write(run_dir, result)
+
+
 def messages(packet, rec, prior, retry=None, task=None):
     """[system, user] (+ the repair turn: the previous reply and what was wrong). The packet is shown with its prices masked."""
     user = "\n\n".join([tasks.render_packet(vtask.mask_price(packet)), rec,
@@ -698,7 +728,9 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
     prior, n_kept, n_dropped = prior_read(analysis)
     attempts, retry, out, extra = [], None, None, None
     for n in (1, 2):
-        msgs = messages(packet, rec_text, prior, retry, V.TASK if V else None)
+        msgs, left_out, fits = fitted(lambda p: messages(packet, rec_text, p, retry, V.TASK if V else None), prior)
+        if not fits:
+            return too_long(result, run_dir, attempts)
         t0 = time.monotonic()
         kind, resp, detail = runner.call({"model": runner.MODEL, "stream": False, "messages": msgs}, runner.llm_provider.OLLAMA_URL, runner.TASK_TIMEOUT_S)
         secs = round(time.monotonic() - t0, 3)
@@ -706,7 +738,8 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
             raise RuntimeError(f"decided call failed: {kind}: {detail}")
         content = ((resp or {}).get("message") or {}).get("content")
         obj, perr = runner.parse_reply(content)
-        att = {"attempt": n, "seconds": secs, **{k: (resp or {}).get(k) for k in ("prompt_eval_count", "eval_count", "done_reason")}}
+        att = {"attempt": n, "seconds": secs, **{k: (resp or {}).get(k) for k in ("prompt_eval_count", "eval_count", "done_reason")},
+               **({"prior_notes_left_out": left_out} if left_out else {})}
         verified = vals = base_v = adj = cash = offs = ev = None
         if perr:
             problems = [f"not valid JSON: {perr}"]

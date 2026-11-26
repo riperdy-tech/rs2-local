@@ -87,6 +87,8 @@ LOCK = SITE / "worker.lock"
 LOG = SITE / "worker.log"
 USAGE = SITE / "usage.jsonl"
 AGY_CWD = SITE / "agy_cwd"
+AGY_MAX_BYTES = 191_000                          # agy keeps the first 191,578 bytes of a message and cuts the rest without an error (measured 2026-11-26 on 12 cut requests)
+PROMPT_BYTE_LIMIT = 190_000                      # what the valuation request's messages may sum to (decided_value.fitted); the rest is this module's wrapping
 CLAIM_STALE_HOURS = 3
 SCHEMA = "gemini_c_site_v1"
 REFRESH_DAYS = 30
@@ -263,6 +265,9 @@ def gemini_call(body, url, timeout):
     for m in body["messages"]:
         parts.append(f"===== {m['role'].upper()} =====\n{m['content']}\n")
     line = "\n".join(parts)
+    if len(line.encode("utf-8")) > AGY_MAX_BYTES:        # for either arm: the request is the same whichever reader takes it
+        log(f"{STATE['label']} not sent: {len(line.encode('utf-8'))} bytes is over the limit of {AGY_MAX_BYTES}; its tail would be cut")
+        return "infra_fatal", None, f"request of {len(line.encode('utf-8'))} bytes is over the limit of {AGY_MAX_BYTES}"
     detail = ""
     for attempt in (1, 2, 3):
         t0 = time.time()
@@ -288,6 +293,7 @@ def gemini_call(body, url, timeout):
 def swap():
     """Gemini in Qwen's place, in this process only."""
     runner.call = gemini_call
+    runner.PROMPT_BYTE_LIMIT = PROMPT_BYTE_LIMIT
     runner.gpu_preflight = lambda url: []
     via = "the Claude Code command line" if ARM in CLAUDE_ARMS else "agy"
     runner.model_show = lambda url: {"swapped_for": f"{GEM_MODEL} via {via}, effort {EFFORT}"}
@@ -657,9 +663,17 @@ def last_analysed():
     return out
 
 
+# A no-value line whose cause was fixed, and when: a report that carries it and is older than the fix is read again, once (its new report is newer).
+FIXED_REFUSALS = {
+    qwen_site.NO_VALUE["decision_invalid"]: "2026-11-26T18:00:00Z",                              # the request no longer loses its task (decided_value.fitted)
+    "no valuation route yet for " + qwen_site.NOT_BUILT_KIND["reit_or_real_estate"]: "2026-11-20T00:00:00Z",     # WO_NC9c: the real-estate route
+}
+
+
 def method_stale():
     """Names whose report was valued by the decided method on a version that is no longer the current one (WO_NC10: a change of method re-values
-    every name it touched through the worker, never by a hand-run batch). Empty where the decided method is off."""
+    every name it touched through the worker, never by a hand-run batch), or was left without a value by a cause fixed since (FIXED_REFUSALS).
+    Empty where the decided method is off."""
     if not decided():
         return set()
     current = {decided_value.DECIDED_VERSION, decided_financial.DECIDED_VERSION}
@@ -668,6 +682,8 @@ def method_stale():
         d = json.loads(p.read_text(encoding="utf-8"))
         v = (d.get("decided") or {}).get("version")
         if d.get("valued") and v is not None and v not in current:
+            out.add(d["ticker"])
+        elif not d.get("valued") and str(d.get("date") or "") < FIXED_REFUSALS.get(d.get("no_value_reason"), ""):
             out.add(d["ticker"])
     return out
 
@@ -721,6 +737,9 @@ def next_name():
             return t, "method_changed", False
         if seen.get(t, "") < cutoff and claim(t):
             return t, "list", False
+    for t in sorted(stale - set(names) - set(Q.book_paths.operator_excluded())):      # a name read on request is re-valued too; the list's names first
+        if claim(t):
+            return t, "method_changed", False
     return None
 
 
