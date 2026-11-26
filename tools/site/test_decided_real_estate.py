@@ -417,3 +417,22 @@ def test_a_thin_record_stays_refused_on_the_menu_and_other_names_are_not_touched
     monkeypatch.setattr(G, "VALUE_METHOD", "decided")
     assert G.thin_record(dict(THIN, sic="1311"))[0] == "commodity" and G.thin_record(dict(THIN, sic=None))[0] == "operating"
     assert G.thin_record(REIT) is None and G.thin_record({"family": "operating", "reason": THIN["reason"]}) is None
+
+
+def test_a_base_year_with_no_earnings_base_is_prepared_deferred_and_asked_why(tmp_path, monkeypatch):
+    seeds, reports, prepared, calls = switch(tmp_path, monkeypatch, "decided", {"family": "operating"})
+    monkeypatch.setattr(G.vrun, "prepare", lambda *a, **k: prepared.append(k) or ({}, {"fy0": "2025-12-31", "stamps": [G.vinputs.E0_DEFERRED]}, None, None, None, None, None))
+    asked = []
+    monkeypatch.setattr(G.why_losses, "ask", lambda *a: asked.append(1) or ({"cause": "operating_losses", "label": "x", "explanation": "x", "quotes": [], "version": "v"}, "loss_record_operating"))
+    assert G.analyze("TEST", "list") == "ok"
+    assert prepared[0]["defer_e0"] is True and asked == [1] and calls == [] and reports[-1]["loss_record"]["reason"] == "loss_record_operating"
+    (tmp_path / "m").mkdir()
+    seeds, reports, prepared, calls = switch(tmp_path / "m", monkeypatch, "menu", {"family": "operating"})
+    G.analyze("TEST", "list")
+    assert "defer_e0" not in prepared[0]                                              # the menu method refuses it as before
+    (tmp_path / "p").mkdir()
+    seeds, reports, prepared, calls = switch(tmp_path / "p", monkeypatch, "decided", {"family": "operating"})
+    monkeypatch.setattr(G.vrun, "prepare", lambda *a, **k: ({}, {"fy0": "2025-12-31", "stamps": [G.vinputs.E0_DEFERRED, G.vinputs.E0_PRETAX_POSITIVE]}, None, None, None, None, None))
+    asked.clear()
+    G.analyze("TEST", "list")
+    assert asked == [] and len(calls) == 2                                            # a filed pretax profit: nothing to ask, the read's cash item decides

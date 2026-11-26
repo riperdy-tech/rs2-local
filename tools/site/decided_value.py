@@ -69,7 +69,7 @@ EVENTS_MATERIAL = 0.05                    # events summing to this share of the 
 INTERIM_FORMS = ("10-Q", "10-Q/A")        # evidence of kind six_k_interim is an interim report too
 SITUATION_FLAGS = ("tax_rate_representative", "debt_level_representative")      # WO_NC9a: flags only, no number moves
 # WO_UV2: stamps of the base that the run's flags also carry, so a reader of the site sees them: no EPS to prove the share count, and each reading made where a figure was not filed
-SURFACED_STAMPS = ("shares_unreconciled_no_eps", "working_capital_unclassified_balance_sheet", "pretax_derived_from_net_income_nci_tax", "nci_income_includes_redeemable_nci",
+SURFACED_STAMPS = (inputs.E0_DEFERRED, "shares_unreconciled_no_eps", "working_capital_unclassified_balance_sheet", "pretax_derived_from_net_income_nci_tax", "nci_income_includes_redeemable_nci",
                    "debt_from_senior_notes_tags_parts_reconciled", "oi_interest_from_cash_interest_paid", "shares_from_partnership_units_reconciled_with_per_unit_eps")
 SURFACED_PREFIXES = ("preferred_dividends_taken_as_0_eps_times_shares_reconciles:", "preferred_balance_not_filed_taken_as_0:",
                      "ix_read:", "interest_ifrs_expense_for_finance_costs:", "shares_from_ix_class_members:", "shares_reconciled_with_class_eps")     # WO_UV3: figures read from the filing's inline XBRL
@@ -407,7 +407,10 @@ def adjust_base(b, cash, one_offs, events=None):
     a = dict(b, excess_cash=b["excess_cash"] - n, k0=b["k0"] - d, x0=b["x0"] + d * (1 - b["tau"]), cash_interest_pretax=b["cash_interest_pretax"] - back)
     a["m0"] = a["x0"] / b["R0"]
     ce = apply_events(b, a, events) if events is not None else None
-    if not a["x0"] > 0:
+    # a base year that lost money and was not refused for it (vrun.prepare(defer_e0=True)) is not refused here either: value_inputs takes the read's long-run
+    # return from year 1. A base year with a filed pretax profit, whose X_0 is not positive only by the interest on cash code takes out, still is: the read's
+    # cash_not_free is what returns that interest, and without it the held constant k0 is wrong.
+    if not a["x0"] > 0 and (inputs.E0_DEFERRED not in b["stamps"] or inputs.E0_PRETAX_POSITIVE in b["stamps"]):
         raise desk.DeskRefusal("e0_not_positive", f"X_0 = {a['x0']:.6g} after the adjustments: no earnings base")
     stamps = (["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base"] if cash is not None else []) \
         + (["base_year_one_offs_taken_out_of_k0"] if one_offs else []) + (["ronic0_not_readjusted"] if cash is not None or one_offs else [])         + (ce["stamps"] if ce else [])
@@ -608,7 +611,8 @@ def value_inputs(b, r, inp):
     m_long = inputs.bridge_x_margin(b, [float(inp["long_run_op_margin"])], [rev[-1]])[0]
     d = {"revenue": rev, "margin": x_m, "capex": capex, "d_ratio": b["d_ratio"], "w": b["w"], "p_ratio": b["p_ratio"], "rou_ratio": b["rou_ratio"],
          "amort_schedule": b["amort_schedule"], "amort_thereafter": b["amort_thereafter"], "delta": b["delta"], "kd": b["kd"], "tau": b["tau"],
-         "r": float(r), "g_T": float(inp["terminal_growth"]), "F": int(inp["fade_years"]), "H": 0, "ronic0": b["ronic0"],
+         "r": float(r), "g_T": float(inp["terminal_growth"]), "F": int(inp["fade_years"]), "H": 0,
+         "ronic0": float(inp["return_on_new_investment_long_run"]) if inputs.E0_DEFERRED in b["stamps"] else b["ronic0"],      # no base-year return to start from: the read's long-run return throughout
          "ronic_T": float(inp["return_on_new_investment_long_run"]), "m_long": m_long, "shares": b["shares"], "excess_cash": b["excess_cash"],
          "stub_days": b["stub_days"], "ppe": b.get("ppe"), "real_estate": bool(b.get("real_estate"))}
     v = desk.value_operating(d)
@@ -633,7 +637,7 @@ def old_defaults(b, bar, r):
     """(value per share, how) at the code's old defaults: the record-neutral reply of the menu method. Code only; never loses a valuation."""
     try:
         return checks._neutral_op(b, bar, r)
-    except (KeyError, TypeError, ValueError, AttributeError, ZeroDivisionError, OverflowError, AssertionError) as e:
+    except (KeyError, TypeError, ValueError, AttributeError, ZeroDivisionError, OverflowError, AssertionError, desk.DeskRefusal) as e:
         return None, f"unavailable: {type(e).__name__}: {e}"
 
 
@@ -713,7 +717,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         if any(e.get("kind") == "news" for e in packet.get("evidence") or []):         # as vrun.value
             raise desk.DeskRefusal("news_items_not_valued", "the packet holds news items; the valuation reads filings only")
         f, b, bar, record, r, prov, fy_ends = vrun.prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T, family=family,
-                                                     interest_override=interest_override, **(V.PREPARE if V else {}))      # WO_NC8, WO_NC9c
+                                                     interest_override=interest_override, defer_e0=True, **(V.PREPARE if V else {}))      # WO_NC8, WO_NC9c
     except desk.DeskRefusal as e:
         result.update(status="no_call", reason=e.code, detail=str(e))
         return _write(run_dir, result)

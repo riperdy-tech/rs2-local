@@ -64,7 +64,7 @@ import qwen_site  # noqa: E402
 import why_losses  # noqa: E402
 import interest_from_filing  # noqa: E402
 from qwen_c import packet as P, runner, sec_store  # noqa: E402
-from qwen_c.value import desk, run as vrun  # noqa: E402
+from qwen_c.value import desk, inputs as vinputs, run as vrun  # noqa: E402
 
 PY = sys.executable
 EFFORT = "high"                       # operator 2026-11-16: thinking effort is not negotiable
@@ -358,7 +358,8 @@ def analyze(t, source):
     out_root = vrun.RUNS if ARM == "gemini" else ROOT / "cache" / f"m3q_{ARM}" / "runs"
     why, why_reason = None, None                  # WO_NC5: why a thin profit record is thin, asked once, before the two seeds (a base with a statutory tax fallback only)
     ifl, override = None, None                    # WO_NC8: the interest on borrowings from the filing text, asked once, only where the tagged interest gives a cost of debt outside the band
-    prep = lambda **k: vrun.prepare(pkj, str(cik), str(n["sector"]), float(n["market_cap"] or 0), online=True, family=str(n["family"]), **({"real_estate": True} if n["family"] == decided_real_estate.FAMILY else {}), **k)[:2]  # noqa: E731
+    prep = lambda **k: vrun.prepare(pkj, str(cik), str(n["sector"]), float(n["market_cap"] or 0), online=True, family=str(n["family"]), **({"real_estate": True} if n["family"] == decided_real_estate.FAMILY else {}),
+                                      **({"defer_e0": True} if decided() and (n["family"] in decided_value.FAMILIES or n["family"] in decided_value.VARIANTS) else {}), **k)[:2]  # noqa: E731
     try:
         try:
             f, b = prep()
@@ -376,7 +377,9 @@ def analyze(t, source):
         oi0 = {v["end"]: v["value"] for v in (f.get("operating_income") or {}).get("values", [])}.get(b.get("fy0"))
         if thin and oi0 is not None and oi0 > 0:                  # a thin record whose newest year earned a profit: a filed fact, said with the value, nothing asked
             why = {"cause": "profit_in_newest_year", "label": THIN_LABEL.format(n=thin[1], m=thin[2]), "explanation": "", "quotes": [], "version": THIN_VERSION}
-        if b.get("tax_fallback") or (thin and not why):           # a thin record still losing by operating income: why, from the filings (valued only where the cause does not recur)
+        # a thin record still losing by operating income, or a base year with no earnings base: why, from the filings (valued only where the cause does not recur)
+        lost = vinputs.E0_DEFERRED in (b.get("stamps") or []) and vinputs.E0_PRETAX_POSITIVE not in b["stamps"]
+        if b.get("tax_fallback") or (thin and not why) or lost:
             STATE["label"] = f"{t}:why_losses"
             raw = out_root / f"{pkj['ticker']}_{runner.t_compact(pkj['decision_time_utc'])}_{runner.sha256_bytes(Path(packet).read_bytes())[:12]}_why_losses"
             why, why_reason = why_losses.ask(pkj, f, raw)
@@ -688,10 +691,11 @@ def last_analysed():
     return out
 
 
-# The start of a no-value line whose cause was fixed, and when: a report that carries it and is older than the fix is read again, once (its new report is newer).
+# The start of a no-value line whose cause was fixed, and when the fix went live (a later time would read a stock again and again until it passed): a report that carries it and is older than the fix is read again, once (its new report is newer).
 FIXED_REFUSALS = {
-    "no valuation route yet for a company with no operating profit": "2026-11-26T18:00:00Z",       # thin_record
-    qwen_site.NO_VALUE["decision_invalid"]: "2026-11-26T18:00:00Z",                              # the request no longer loses its task (decided_value.fitted)
+    qwen_site.NO_VALUE["e0_not_positive"]: "2026-11-26T16:00:00Z",                               # inputs.base(defer_e0): asked why, valued where the cause does not recur
+    "no valuation route yet for a company with no operating profit": "2026-11-26T14:48:00Z",       # thin_record
+    qwen_site.NO_VALUE["decision_invalid"]: "2026-11-26T14:20:00Z",                              # the request no longer loses its task (decided_value.fitted)
     "no valuation route yet for " + qwen_site.NOT_BUILT_KIND["reit_or_real_estate"]: "2026-11-20T00:00:00Z",     # WO_NC9c: the real-estate route
 }
 

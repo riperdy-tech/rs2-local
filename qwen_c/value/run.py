@@ -40,11 +40,12 @@ ROUTED = ("operating", "commodity")      # ruling 17: every other family not rou
 FINANCIAL = ("financial",)   # WO_Q6: the financial route (O3). mortgage_reit is not routed until a name is covered (CROSS_CHECK_Q3 7)
 
 
-def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow_after_T=False, interest_override=None, real_estate=False):
+def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow_after_T=False, interest_override=None, real_estate=False, defer_e0=False):
     """Everything code owns, before any model call: (facts, base, bar, record items, r, coe provenance, fiscal-year ends).
     `family` is required (the census's), never defaulted. Raises DeskRefusal. `interest_override` (WO_NC8): inputs.base's, the operating route only.
     `real_estate` (WO_NC9c, the decided method's real-estate family): family "real_estate" is prepared on the operating route with inputs.base(real_estate=True);
-    without the flag that family is refused as every unrouted family is, and the flag with any other family is refused."""
+    without the flag that family is refused as every unrouted family is, and the flag with any other family is refused.
+    `defer_e0` (the decided method, the operating route): inputs.base's; a base year with no earnings base is stamped, not refused."""
     if real_estate != (family == "real_estate") or (family not in ROUTED + FINANCIAL and not real_estate):
         raise desk.DeskRefusal("family_not_routed", f"family {family!r}: only {ROUTED + FINANCIAL} are valued by this runner")
     T = runner._parse_t(packet["decision_time_utc"])
@@ -56,7 +57,8 @@ def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow
     if fy0 is None:
         raise desk.DeskRefusal("history_short", "no filed revenue")
     bill, bill_src = rs2_data.bill_rate_mean(str(date.fromisoformat(fy0) - timedelta(days=365)), fy0)
-    b = inputs.base(f, market_cap=market_cap, bill_rate=bill, interest_override=interest_override, **({"real_estate": True} if real_estate else {}))
+    b = inputs.base(f, market_cap=market_cap, bill_rate=bill, interest_override=interest_override, **({"real_estate": True} if real_estate else {}),
+                    **({"defer_e0": True} if defer_e0 else {}))
     b["bill_source"] = bill_src
     b["stub_days"] = (T.date() - date.fromisoformat(b["fy0"])).days      # ruling 7: rolled forward from the fiscal-year end to T
     if b["stub_days"] > MAX_STUB_DAYS:                                    # CROSS_CHECK_Q2 N12: refused before any model call
@@ -75,7 +77,8 @@ def alt_tax_base(f, b, market_cap):
     """WO_NC3: the base of a statutory tax fallback taken at its second rate (b["tax_fallback"]["rate_alt"]): the same facts, market value and
     bill rate, tau replaced, and the fields prepare() adds to b carried over."""
     a = inputs.base(f, market_cap=market_cap, bill_rate=b["bill_rate"], tau_override=b["tax_fallback"]["rate_alt"],
-                    interest_override=(b.get("interest_from_filing") or {}).get("value"))      # WO_NC8: the same interest at the second rate
+                    interest_override=(b.get("interest_from_filing") or {}).get("value"),      # WO_NC8: the same interest at the second rate
+                    **({"defer_e0": True} if inputs.E0_DEFERRED in b["stamps"] else {}))
     a.update({k: b[k] for k in ("bill_source", "stub_days", "g_anchor")})
     return a
 

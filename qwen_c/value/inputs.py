@@ -291,7 +291,11 @@ def finance_lease_debt(f, end):
     return tot, how
 
 
-def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None, real_estate=False, interest_swap=None):
+E0_DEFERRED = "earnings_base_not_positive_in_base_year"     # the stamp of base(defer_e0=True) where X_0 is not above 0
+E0_PRETAX_POSITIVE = "base_year_pretax_income_positive"     # with it: the filed pretax income is above 0, and X_0 is not only by the cash interest and minority share code takes out
+
+
+def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None, real_estate=False, interest_swap=None, defer_e0=False):
     """The measured base for value_operating. `market_cap` (USD, from the formation's price row) sets delta at market weights (O5);
     `bill_rate` (a fraction, or None) is the 3-month bill rate over the base fiscal year (the cash term). `tau_override` (WO_NC3):
     replaces the rate tax_rate returns in the base, RONIC and the NCI term, nothing else (the value at a statutory fallback's second rate).
@@ -407,7 +411,11 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
     pt_ex = pt[e0] - i_pre - nci / (1 - tau)
     x0 = (pt_ex + a0) * (1 - tau)
     if not x0 > 0:
-        raise DeskRefusal("e0_not_positive", f"X_0 = {x0:.6g}: no earnings base (O7)")
+        if not defer_e0:
+            raise DeskRefusal("e0_not_positive", f"X_0 = {x0:.6g}: no earnings base (O7)")
+        stamps.append(E0_DEFERRED)        # the decided method only (False: as before): its forecast is the read's margins, and X_0 enters it through ronic0 alone
+        if pt[e0] > 0:
+            stamps.append(E0_PRETAX_POSITIVE)
     k0 = oi[e0] - pt_ex
     k0_int = (_by_end(f, "interest_expense").get(e0) or 0.0) if interest_override is None else interest_override                  # B12b: only interest scales with revenue (debt grows with it)
     stamps.append("bridge_constant_from_base_year")
@@ -495,7 +503,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
         if interest_override is None and _tag(f, "interest_expense", e0) == "FinanceCosts" and alt is not None and alt > 0:
             try:
                 return base(f, market_cap=market_cap, bill_rate=bill_rate, tau_override=tau_override, interest_override=alt, real_estate=real_estate,
-                            interest_swap=("ifrs-full:FinanceCosts", "ifrs-full:InterestExpense"))
+                            interest_swap=("ifrs-full:FinanceCosts", "ifrs-full:InterestExpense"), defer_e0=defer_e0)
             except DeskRefusal as second:
                 if second.code != "kd_out_of_band":
                     raise
@@ -522,7 +530,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
     # ruling 21: tangible capital, the return capped at 100%
     tangible = eq[prev] + debt_prev - cash[prev] - sti.get(prev, 0.0) - gw.get(prev, 0.0) - ia.get(prev, 0.0)
     ronic0 = (x0 + (interest or 0.0) * (1 - tau)) / tangible if tangible > 0 else float("inf")
-    if not ronic0 > 0:
+    if not ronic0 > 0 and E0_DEFERRED not in stamps:                      # deferred: the base-year return is not used (decided_value.value_inputs)
         raise DeskRefusal("ronic_not_positive", f"RONIC_0 = {ronic0:.6g}")
     if ronic0 > RONIC0_CAP:
         ronic0 = RONIC0_CAP

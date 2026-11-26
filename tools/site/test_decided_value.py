@@ -1101,3 +1101,38 @@ def test_the_notes_left_out_are_recorded_on_the_attempt(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "PROMPT_BYTE_LIMIT", full - 1, raising=False)
     res = run(tmp_path, packet, seed=3000)
     assert res["status"] == "ok" and res["attempts"][0]["prior_notes_left_out"] == 1 and D.LEFT_OUT.format(n=1) in sent[1][1]["content"]
+
+
+# ---- a base year with no earnings base is not refused before the read (2026-11-27) ----------------------------------------------------
+
+def test_the_base_refuses_a_year_with_no_earnings_base_unless_deferred_and_then_stamps_it():
+    f = dict(C.facts(), eps_diluted=C.series([1.0] * 5))
+    pt = [dict(v) for v in f["pretax_income"]["values"]]
+    newest = max(pt, key=lambda v: v["end"])
+    newest["value"] = -abs(newest["value"])                     # the base year alone lost money: the tax rate is still measured on the others
+    f["pretax_income"] = dict(f["pretax_income"], values=pt)
+    with pytest.raises(desk.DeskRefusal) as e:
+        inputs.base(f, market_cap=180e6, bill_rate=0.04)
+    assert e.value.code == "e0_not_positive"
+    b = inputs.base(f, market_cap=180e6, bill_rate=0.04, defer_e0=True)
+    assert inputs.E0_DEFERRED in b["stamps"] and not b["x0"] > 0 and inputs.E0_PRETAX_POSITIVE not in b["stamps"]
+    ok = inputs.base(dict(C.facts(), eps_diluted=C.series([1.0] * 5)), market_cap=180e6, bill_rate=0.04)
+    assert inputs.E0_DEFERRED not in inputs.base(dict(C.facts(), eps_diluted=C.series([1.0] * 5)), market_cap=180e6, bill_rate=0.04, defer_e0=True)["stamps"]
+    assert ok == inputs.base(dict(C.facts(), eps_diluted=C.series([1.0] * 5)), market_cap=180e6, bill_rate=0.04, defer_e0=True)       # a positive base is the same either way
+
+
+def test_the_decided_method_asks_for_the_deferred_base_and_values_it_on_the_reads_long_run_return(tmp_path, monkeypatch):
+    packet, b, bar, sent, prepared = arrange(tmp_path, monkeypatch, [reply(), reply()])
+    res = run(tmp_path, packet)
+    assert res["status"] == "ok" and prepared[0]["defer_e0"] is True and inputs.E0_DEFERRED not in " ".join(res["decided"]["flags"])
+    b["stamps"].append(inputs.E0_DEFERRED)
+    b["x0"], b["m0"], b["ronic0"] = -1.0, -0.001, -0.05
+    res2 = run(tmp_path, packet, seed=3000)
+    assert res2["status"] == "ok" and inputs.E0_DEFERRED in res2["decided"]["flags"]
+    long_run = reply()["inputs"]["return_on_new_investment_long_run"]
+    assert D.value_inputs(dict(b, stub_days=0), C.R, reply()["inputs"])[1] == D.value_inputs(dict(b, stub_days=0, ronic0=long_run, stamps=[]), C.R, reply()["inputs"])[1]
+    with pytest.raises(desk.DeskRefusal):
+        D.value_inputs(dict(b, stub_days=0, stamps=[]), C.R, reply()["inputs"])          # without the stamp a return at or below zero is refused, as before
+    with pytest.raises(desk.DeskRefusal) as e:                                           # a filed pretax profit: the adjustments must give an earnings base
+        D.adjust_base(dict(b, stamps=[inputs.E0_DEFERRED, inputs.E0_PRETAX_POSITIVE]), None, [])
+    assert e.value.code == "e0_not_positive" and D.adjust_base(b, None, [])[0]["x0"] == -1.0
