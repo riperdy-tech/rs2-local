@@ -54,6 +54,12 @@ def routes(fam):
             and fam.get("route") != "financial")
 
 
+def lender(fam):
+    """True for the other real-estate names: a mortgage REIT by the balance-sheet route test. It is a lender and reports no funds from operations, so it
+    goes to the financial route (book equity and the return on it), as WO_NC4 R3 recommended and PLAN_terminal_reinvestment O6 said (2026-11-27)."""
+    return fam.get("family") == "family_not_built" and fam.get("route") == "financial" and routes(dict(fam, route=None))
+
+
 # ---------------------------------------------------------------- derived FFO
 def _series(f, concept):
     return {v["end"]: v for v in (f.get(concept) or {}).get("values", [])}

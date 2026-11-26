@@ -322,7 +322,7 @@ def test_decided_routes_a_real_estate_name_to_the_variant_and_prepares_it_in_the
 
 
 def test_the_menu_and_a_mortgage_reit_and_other_not_built_families_stay_refused(tmp_path, monkeypatch):
-    for i, (method, fam) in enumerate([("menu", REIT), ("decided", dict(REIT, route="financial")), ("decided", dict(REIT, sic="6770")),
+    for i, (method, fam) in enumerate([("menu", REIT), ("menu", dict(REIT, route="financial")), ("decided", dict(REIT, sic="6770")),
                                        ("decided", dict(REIT, sic="2834"))]):
         (tmp_path / str(i)).mkdir()
         seeds, reports, prepared, calls = switch(tmp_path / str(i), monkeypatch, method, fam)
@@ -436,3 +436,13 @@ def test_a_base_year_with_no_earnings_base_is_prepared_deferred_and_asked_why(tm
     asked.clear()
     G.analyze("TEST", "list")
     assert asked == [] and len(calls) == 2                                            # a filed pretax profit: nothing to ask, the read's cash item decides
+
+
+def test_decided_sends_a_mortgage_reit_to_the_financial_route(tmp_path, monkeypatch):
+    fam = dict(REIT, route="financial")
+    assert RE.lender(fam) and not RE.routes(fam) and not RE.lender(REIT) and not RE.lender(dict(fam, sic="2834")) and not RE.lender(dict(fam, family="operating"))
+    seeds, reports, prepared, calls = switch(tmp_path, monkeypatch, "decided", fam)
+    fin = []
+    monkeypatch.setattr(G.decided_financial, "value", lambda *a, **k: fin.append(k) or {"status": "ok", "seed": k["seed"]})
+    assert G.analyze("TEST", "list") == "ok"
+    assert [k["family"] for k in fin] == ["financial", "financial"] and calls == [] and prepared[0]["family"] == "financial" and prepared[0]["decided"] is True

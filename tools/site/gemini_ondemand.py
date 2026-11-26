@@ -352,6 +352,8 @@ def analyze(t, source):
          "market_cap": row.get("marketCap"), "family": fam.get("family"), "family_reason": fam.get("reason")}
     if decided() and decided_real_estate.routes(fam):               # WO_NC9c: a real-estate name (not a mortgage REIT by the balance-sheet route) is valued by the decided method's real-estate variant
         n["family"] = decided_real_estate.FAMILY
+    elif decided() and decided_real_estate.lender(fam):             # a mortgage REIT: the financial route
+        n["family"] = decided_financial.FAMILIES[0]
     thin = thin_record(fam)
     if thin:
         n["family"] = thin[0]
