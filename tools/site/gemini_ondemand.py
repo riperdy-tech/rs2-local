@@ -359,7 +359,8 @@ def analyze(t, source):
     why, why_reason = None, None                  # WO_NC5: why a thin profit record is thin, asked once, before the two seeds (a base with a statutory tax fallback only)
     ifl, override = None, None                    # WO_NC8: the interest on borrowings from the filing text, asked once, only where the tagged interest gives a cost of debt outside the band
     prep = lambda **k: vrun.prepare(pkj, str(cik), str(n["sector"]), float(n["market_cap"] or 0), online=True, family=str(n["family"]), **({"real_estate": True} if n["family"] == decided_real_estate.FAMILY else {}),
-                                      **({"defer_e0": True} if decided() and (n["family"] in decided_value.FAMILIES or n["family"] in decided_value.VARIANTS) else {}), **k)[:2]  # noqa: E731
+                                      **({"defer_e0": True, "decided": True} if decided() and (n["family"] in decided_value.FAMILIES or n["family"] in decided_value.VARIANTS) else {}),
+                                      **({"decided": True} if decided() and n["family"] in decided_financial.FAMILIES else {}), **k)[:2]  # noqa: E731
     try:
         try:
             f, b = prep()

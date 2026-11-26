@@ -40,25 +40,26 @@ ROUTED = ("operating", "commodity")      # ruling 17: every other family not rou
 FINANCIAL = ("financial",)   # WO_Q6: the financial route (O3). mortgage_reit is not routed until a name is covered (CROSS_CHECK_Q3 7)
 
 
-def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow_after_T=False, interest_override=None, real_estate=False, defer_e0=False):
+def prepare(packet, cik, sector, market_cap, *, online, family, root=None, allow_after_T=False, interest_override=None, real_estate=False, defer_e0=False, decided=False):
     """Everything code owns, before any model call: (facts, base, bar, record items, r, coe provenance, fiscal-year ends).
     `family` is required (the census's), never defaulted. Raises DeskRefusal. `interest_override` (WO_NC8): inputs.base's, the operating route only.
     `real_estate` (WO_NC9c, the decided method's real-estate family): family "real_estate" is prepared on the operating route with inputs.base(real_estate=True);
     without the flag that family is refused as every unrouted family is, and the flag with any other family is refused.
-    `defer_e0` (the decided method, the operating route): inputs.base's; a base year with no earnings base is stamped, not refused."""
+    `defer_e0` (the decided method, the operating route): inputs.base's; a base year with no earnings base is stamped, not refused.
+    `decided` (the decided method, both routes): inputs.base's and inputs.base_financial's."""
     if real_estate != (family == "real_estate") or (family not in ROUTED + FINANCIAL and not real_estate):
         raise desk.DeskRefusal("family_not_routed", f"family {family!r}: only {ROUTED + FINANCIAL} are valued by this runner")
     T = runner._parse_t(packet["decision_time_utc"])
     f = facts.build(cik, T, online=online, root=root, substitute_revenue=family not in FINANCIAL,
                     substitute_items=family not in FINANCIAL)     # WO_NC1, WO_NC2: the operating route only
     if family in FINANCIAL:
-        return _prepare_financial(f, T, sector, allow_after_T)
+        return _prepare_financial(f, T, sector, allow_after_T, decided)
     fy0 = max(v["end"] for v in (f.get("revenue") or {}).get("values", [])) if f.get("revenue") else None
     if fy0 is None:
         raise desk.DeskRefusal("history_short", "no filed revenue")
     bill, bill_src = rs2_data.bill_rate_mean(str(date.fromisoformat(fy0) - timedelta(days=365)), fy0)
     b = inputs.base(f, market_cap=market_cap, bill_rate=bill, interest_override=interest_override, **({"real_estate": True} if real_estate else {}),
-                    **({"defer_e0": True} if defer_e0 else {}))
+                    **({"defer_e0": True} if defer_e0 else {}), **({"decided": True} if decided else {}))
     b["bill_source"] = bill_src
     b["stub_days"] = (T.date() - date.fromisoformat(b["fy0"])).days      # ruling 7: rolled forward from the fiscal-year end to T
     if b["stub_days"] > MAX_STUB_DAYS:                                    # CROSS_CHECK_Q2 N12: refused before any model call
@@ -78,7 +79,7 @@ def alt_tax_base(f, b, market_cap):
     bill rate, tau replaced, and the fields prepare() adds to b carried over."""
     a = inputs.base(f, market_cap=market_cap, bill_rate=b["bill_rate"], tau_override=b["tax_fallback"]["rate_alt"],
                     interest_override=(b.get("interest_from_filing") or {}).get("value"),      # WO_NC8: the same interest at the second rate
-                    **({"defer_e0": True} if inputs.E0_DEFERRED in b["stamps"] else {}))
+                    **(b.get("options") or {}))
     a.update({k: b[k] for k in ("bill_source", "stub_days", "g_anchor")})
     return a
 
@@ -99,9 +100,9 @@ def _tax_range(f, b, market_cap, reply, ids, bar, r, fy_ends, values):
     return dict(tr, values_alt=res["values"] if str(res["status"]).startswith("ok") else None, status_alt=f"{res['status']}{detail}")
 
 
-def _prepare_financial(f, T, sector, allow_after_T):
+def _prepare_financial(f, T, sector, allow_after_T, decided=False):
     """prepare() for the financial route: no market value, bill rate or operating bridge is needed."""
-    b = inputs.base_financial(f)
+    b = inputs.base_financial(f, **({"decided": True} if decided else {}))
     b["stub_days"] = (T.date() - date.fromisoformat(b["fy0"])).days
     if b["stub_days"] > MAX_STUB_DAYS:
         raise desk.DeskRefusal("base_year_too_old", f"the base fiscal year ended {b['stub_days']} days before T")

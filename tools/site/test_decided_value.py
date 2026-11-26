@@ -1118,7 +1118,8 @@ def test_the_base_refuses_a_year_with_no_earnings_base_unless_deferred_and_then_
     assert inputs.E0_DEFERRED in b["stamps"] and not b["x0"] > 0 and inputs.E0_PRETAX_POSITIVE not in b["stamps"]
     ok = inputs.base(dict(C.facts(), eps_diluted=C.series([1.0] * 5)), market_cap=180e6, bill_rate=0.04)
     assert inputs.E0_DEFERRED not in inputs.base(dict(C.facts(), eps_diluted=C.series([1.0] * 5)), market_cap=180e6, bill_rate=0.04, defer_e0=True)["stamps"]
-    assert ok == inputs.base(dict(C.facts(), eps_diluted=C.series([1.0] * 5)), market_cap=180e6, bill_rate=0.04, defer_e0=True)       # a positive base is the same either way
+    same = inputs.base(dict(C.facts(), eps_diluted=C.series([1.0] * 5)), market_cap=180e6, bill_rate=0.04, defer_e0=True)
+    assert same.pop("options") == {"defer_e0": True} and ok == same and "options" not in ok           # a positive base is the same either way, but for the record of the option
 
 
 def test_the_decided_method_asks_for_the_deferred_base_and_values_it_on_the_reads_long_run_return(tmp_path, monkeypatch):
@@ -1136,3 +1137,68 @@ def test_the_decided_method_asks_for_the_deferred_base_and_values_it_on_the_read
     with pytest.raises(desk.DeskRefusal) as e:                                           # a filed pretax profit: the adjustments must give an earnings base
         D.adjust_base(dict(b, stamps=[inputs.E0_DEFERRED, inputs.E0_PRETAX_POSITIVE]), None, [])
     assert e.value.code == "e0_not_positive" and D.adjust_base(b, None, [])[0]["x0"] == -1.0
+
+
+# ---- the decided method's base: a missing operating-income series is derived, the share scale is proven at a wider band (2026-11-27) ----
+
+def _f(**over):
+    return {**C.facts(), "eps_diluted": C.series([1.0] * 5), **over}
+
+
+def test_decided_changes_nothing_for_a_company_that_files_everything():
+    plain = inputs.base(_f(), market_cap=180e6, bill_rate=0.04)
+    dec = inputs.base(_f(), market_cap=180e6, bill_rate=0.04, decided=True)
+    assert dec.pop("options") == {"decided": True} and dec == plain
+
+
+def test_a_stale_operating_income_tag_is_refused_unless_decided_which_derives_it_for_every_year():
+    f = _f()
+    f["operating_income"] = dict(f["operating_income"], values=f["operating_income"]["values"][:-1])       # the tag stops a year before the base year
+    f["_stale"] = {"operating_income": f["operating_income"]["values"][-1]["end"]}
+    with pytest.raises(desk.DeskRefusal) as e:
+        inputs.base(f, market_cap=180e6, bill_rate=0.04)
+    assert e.value.code == "facts_stale"
+    b = inputs.base(f, market_cap=180e6, bill_rate=0.04, decided=True)
+    assert {"oi_from_pretax_plus_interest", "operating_income_tag_stale_not_used"} <= set(b["stamps"]) and b["oi0"] == 13000000.0 + 1000000.0
+    assert len(b["record"]["op_margin"]) == 5                                              # every pooled year, on the one derived basis
+
+
+def test_with_no_operating_income_tag_and_no_interest_line_cash_interest_stands_in_for_every_year_only_when_decided():
+    paid = C.series([900000.0] * 5)
+    f = _f(interest_paid=dict(paid, values=[dict(v, tag="InterestPaidNet") for v in paid["values"]]))
+    del f["operating_income"]
+    f["interest_expense"] = dict(f["interest_expense"], values=[])                           # no gross interest line in any year
+    before = inputs.base(f, market_cap=180e6, bill_rate=0.04)                              # as before: the base year alone gets the stand-in
+    assert len(before["record"]["op_margin"]) == 1
+    with pytest.raises(desk.DeskRefusal) as e:                                             # and one margin is too few for the record (vrun.prepare)
+        forecast.record_bar(before["record"]["op_margin"])
+    assert e.value.code == "history_short"
+    b = inputs.base(f, market_cap=180e6, bill_rate=0.04, decided=True)
+    assert "oi_interest_from_cash_interest_paid" in b["stamps"] and "oi_record_years_from_cash_interest_paid:4" in b["stamps"]
+    assert len(b["record"]["op_margin"]) == 5 and b["oi0"] == 13000000.0 + 900000.0
+
+
+@pytest.mark.parametrize("eps,ok", [(1.0, None), (0.85, "+18%"), (1.25, "-20%"), (0.6, False), (1.7, False)])
+def test_the_share_scale_is_proven_within_a_factor_of_one_and_a_half_only_when_decided(eps, ok):
+    f = _f(eps_diluted=C.series([eps] * 5))                                                # net income per share is 1.00
+    if eps != 1.0:
+        with pytest.raises(desk.DeskRefusal) as e:
+            inputs.base(f, market_cap=180e6, bill_rate=0.04)
+        assert e.value.code == "shares_scale_unverified"
+    if ok is False:
+        with pytest.raises(desk.DeskRefusal):
+            inputs.base(f, market_cap=180e6, bill_rate=0.04, decided=True)
+        return
+    b = inputs.base(f, market_cap=180e6, bill_rate=0.04, decided=True)
+    gaps = [x for x in b["stamps"] if x.startswith(inputs.SCALE_GAP_PREFIX)]
+    assert b["shares"] == 10000000.0 and gaps == ([] if ok is None else [inputs.SCALE_GAP_PREFIX + ok])
+
+
+def test_the_decided_method_prepares_with_both_options_and_the_second_tax_base_keeps_them(tmp_path, monkeypatch):
+    packet, b, bar, sent, prepared = arrange(tmp_path, monkeypatch, [reply()])
+    run(tmp_path, packet)
+    assert prepared[0]["defer_e0"] is True and prepared[0]["decided"] is True
+    seen = {}
+    monkeypatch.setattr(D.vrun.inputs, "base", lambda f, **k: seen.update(k) or dict(b))
+    D.vrun.alt_tax_base({}, dict(b, tax_fallback={"rate_alt": 0.25}, options={"defer_e0": True, "decided": True}), 180e6)
+    assert seen["defer_e0"] is True and seen["decided"] is True and seen["tau_override"] == 0.25

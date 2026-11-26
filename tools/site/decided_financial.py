@@ -263,7 +263,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         if any(e.get("kind") == "news" for e in packet.get("evidence") or []):         # as vrun.value
             raise desk.DeskRefusal("news_items_not_valued", "the packet holds news items; the valuation reads filings only")
         f, b, bar, record, r, prov, fy_ends = vrun.prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T, family=family,
-                                                     interest_override=interest_override)
+                                                     interest_override=interest_override, decided=True)
     except desk.DeskRefusal as e:
         result.update(status="no_call", reason=e.code, detail=str(e))
         return D._write(run_dir, result)

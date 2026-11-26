@@ -34,6 +34,10 @@ KD_BAND = (0.01, 0.20)       # ruling 5 (the audited coverage rule)
 SHARES_TOL = 0.05            # ruling 5: NI / diluted shares against filed diluted EPS
 RONIC0_CAP = 1.0             # ruling 21 (the doctrine's cap)
 EPS_ROUNDING = 0.006         # CROSS_CHECK_Q2 N15
+SCALE_PROOF = 1.5            # the decided method only (check_shares(loose=True)): net income per share within this factor of the filed diluted EPS proves the
+                             # count's SCALE (a scale slip is a factor of 1,000); the gap itself is another numerator (preferred or participating shares, a
+                             # minority's share) and is stamped. Measured 2026-11-27 on the 9 site stocks refused: gaps of 6% to 23%, one of 45% (still refused)
+SCALE_GAP_PREFIX = "shares_scale_proven_eps_gap:"
 NCI_MATERIAL, NCI_DOMINANT = 0.10, 0.25   # N9
 VINTAGE_LIFE = (5, 40)       # N8
 VINTAGE_RATIO_TOL = 0.5
@@ -50,7 +54,7 @@ def _by_end(f, concept):
     return {v["end"]: v["value"] for v in (f.get(concept) or {}).get("values", [])}
 
 
-def check_shares(f, e0, numer, shares, stamps, what, strict=False, eps=None):
+def check_shares(f, e0, numer, shares, stamps, what, strict=False, eps=None, loose=False):
     """Ruling 5 / N15: the per-share scale of the filed diluted shares, proven against filed diluted EPS. Returns the shares to use.
     Coverage A 2026-11-07: a count filed in thousands (the XBRL scale slip measured on SWBI) is rescaled when the count times 1e3
     reconciles, stamped. Nothing else is accepted (a 1e6 slip is not measured on any filer, so it stays refused). Not accepted, measured 11-07: reconciling on the filed diluted numerator (an
@@ -66,6 +70,9 @@ def check_shares(f, e0, numer, shares, stamps, what, strict=False, eps=None):
             if k != 1.0:
                 stamps.append(f"shares_filed_scale_x{k:.0e}_eps_reconciled")
             return shares * k
+    if loose and not strict and 1 / SCALE_PROOF <= (numer / shares) / eps <= SCALE_PROOF:      # a filed weighted-average count only, never a substitute
+        stamps.append(f"{SCALE_GAP_PREFIX}{(numer / shares) / eps - 1:+.0%}")
+        return shares
     if strict or "per_share_basis_unverified" not in stamps:              # strict (WO_NC1, a substitute count): the ADS allowance does not apply; F_SPEC §6: a 20-F/40-F filer (an ADS ratio) is valued
         raise DeskRefusal("shares_scale_unverified", f"{what} / diluted shares {numer / shares:.6g} against filed diluted EPS {eps:.6g}")
     stamps.append("shares_scale_unverified_ads")
@@ -77,7 +84,7 @@ def _eps_ok(x, eps):
     return abs(x / eps - 1) <= SHARES_TOL or abs(x - eps) <= EPS_ROUNDING
 
 
-def _verified_shares(f, e0, numer, substitutes, stamps, what):
+def _verified_shares(f, e0, numer, substitutes, stamps, what, loose=False):
     """(shares, substituted) for `numer` at the base year `e0`, proven against filed diluted EPS (check_shares). WO_UV2: where no diluted
     weighted-average count is filed but the partnership's diluted unit count and its per-unit diluted EPS are, the units are the count, and
     they are proven against that per-unit EPS; units that do not reconcile are not used (shares_unavailable, as before). Otherwise as before."""
@@ -100,7 +107,7 @@ def _verified_shares(f, e0, numer, substitutes, stamps, what):
         if got is None:
             raise
         return got, False
-    return check_shares(f, e0, numer, shares, stamps, what, strict=sub), sub
+    return check_shares(f, e0, numer, shares, stamps, what, strict=sub, loose=loose), sub
 
 
 def _ix_shares(f, e0, numer, stamps, what):
@@ -295,7 +302,7 @@ E0_DEFERRED = "earnings_base_not_positive_in_base_year"     # the stamp of base(
 E0_PRETAX_POSITIVE = "base_year_pretax_income_positive"     # with it: the filed pretax income is above 0, and X_0 is not only by the cash interest and minority share code takes out
 
 
-def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None, real_estate=False, interest_swap=None, defer_e0=False):
+def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None, real_estate=False, interest_swap=None, defer_e0=False, decided=False):
     """The measured base for value_operating. `market_cap` (USD, from the formation's price row) sets delta at market weights (O5);
     `bill_rate` (a fraction, or None) is the 3-month bill rate over the base fiscal year (the cash term). `tau_override` (WO_NC3):
     replaces the rate tax_rate returns in the base, RONIC and the NCI term, nothing else (the value at a statutory fallback's second rate).
@@ -323,7 +330,9 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
     if any(not rev[e] > 0 for e in ends):
         raise DeskRefusal("revenue_not_positive", f"a pooled year has revenue <= 0: {[(e, rev[e]) for e in ends if not rev[e] > 0]}")
     stale = {c: d for c, d in (f.get("_stale") or {}).items() if c in ("net_income", "capex", "da", "revenue", "pretax_income", "operating_income")}
-    oi_stale = real_estate and stale.pop("operating_income", None) is not None      # WO_NC9c: a stale operating-income tag is replaced below, not refused
+    # WO_NC9c: a stale operating-income tag is replaced below, not refused. `decided` (the decided method only; False: as before) does the same for every
+    # family: a company that stopped filing the tag is then treated as one that never filed it.
+    oi_stale = (real_estate or decided) and stale.pop("operating_income", None) is not None
     if stale:
         raise DeskRefusal("facts_stale", f"concepts end before the latest revenue year {e0}: {stale}")
     if f.get("_latest_annual_period") and f["_latest_annual_period"] > e0:
@@ -366,6 +375,12 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
                 oi[e0] = pt[e0] + sub[0]
                 substitutes.append(_label("interest_expense", sub[1], sub[2]))
                 stamps.append("oi_interest_from_cash_interest_paid")
+        if decided:                                                        # the same stand-in for the record's other years, so the margin record is not one year long
+            more = [e for e in ends[:-1] if e in pt and e not in ie_all and interest_substitute(f, e) is not None]
+            for e in more:
+                oi[e] = pt[e] + interest_substitute(f, e)[0]
+            if more:
+                stamps.append(f"oi_record_years_from_cash_interest_paid:{len(more)}")
     for name, series in (("net_income", ni), ("da", da), ("capex", cx), ("pretax_income", pt), ("operating_income", oi)):
         if e0 not in series:
             raise DeskRefusal("input_missing" if name not in ("operating_income",) else "bridge_unavailable", f"{name} for the latest fiscal year {e0}")
@@ -503,7 +518,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
         if interest_override is None and _tag(f, "interest_expense", e0) == "FinanceCosts" and alt is not None and alt > 0:
             try:
                 return base(f, market_cap=market_cap, bill_rate=bill_rate, tau_override=tau_override, interest_override=alt, real_estate=real_estate,
-                            interest_swap=("ifrs-full:FinanceCosts", "ifrs-full:InterestExpense"), defer_e0=defer_e0)
+                            interest_swap=("ifrs-full:FinanceCosts", "ifrs-full:InterestExpense"), defer_e0=defer_e0, decided=decided)
             except DeskRefusal as second:
                 if second.code != "kd_out_of_band":
                     raise
@@ -557,7 +572,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
         stamps.append("debt_includes_finance_leases")
     if delta > 0:
         stamps.append("leverage_book_ratio_assumed")                      # B12: debt grows with the business at its book ratio
-    shares, shares_sub = _verified_shares(f, e0, ni[e0], substitutes, stamps, "NI")
+    shares, shares_sub = _verified_shares(f, e0, ni[e0], substitutes, stamps, "NI", loose=decided)
     stamps.append("shares_period_end_not_weighted_average" if shares_sub else "shares_weighted_average_diluted")
     # ruling 4: the vintages D&A rule from filed PP&E (prior gross, gross, net, D&A_org of the base year); else pooled, stamped
     gross, net = _by_end(f, "ppe_gross"), _by_end(f, "ppe_net")
@@ -579,6 +594,7 @@ def base(f, *, market_cap, bill_rate, tau_override=None, interest_override=None,
             "cash_interest_pretax": i_pre, "bill_rate": bill_rate, "amort_schedule": amort_schedule, "amort_thereafter": amort_after,
             "p_ratio": 0.0, "rou_ratio": 0.0, "stamps": stamps + substitutes, **({"substitutes": substitutes} if substitutes else {}),
             **({"tax_fallback": tax_fallback} if tax_fallback else {}),
+            **({"options": {k: True for k, on in (("defer_e0", defer_e0), ("decided", decided)) if on}} if defer_e0 or decided else {}),
             **({"interest_from_filing": {"value": interest_override, "tagged_value": ie.get(e0), "kd_used": kd}} if interest_override is not None and interest_swap is None else {}),
             **({"interest_ifrs_expense": {"value": interest_override, "refused_tag": interest_swap[0], "used_tag": interest_swap[1],
                                           "tagged_value": ie.get(e0), "kd_used": kd}} if interest_swap is not None else {}),
@@ -656,7 +672,7 @@ def _year_chain(ends):
     return out
 
 
-def base_financial(f):
+def base_financial(f, decided=False):
     """The measured base for value_financial (O3). The driver is opening common book equity: "revenue" R_t = common book equity at the
     start of year t and the "margin" m_t = ROE on it, so E_t = R_t m_t and Flow_t = E_t - (R_{t+1} - R_t), the retained-equity identity.
     Common means after preferred stock: its carrying value comes out of book, and its dividends out of net income (CROSS_CHECK_Q3 6).
@@ -732,7 +748,7 @@ def base_financial(f):
     opening = eq[ends[-2]]
     if not (ni[e0] > 0 and opening > 0):
         raise DeskRefusal("e0_not_positive", f"E_0 = {ni[e0]:.6g}, opening common equity {opening:.6g}")
-    shares, shares_sub = _verified_shares(f, e0, ni[e0], substitutes, stamps, "income to common")
+    shares, shares_sub = _verified_shares(f, e0, ni[e0], substitutes, stamps, "income to common", loose=decided)
     if shares_sub:
         stamps[stamps.index("shares_weighted_average_diluted")] = "shares_period_end_not_weighted_average"
     aoci = _by_end(f, "aoci").get(e0)

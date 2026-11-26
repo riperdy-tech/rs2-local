@@ -71,7 +71,7 @@ SITUATION_FLAGS = ("tax_rate_representative", "debt_level_representative")      
 # WO_UV2: stamps of the base that the run's flags also carry, so a reader of the site sees them: no EPS to prove the share count, and each reading made where a figure was not filed
 SURFACED_STAMPS = (inputs.E0_DEFERRED, "shares_unreconciled_no_eps", "working_capital_unclassified_balance_sheet", "pretax_derived_from_net_income_nci_tax", "nci_income_includes_redeemable_nci",
                    "debt_from_senior_notes_tags_parts_reconciled", "oi_interest_from_cash_interest_paid", "shares_from_partnership_units_reconciled_with_per_unit_eps")
-SURFACED_PREFIXES = ("preferred_dividends_taken_as_0_eps_times_shares_reconciles:", "preferred_balance_not_filed_taken_as_0:",
+SURFACED_PREFIXES = (inputs.SCALE_GAP_PREFIX, "oi_record_years_from_cash_interest_paid:", "preferred_dividends_taken_as_0_eps_times_shares_reconciles:", "preferred_balance_not_filed_taken_as_0:",
                      "ix_read:", "interest_ifrs_expense_for_finance_costs:", "shares_from_ix_class_members:", "shares_reconciled_with_class_eps")     # WO_UV3: figures read from the filing's inline XBRL
 FADE_YEARS = (1, 25)                      # the range the prompt states for fade_years (the reference test's own)
 
@@ -717,7 +717,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
         if any(e.get("kind") == "news" for e in packet.get("evidence") or []):         # as vrun.value
             raise desk.DeskRefusal("news_items_not_valued", "the packet holds news items; the valuation reads filings only")
         f, b, bar, record, r, prov, fy_ends = vrun.prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T, family=family,
-                                                     interest_override=interest_override, defer_e0=True, **(V.PREPARE if V else {}))      # WO_NC8, WO_NC9c
+                                                     interest_override=interest_override, defer_e0=True, decided=True, **(V.PREPARE if V else {}))      # WO_NC8, WO_NC9c
     except desk.DeskRefusal as e:
         result.update(status="no_call", reason=e.code, detail=str(e))
         return _write(run_dir, result)
