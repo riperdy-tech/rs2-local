@@ -133,6 +133,26 @@ FALLBACK = {"gemini": "sonnet"}     # operator 2026-11-19: a name the Gemini wor
 #                                     Claude Sonnet (same messages, same checks; the report records the model). Sonnet under its own floor: wait, as before
 
 
+# Operator 2026-11-28: half of the Claude weekly allowance goes to the news re-reads, so that ten a day can be read (a Sonnet re-read took
+# about 0.35 points of that allowance on 2026-11-27, a Gemini one about 1.2 of Gemini's). A news re-read is read by NEWS_ARM while its weekly
+# allowance left is at or above NEWS_ARM_WEEKLY_FLOOR; under it the re-read is read as any other name, and news_watch queues three a day.
+NEWS_ARM, NEWS_ARM_WEEKLY_FLOOR = "sonnet", 0.50
+
+
+def news_arm_has_room():
+    """True when NEWS_ARM may take a news re-read: its weekly allowance left is at or above NEWS_ARM_WEEKLY_FLOOR and its five-hour allowance
+    is not under that arm's own floor. A meter that cannot be read is never read as room. The arm of the process is left as it was."""
+    cur = ARM
+    try:
+        set_arm(NEWS_ARM)
+        m = meter()
+        return m["claude-weekly"][0] >= NEWS_ARM_WEEKLY_FLOOR and m["claude-5h"][0] >= FLOORS["claude-5h"]
+    except Exception:  # noqa: BLE001
+        return False
+    finally:
+        set_arm(cur)
+
+
 def quota_low():
     """True when an allowance of the current arm is under its floor, or the meter cannot be read (never read as "there is room")."""
     try:
@@ -926,6 +946,9 @@ def work(max_names, do_publish):
                 log("nothing to analyse")
                 break
             t, source, queued = nxt
+            if source.startswith("news:") and ARM != NEWS_ARM and news_arm_has_room():       # a news re-read is NEWS_ARM's while it has room
+                set_arm(NEWS_ARM)
+                before = meter()
             log(f"{t} start ({source}) | left: " + ", ".join(f"{k} {before[k][0]:.1%}" for k in FLOORS))
             try:
                 st = analyze(t, source)

@@ -1272,3 +1272,24 @@ def test_the_news_note_is_pinned():
     """What a news re-read's valuation is told is versioned with NEWS_VERSION: re-pin this hash and move the version together."""
     assert D.NEWS_VERSION == "decided.news.v1 2026-11-28"
     assert hashlib.sha256(D.news_note(["x"]).encode()).hexdigest() == "3e3515eb868f3a9018f1ab676f5d4ef7675e6a1f6a092f6ec87f7075a5b42c30"
+
+
+def test_the_news_arm_has_room_at_half_its_weekly_allowance_and_above_its_five_hour_floor(monkeypatch):
+    left = {"claude-weekly": 0.50, "claude-5h": 0.60}
+    asked = []
+    monkeypatch.setattr(G, "meter", lambda: asked.append(G.ARM) or {k: (left[k], None) for k in left})
+    try:
+        G.set_arm("gemini")
+        assert G.news_arm_has_room() and asked == ["sonnet"] and G.ARM == "gemini" and G.LOCK.name == "worker.lock"      # asked of Sonnet; the arm is left as it was
+        left["claude-weekly"] = 0.49
+        assert not G.news_arm_has_room()
+        left.update({"claude-weekly": 0.80, "claude-5h": 0.05})
+        assert not G.news_arm_has_room()
+
+        def broken():
+            raise OSError("meter not read")
+        monkeypatch.setattr(G, "meter", broken)
+        assert not G.news_arm_has_room() and G.ARM == "gemini"               # a meter that cannot be read is never room
+        assert (G.NEWS_ARM, G.NEWS_ARM_WEEKLY_FLOOR) == ("sonnet", 0.50)
+    finally:
+        G.set_arm("gemini")

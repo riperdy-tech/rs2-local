@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import news_watch as N  # noqa: E402
 
 DAY = "2026-11-25"
-REAL_HELD = N.held
+REAL_HELD, REAL_CAP = N.held, N.rereads_cap
 NOW = datetime(2026, 11, 25, 21, 0, tzinfo=timezone.utc)
 
 
@@ -45,6 +45,7 @@ def home(tmp_path, monkeypatch):
         monkeypatch.setattr(N, name, tmp_path / sub if sub else tmp_path)
     monkeypatch.setattr(N, "reports", lambda: {"AAA": report()})
     monkeypatch.setattr(N, "held", lambda reps=None: set())           # no stock is held unless a test says so (holding)
+    monkeypatch.setattr(N, "rereads_cap", lambda room=None: 3)        # the lean cap unless a test says so; the meter is never asked
     monkeypatch.setattr(N, "companies", lambda: {"AAA": "Alpha Corp"})
     monkeypatch.setattr(N, "last_close", lambda t, stocks=None: 12.5)
     monkeypatch.setattr(N.paths, "resolve", lambda key: tmp_path / "screener")
@@ -487,7 +488,7 @@ def test_a_held_stock_whose_warning_is_worse_or_unclear_is_queued_first_inside_t
         return True
     out = N.act(now=NOW, notify=lambda text: told.append(text) or True, enqueue=enqueue, filed=lambda t, since, now: HIT if t == "AAA" else None)
     # held and not better first (BBB worse, DDD unclear), then the others as before: the one that has filed, then worst first
-    assert queued == ["BBB", "DDD", "AAA"] and out["over_cap"] == ["EEE", "CCC"] and len(queued) == N.REREADS_A_DAY
+    assert queued == ["BBB", "DDD", "AAA"] and out["over_cap"] == ["EEE", "CCC"] and len(queued) == N.REREADS_A_DAY_LEAN
     lines = told[0].splitlines()
     assert lines[0] == f"News watch {DAY}: 5 serious warnings on 5 stocks; 3 held stocks in this message"
     assert [ln.split(" (")[0] for ln in lines[1:6]] == ["HELD BBB", "HELD DDD", "HELD CCC", "AAA", "EEE"]
@@ -626,3 +627,17 @@ def test_one_move_is_told_once_and_a_later_move_again(home, monkeypatch):
     assert N.held_signals(now=NOW + timedelta(days=1), filings=none, prices=prices("2026-11-26"))["price_moves"] == []      # the same move, the next session
     assert N.held_signals(now=NOW + timedelta(days=6), filings=none, prices=prices("2026-12-01"))["price_moves"] == []
     assert N.held_signals(now=NOW + timedelta(days=7), filings=none, prices=prices("2026-12-02"))["price_moves"] == ["AAA"]
+
+
+def test_the_cap_is_ten_while_the_reader_for_news_has_room_and_three_when_it_has_not(home, monkeypatch):
+    assert (N.REREADS_A_DAY, N.REREADS_A_DAY_LEAN) == (10, 3)
+    assert REAL_CAP(lambda: True) == 10 and REAL_CAP(lambda: False) == 3
+    names = [f"S{k:02d}" for k in range(12)]
+    acting(home, monkeypatch, names)
+    for t in names:
+        warn(home, t, t.lower())
+    told = []
+    out = N.act(now=NOW, notify=lambda text: told.append(text) or True, enqueue=lambda w, hit: True, filed=lambda t, since, now: None, cap=10)
+    assert out["queued"] == names[:10] and out["over_cap"] == names[10:] and "Over today's cap of 10, taken on a later day: S10, S11" in told[0]
+    later = datetime(2026, 11, 26, 21, 0, tzinfo=timezone.utc)
+    assert N.act(now=later, notify=never, enqueue=lambda w, hit: True, filed=lambda t, since, now: None)["queued"] == names[10:]      # the fixture's cap of 3 covers the two left

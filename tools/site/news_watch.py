@@ -19,7 +19,8 @@ ids exist, and the quote is in the headline or snippet of the item it names; an 
 with its failure and raises nothing. What is critical is never a fixed list of event types (operator 2026-11-14: "it could be anything,
 so it should be a variable thing"): it is what the stock's own analysis named, or what the reader calls a new serious matter.
 (3) ACT, code: every checked event is a warning (warnings.jsonl, with the last close). The day's serious warnings go out in one Telegram
-message. A serious warning queues its stock for a re-read in the worker's filing queue, at most REREADS_A_DAY stocks a day, a stock whose
+message. A serious warning queues its stock for a re-read in the worker's filing queue, at most REREADS_A_DAY stocks a day (ten, read by
+Claude Sonnet while half of its weekly allowance is left; three when it is not: rereads_cap, operator 2026-11-28), a stock whose
 company has filed since its report first. THE RE-READ (gemini_ondemand.analyze, a queue reason news:...): the reading is run on the SEC
 packet plus the press reports of the stock's warnings as items of kind news (packet_with_news; qwen_c tells the reader they are press
 reports and checks their quotes like any other). Since 2026-11-28 (operator: a large event decides a stock's direction, the re-read is to
@@ -85,7 +86,8 @@ FIRST_GATHER_HOURS = 36           # a stock's first gather: only headlines the e
 KNOWN_WARNING_DAYS = 10           # a stock's own warnings of this many days are told to the reader as already known
 SHOW_DAYS = 14                    # the site shows a stock's warnings of this many days
 REVIEW_DAYS = 30                  # a serious warning older than this no longer marks the stock under review
-REREADS_A_DAY = 3                 # operator 2026-11-25 (ruling R2): at most this many re-reads queued by news a day
+REREADS_A_DAY = 10                # operator 2026-11-28 ("Yes, 10 a day"): re-reads queued by news a day while Claude Sonnet has room for them
+REREADS_A_DAY_LEAN = 3            # operator 2026-11-25 (ruling R2): the number when it has not (G.news_arm_has_room: half its weekly allowance)
 # Held names (operator 2026-11-27, PLAN_held_names_monitor_2026-11-27, H1 to H5 as recommended). The items and the two price rules are the
 # holdings monitor's, taken as they stand (M.P0_ITEMS, M.price_signal).
 CRITICAL_ITEMS = {"1.02": "a material agreement was terminated", "1.03": "bankruptcy or receivership", "2.04": "a debt obligation was accelerated",
@@ -664,9 +666,14 @@ def filed_since(ticker, since, now, get=None, ciks=None):
     return None if best is None else (best["form"], best["accession"])
 
 
-def act(now=None, notify=None, enqueue=None, filed=None):
+def rereads_cap(room=None):
+    """The day's cap of news re-reads: REREADS_A_DAY while the reader set aside for them has room, else REREADS_A_DAY_LEAN."""
+    return REREADS_A_DAY if (room or G.news_arm_has_room)() else REREADS_A_DAY_LEAN
+
+
+def act(now=None, notify=None, enqueue=None, filed=None, cap=None):
     """What follows a serious warning (operator ruling R2, 2026-11-25). (a) Each is told once, the day's lot in one Telegram message.
-    (b) Its stock is queued for a re-read, at most REREADS_A_DAY stocks a day: stocks whose company has filed since the report was made
+    (b) Its stock is queued for a re-read, at most `cap` stocks a day (rereads_cap): stocks whose company has filed since the report was made
     first (filed_since: that re-read has a filing to read as well), then the worst direction. The re-read's reading is given the press
     reports as evidence (packet_with_news); its valuation reads filings only. A stock over the day's cap is taken on a later day, for
     REVIEW_DAYS days; one whose report was made after the warning, or that is already in a queue, is settled. Returns {told, queued,
@@ -698,10 +705,11 @@ def act(now=None, notify=None, enqueue=None, filed=None):
             log(f"act {t}: {type(e).__name__}: {str(e)[:120]}")
             hits[t] = None
     used = sum(1 for d in (st.get("queued_days") or []) if d == day)
+    cap = rereads_cap() if cap is None else cap
     out = {"told": 0, "queued": [], "over_cap": []}
     for t, w in sorted(lead.items(), key=lambda kv: (not (kv[0] in mine and kv[1]["direction"] != "better"), hits[kv[0]] is None,
                                                      order[kv[1]["direction"]], kv[1]["day"], kv[0])):
-        if used + len(out["queued"]) >= REREADS_A_DAY:
+        if used + len(out["queued"]) >= cap:
             out["over_cap"].append(t)
             continue
         if enqueue(w, hits[t]):
@@ -724,14 +732,14 @@ def act(now=None, notify=None, enqueue=None, filed=None):
         if out["queued"]:
             lines.append("Re-read queued, with the press reports as evidence: " + ", ".join(out["queued"]))
         if out["over_cap"]:
-            lines.append(f"Over today's cap of {REREADS_A_DAY}, taken on a later day: " + ", ".join(out["over_cap"]))
+            lines.append(f"Over today's cap of {cap}, taken on a later day: " + ", ".join(out["over_cap"]))
         if (notify or notify_telegram)("\n".join(lines)):
             told.update(w["id"] for w in fresh)
             out["told"] = len(fresh)
     week = (now - timedelta(days=7)).strftime("%Y-%m-%d")
     _write(STATE, {**st, "told": sorted(told)[-5000:], "settled": sorted(settled)[-5000:],
                    "queued_days": [d for d in (st.get("queued_days") or []) if d >= week] + [day] * len(out["queued"])})
-    log(f"act: {len(lead)} stocks with an open serious warning, told {out['told']}, queued {out['queued']}, over cap {out['over_cap']}")
+    log(f"act: {len(lead)} stocks with an open serious warning, told {out['told']}, cap {cap}, queued {out['queued']}, over cap {out['over_cap']}")
     return out
 
 
