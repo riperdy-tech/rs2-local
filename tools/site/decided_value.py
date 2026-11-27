@@ -392,6 +392,9 @@ def adjust_base(b, cash, one_offs, events=None):
     d = N x bill + (charges - gains), so, OI_0 and every other part of the base being untouched:
         excess_cash' = C - N      (the desk adds it at face)       cash_interest_pretax' = i_pre - N x bill
         k0' = k0 - d              (k0_interest is not touched)     x0' = x0 + d (1 - tau)     m0' = x0' / R0
+        w' = w + N / R0           (2026-11-27: inputs.base leaves ALL cash out of working capital because the desk adds it at face; cash that is not
+                                   free is not added at face, so it is an operating asset and belongs in NWC_0. Without it a company that holds
+                                   customers' money had the liability in NWC_0 and not the cash: w = -15.4 measured on one site stock, +0.53 with it)
     which keeps the bridge exact: (OI_0 - k0' + A_0)(1 - tau) = x0'. ronic0 stays the filed base year's return (its tangible capital is not stored
     and is not rebuilt here), stamped. Raises DeskRefusal e0_not_positive when x0' is not above 0.
     events (WO_NC10a, from resolve_events; None = none, and then nothing below is done and the result is as v2's): applied on the same copy after the
@@ -404,7 +407,8 @@ def adjust_base(b, cash, one_offs, events=None):
     charge = sum(o["amount"] for o in one_offs if o["sign"] == "charge")
     gain = sum(o["amount"] for o in one_offs if o["sign"] == "gain")
     d = back + (charge - gain)
-    a = dict(b, excess_cash=b["excess_cash"] - n, k0=b["k0"] - d, x0=b["x0"] + d * (1 - b["tau"]), cash_interest_pretax=b["cash_interest_pretax"] - back)
+    a = dict(b, excess_cash=b["excess_cash"] - n, k0=b["k0"] - d, x0=b["x0"] + d * (1 - b["tau"]), cash_interest_pretax=b["cash_interest_pretax"] - back,
+             w=b["w"] + n / b["R0"])
     a["m0"] = a["x0"] / b["R0"]
     ce = apply_events(b, a, events) if events is not None else None
     # a base year that lost money and was not refused for it (vrun.prepare(defer_e0=True)) is not refused here either: value_inputs takes the read's long-run
@@ -412,10 +416,12 @@ def adjust_base(b, cash, one_offs, events=None):
     # cash_not_free is what returns that interest, and without it the held constant k0 is wrong.
     if not a["x0"] > 0 and (inputs.E0_DEFERRED not in b["stamps"] or inputs.E0_PRETAX_POSITIVE in b["stamps"]):
         raise desk.DeskRefusal("e0_not_positive", f"X_0 = {a['x0']:.6g} after the adjustments: no earnings base")
-    stamps = (["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base"] if cash is not None else []) \
+    stamps = (["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base",
+               "cash_not_free_counted_in_working_capital"] if cash is not None else []) \
         + (["base_year_one_offs_taken_out_of_k0"] if one_offs else []) + (["ronic0_not_readjusted"] if cash is not None or one_offs else [])         + (ce["stamps"] if ce else [])
     return a, {"cash_not_free": cash, "base_year_one_offs": list(one_offs), "excess_cash_before": b["excess_cash"], "excess_cash_after": a["excess_cash"],
                "k0_before": b["k0"], "k0_after": a["k0"], "k0_interest": b["k0_interest"], "x0_before": b["x0"], "x0_after": a["x0"],
+               "w_before": b["w"], "w_after": a["w"],
                "cash_interest_returned": back, "one_offs_charge": charge, "one_offs_gain": gain, "capital_events": ce, "stamps": stamps}
 
 

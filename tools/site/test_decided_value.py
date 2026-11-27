@@ -611,9 +611,12 @@ def test_cash_not_free_reduces_excess_cash_and_returns_its_interest_to_the_earni
     assert a["k0_before"] == 3.28e6 and a["k0_after"] == pytest.approx(3.18e6) and a["k0_interest"] == b["k0_interest"] == 1.0e6
     assert a["x0_before"] == 10.176e6 and a["x0_after"] == pytest.approx(10.256e6) and a["cash_interest_returned"] == pytest.approx(1.0e5)
     assert a["cash_not_free"]["amount"] == 2.5e6 and a["cash_not_free"]["quotes"] == [{"id": "F2", "quote": Q_CASH}] and a["base_year_one_offs"] == []
-    assert a["stamps"] == ["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base", "ronic0_not_readjusted"]
+    assert a["stamps"] == ["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base",
+                           "cash_not_free_counted_in_working_capital", "ronic0_not_readjusted"]
+    # the cash that is not free is an operating asset: it enters the working capital the base left all cash out of (2026-11-27)
+    assert a["w_before"] == b["w"] and a["w_after"] == pytest.approx(b["w"] + 2.5e6 / b["R0"]) and a["w_after"] > a["w_before"]
     # the value is the desk's on the hand-adjusted copy; bear and bull the same copy
-    hb = hand_base(b, excess_cash=4.5e6, k0=3.18e6, x0=10.256e6)
+    hb = hand_base(b, excess_cash=4.5e6, k0=3.18e6, x0=10.256e6, w=b["w"] + 2.5e6 / b["R0"])
     inp, rng = reply()["inputs"], reply()["ranges"]
     assert res["values"]["base"] == pytest.approx(D.value_inputs(hb, C.R, inp)[0], rel=1e-12)
     assert res["values"]["bear"] == pytest.approx(D.value_inputs(hb, C.R, D.scenario_inputs(inp, rng, 0))[0], rel=1e-12)
@@ -644,6 +647,7 @@ def test_base_year_one_offs_are_taken_out_of_the_held_constant_and_not_its_inter
     assert res["status"] == "ok" and a["k0_before"] == 3.28e6 and a["k0_after"] == pytest.approx(2.48e6) and a["k0_interest"] == 1.0e6
     assert a["x0_after"] == pytest.approx(10.816e6) and a["excess_cash_after"] == a["excess_cash_before"] == 7.0e6 and a["cash_interest_returned"] == 0.0
     assert (a["one_offs_charge"], a["one_offs_gain"]) == (pytest.approx(1.2e6), pytest.approx(0.4e6)) and a["cash_not_free"] is None
+    assert a["w_after"] == a["w_before"] == b["w"]                                         # no cash declared: the working capital is as filed
     assert [(o["sign"], o["amount"]) for o in a["base_year_one_offs"]] == [("charge", pytest.approx(1.2e6)), ("gain", pytest.approx(0.4e6))]
     assert a["stamps"] == ["base_year_one_offs_taken_out_of_k0", "ronic0_not_readjusted"]
     hb = hand_base(b, k0=2.48e6, x0=10.816e6)
@@ -664,8 +668,9 @@ def test_both_adjustments_together_add_up_on_the_one_copy(tmp_path, monkeypatch)
     res, b, bar, sent = adj_run(tmp_path, monkeypatch, {"cash_not_free": cash(), "base_year_one_offs": offs})
     a = res["decided"]["adjustments"]
     assert a["k0_after"] == pytest.approx(3.28e6 - 1.0e5 - 0.8e6) and a["x0_after"] == pytest.approx(10.176e6 + 0.9e6 * 0.8) and a["excess_cash_after"] == pytest.approx(4.5e6)
-    assert a["stamps"] == ["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base", "base_year_one_offs_taken_out_of_k0", "ronic0_not_readjusted"]
-    hb = hand_base(b, excess_cash=4.5e6, k0=2.38e6, x0=10.896e6)
+    assert a["stamps"] == ["cash_not_free_taken_out_of_excess_cash", "interest_on_cash_not_free_returned_to_the_earnings_base",
+                           "cash_not_free_counted_in_working_capital", "base_year_one_offs_taken_out_of_k0", "ronic0_not_readjusted"]
+    hb = hand_base(b, excess_cash=4.5e6, k0=2.38e6, x0=10.896e6, w=b["w"] + 2.5e6 / b["R0"])
     assert res["values"]["base"] == pytest.approx(D.value_inputs(hb, C.R, reply()["inputs"])[0], rel=1e-12)
 
 
@@ -982,7 +987,7 @@ def test_the_events_apply_on_the_same_copy_after_the_cash_not_free_step_and_with
     # shares after net buybacks is more than the events explain, so the base count stays (v3.1)
     assert res["status"] == "ok" and a["excess_cash_after"] == pytest.approx(0.9e6) and a["capital_events"]["excess_cash_before"] == pytest.approx(4.5e6)
     assert a["k0_after"] == pytest.approx(3.28e6 - 1.0e5 - 1.2e6) and a["x0_after"] == pytest.approx(10.176e6 + 1.3e6 * 0.8)
-    hb = hand_base(b, excess_cash=0.9e6, k0=3.28e6 - 1.3e6, x0=10.176e6 + 1.04e6)
+    hb = hand_base(b, excess_cash=0.9e6, k0=3.28e6 - 1.3e6, x0=10.176e6 + 1.04e6, w=b["w"] + 2.5e6 / b["R0"])
     assert res["values"]["base"] == pytest.approx(D.value_inputs(hb, C.R, reply()["inputs"])[0], rel=1e-12)
     assert "share_count_from_read_unexplained_base_count_kept" in a["stamps"] and "cash_not_free_taken_out_of_excess_cash" in a["stamps"]
 
