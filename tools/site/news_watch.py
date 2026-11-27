@@ -26,6 +26,13 @@ reports and checks their quotes like any other); the valuation is run on the SEC
 news-cited claims (without_news_claims), so the number moves only on filings. Monitoring never sells and moves no money (operator
 2026-10-01).
 
+HELD NAMES (operator 2026-11-27; stocks-workspace/docs/PLAN_held_names_monitor_2026-11-27.md). A stock is held when the published overlay
+rates it BUY (held(): the AI book holds every such stock). For held names only, and by code alone (held_signals, between check and act):
+an 8-K with a critical item filed since the stock's report is a SERIOUS warning, and a large price move is a warning that is not serious
+(told and shown; it queues no re-read). In act() a held stock whose warning is worse or unclear is queued ahead of every other stock,
+inside the same daily cap, and the message leads with held stocks. Every warning records whether the stock was held. The screener's AI
+book does not enter a stock that is under review; a held stock stays.
+
 THE READER is READER (environment NEWS_READER). "cloud" (the default) reads through the worker's own calls, BATCH stocks a call (the
 call's fixed cost is shared; replay 2026-11-25: 8,560 tokens a stock-day against 19,640, the same answers): Gemini, or Claude Sonnet when
 Gemini's allowance is under the worker's floor. "ollama:<model>" reads on this PC, one stock a call, and a stock it cannot read falls
@@ -77,6 +84,14 @@ KNOWN_WARNING_DAYS = 10           # a stock's own warnings of this many days are
 SHOW_DAYS = 14                    # the site shows a stock's warnings of this many days
 REVIEW_DAYS = 30                  # a serious warning older than this no longer marks the stock under review
 REREADS_A_DAY = 3                 # operator 2026-11-25 (ruling R2): at most this many re-reads queued by news a day
+# Held names (operator 2026-11-27, PLAN_held_names_monitor_2026-11-27, H1 to H5 as recommended). The items and the two price rules are the
+# holdings monitor's, taken as they stand (M.P0_ITEMS, M.price_signal).
+CRITICAL_ITEMS = {"1.02": "a material agreement was terminated", "1.03": "bankruptcy or receivership", "2.04": "a debt obligation was accelerated",
+                  "2.06": "a material impairment", "3.01": "a notice of delisting or of a failed listing rule", "4.01": "the auditor changed",
+                  "4.02": "earlier financial statements are not to be relied on"}
+assert set(CRITICAL_ITEMS) == set(M.P0_ITEMS)
+PRICE_MOVE_QUIET_DAYS = 7         # one warning a move: the 5-session rule fires again on each day of the same move. Replay 2026-11-27 on the 66 held
+                                  # stocks, 12 months: 471 trigger days, 257 moves (about one a session day over the whole book); 13 critical 8-Ks
 GATHER_BATCH, GATHER_PAUSE_S = 26, 300      # the B2 gather's pacing: SearXNG suspended an engine asked too fast (2026-10-02)
 ARTICLE_MIN = 600                 # a fetched page shorter than this is not an article
 EVIDENCE_ROWS, EVIDENCE_CHARS = 6, 6000     # press reports handed to a re-read, and the characters of an article kept (qwen_c.news_packet caps the total)
@@ -482,6 +497,7 @@ def check(limit=None, now=None, **readers):
     warnings, serious, unread, calls, tokens}: the reader calls of this run and the tokens they used, from the usage file."""
     started = Q.now_z()
     reps = reports()
+    mine = held(reps)
     log_rows = warnings_log()
     stocks = stock_rows()
     oldest = ((now or datetime.now(timezone.utc)) - timedelta(days=CHECK_KEEP_DAYS)).strftime("%Y-%m-%d")
@@ -521,7 +537,8 @@ def check(limit=None, now=None, **readers):
                          "direction": e["direction"], "new_matter": e["new_matter"], "why": e["why"], "quote": e["quote"],
                          "touches": [{"id": p, "claim": claims[p]} for p in e["touches"]],
                          "headline": e["headlines"][0]["title"], "url": e["headlines"][0]["url"], "source": e["headlines"][0].get("source"),
-                         "outlets": len(e["headlines"]), "report_date": rep.get("date"), "close_at_warning": last_close(t, stocks)}
+                         "outlets": len(e["headlines"]), "report_date": rep.get("date"), "close_at_warning": last_close(t, stocks),
+                         "held": t in mine}
                     with WARNINGS.open("a", encoding="utf-8") as f:
                         f.write(json.dumps(w, ensure_ascii=False) + "\n")
                     log_rows.append(w)
@@ -530,9 +547,103 @@ def check(limit=None, now=None, **readers):
         if left is not None and left <= 0:
             break
     used = [u for u in (json.loads(ln) for ln in USAGE.read_text(encoding="utf-8").splitlines() if ln.strip()) if u["at"] >= started] if USAGE.exists() else []
-    out["calls"], out["tokens"] = len(used), sum(u.get("total_tokens") or 0 for u in used)
+    # a Gemini row carries total_tokens; a Sonnet row carries only its parts (the 2026-11-27 morning's line counted 15 of 44 calls)
+    out["calls"], out["tokens"] = len(used), sum(u.get("total_tokens") or sum(u.get(k) or 0 for k in ("input_tokens", "output_tokens", "thinking_tokens"))
+                                                 for u in used)
     log(f"check: {out['checked']} stock-days checked, {out['warnings']} warnings ({out['serious']} serious), {out['unread']} left unread, "
         f"{out['calls']} reader calls, {out['tokens']} tokens")
+    return out
+
+
+# ---------------------------------------------------------------- held names: the set, and two signals code finds without a reader
+def held(reps=None):
+    """H1: the watched stocks the published overlay rates BUY, which is the AI book by construction (the screener's ledger `ai_book` holds
+    every such stock). No overlay file: no stock is held. When real positions exist they are to be added here."""
+    reps = reports() if reps is None else reps
+    ov = (_read(G.OVERLAY, {}) or {}).get("tickers") or {}
+    return {t for t, v in ov.items() if t in reps and isinstance(v, dict) and v.get("verdict") == "BUY" and v.get("analysis") != "not run"}
+
+
+def code_warning(ticker, day, kind, key, serious, direction, why, headline, rep, stocks, url=None):
+    """A warning code raised (kind `filing_event` or `price_move`), in the shape of a reader's warning; `reader` is "code", there is no quote."""
+    return {"id": hashlib.sha1(f"{ticker}|{kind}|{key}".encode("utf-8")).hexdigest()[:12], "ticker": ticker, "day": day, "at": Q.now_z(),
+            "reader": "code", "kind": kind, "held": True, "serious": serious, "direction": direction, "new_matter": True, "why": why, "quote": None,
+            "touches": [], "headline": headline, "url": url, "source": "SEC" if kind == "filing_event" else None, "outlets": 0,
+            "report_date": rep.get("date"), "close_at_warning": last_close(ticker, stocks)}
+
+
+def critical_filings(ticker, since, now, get=None, ciks=None):
+    """[(accession, form, items, cik)] of the stock's 8-Ks (and amendments) that carry a CRITICAL_ITEMS item and became effective after
+    `since` and by `now`, oldest first; `items` the critical ones, sorted."""
+    get = get or (lambda url: G.sec_store.get(url, online=True))
+    cik = (G._ciks([ticker]) if ciks is None else ciks).get(ticker)
+    if not cik:
+        raise ValueError("no CIK in cik_map.json")
+    out = []
+    for r in G.P._filing_rows(json.loads(get(f"https://data.sec.gov/submissions/CIK{cik}.json"))):
+        items = sorted({i.strip() for i in str(r["items"] or "").split(",")} & set(CRITICAL_ITEMS))
+        if r["form"] in G.P.EIGHT_K_FORMS and items and r["accepted"] is not None and since < r["effective"] <= now:
+            out.append((r["effective"], r["accession"], r["form"], items, cik))
+    return [x[1:] for x in sorted(out)]
+
+
+def held_signals(now=None, filings=None, prices=None):
+    """The two signals of the plan's C and D, for held names only; each new one is appended to the warnings log. Returns {held, filing_events,
+    price_moves, errors}.
+    C, a critical 8-K since the stock's report: a SERIOUS warning (direction unclear: code names the item, it does not judge it), so act()
+    tells it and queues the re-read, which reads that filing (filed_since finds it).
+    D, a large price move on the newest completed session (M.price_signal: 3 standard deviations of the 60 sessions before, or 20% over 5
+    sessions): a warning that is NOT serious (H4: told and shown, no re-read by itself; with no filing and no news there is nothing new
+    to read), and none within PRICE_MOVE_QUIET_DAYS days of the stock's last one. A stock whose list or prices cannot be read is logged
+    and left for the next morning."""
+    now = now or datetime.now(timezone.utc)
+    filings, prices = filings or critical_filings, prices or M.yf_prices
+    reps = reports()
+    names = sorted(held(reps))
+    log_rows = warnings_log()
+    have = {w["id"] for w in log_rows}
+    quiet = (now - timedelta(days=PRICE_MOVE_QUIET_DAYS)).strftime("%Y-%m-%d")
+    moved = {w["ticker"] for w in log_rows if w.get("kind") == "price_move" and w["day"] > quiet}
+    stocks = stock_rows()
+    day = today_utc(now)
+    out = {"held": len(names), "filing_events": [], "price_moves": [], "errors": []}
+    new = []
+    for t in names:
+        rep = reps[t]
+        try:
+            for acc, form, items, cik in filings(t, G._dt(G.decision_time(rep)), now):
+                what = "; ".join(f"item {i}, {CRITICAL_ITEMS[i]}" for i in items)
+                w = code_warning(t, day, "filing_event", acc, True, "unclear", f"The company filed a form {form} with {what}. The analysis has not read it.",
+                                 f"{form}: {what}", rep, stocks,
+                                 url=f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type=8-K&dateb=&owner=include&count=40")
+                if w["id"] not in have:
+                    new.append(w)
+                    out["filing_events"].append(t)
+        except Exception as e:  # noqa: BLE001
+            out["errors"].append(t)
+            log(f"held {t}: filings not read ({type(e).__name__}: {str(e)[:120]})")
+        try:
+            pr = prices(t, now)
+            sig = M.price_signal([(c["date"], c["close"]) for c in pr["closes"]])
+            if sig and sig["date"] == pr["expected_session"] and (sig["sigma_trigger"] or sig["move_trigger"]) and t not in moved:
+                parts = ([f"{sig['z']:+.1f} standard deviations of the 60 sessions before in one session"] if sig["sigma_trigger"] and sig["z"] is not None else []) \
+                    + ([f"{sig['move']:+.0%} over {M.PRICE_MOVE_SESSIONS} sessions"] if sig["move_trigger"] else [])
+                move = sig["move"] if sig["move_trigger"] else sig["z"]
+                w = code_warning(t, day, "price_move", sig["date"], False, "worse" if (move or 0) < 0 else "better",
+                                 f"The price moved {' and '.join(parts) or 'sharply'} to the close of {sig['date']}. Code found it; no reader judged it.",
+                                 f"Large price move to {sig['date']}", rep, stocks)
+                if w["id"] not in have:
+                    new.append(w)
+                    out["price_moves"].append(t)
+        except Exception as e:  # noqa: BLE001
+            out["errors"].append(t)
+            log(f"held {t}: prices not read ({type(e).__name__}: {str(e)[:120]})")
+    if new:
+        WARNINGS.parent.mkdir(parents=True, exist_ok=True)
+        with WARNINGS.open("a", encoding="utf-8") as f:
+            for w in new:
+                f.write(json.dumps(w, ensure_ascii=False) + "\n")
+    log(f"held: {out['held']} held names, critical filings {out['filing_events']}, price moves {out['price_moves']}, not read {sorted(set(out['errors']))}")
     return out
 
 
@@ -557,7 +668,9 @@ def act(now=None, notify=None, enqueue=None, filed=None):
     first (filed_since: that re-read has a filing to read as well), then the worst direction. The re-read's reading is given the press
     reports as evidence (packet_with_news); its valuation reads filings only. A stock over the day's cap is taken on a later day, for
     REVIEW_DAYS days; one whose report was made after the warning, or that is already in a queue, is settled. Returns {told, queued,
-    over_cap}."""
+    over_cap}.
+    Held names (operator 2026-11-27, H2): a held stock whose warning is worse or unclear is queued ahead of every other stock, inside the
+    same cap. The message leads with held stocks, marked HELD, and also tells a held stock's large price move (not serious: no re-read)."""
     now = now or datetime.now(timezone.utc)
     st = _read(STATE, {}) or {}
     told, settled = set(st.get("told") or []), set(st.get("settled") or [])
@@ -565,6 +678,7 @@ def act(now=None, notify=None, enqueue=None, filed=None):
     since = (now - timedelta(days=REVIEW_DAYS)).strftime("%Y-%m-%d")
     serious = [w for w in warnings_log() if w["serious"] and w["day"] >= since]
     reps = reports()
+    mine = held(reps)
     order = {"worse": 0, "unclear": 1, "better": 2}
     enqueue, filed = enqueue or enqueue_reread, filed or filed_since
     lead = {}                                              # one candidate a stock: its worst open warning
@@ -583,20 +697,26 @@ def act(now=None, notify=None, enqueue=None, filed=None):
             hits[t] = None
     used = sum(1 for d in (st.get("queued_days") or []) if d == day)
     out = {"told": 0, "queued": [], "over_cap": []}
-    for t, w in sorted(lead.items(), key=lambda kv: (hits[kv[0]] is None, order[kv[1]["direction"]], kv[1]["day"], kv[0])):
+    for t, w in sorted(lead.items(), key=lambda kv: (not (kv[0] in mine and kv[1]["direction"] != "better"), hits[kv[0]] is None,
+                                                     order[kv[1]["direction"]], kv[1]["day"], kv[0])):
         if used + len(out["queued"]) >= REREADS_A_DAY:
             out["over_cap"].append(t)
             continue
         if enqueue(w, hits[t]):
             out["queued"].append(t)
         settled.update(x["id"] for x in serious if x["ticker"] == t)          # queued now, or already in a queue
-    fresh = sorted((w for w in serious if w["id"] not in told), key=lambda w: (order[w["direction"]], w["day"], w["ticker"]))
+    moves = [w for w in warnings_log() if w.get("kind") == "price_move" and w["day"] >= since and w["ticker"] in mine]
+    fresh = sorted((w for w in serious + moves if w["id"] not in told),
+                   key=lambda w: (w["ticker"] not in mine, not w["serious"], order[w["direction"]], w["day"], w["ticker"]))
     if fresh:
         first = {}                                          # one line a stock: its first (worst) warning, and how many more it has
         for w in fresh:
             first.setdefault(w["ticker"], (w, sum(x["ticker"] == w["ticker"] for x in fresh) - 1))
-        lines = [f"News watch {day}: {len(fresh)} serious warnings on {len(first)} stocks"] + [
-            f"{t} ({w['direction']}): {w['headline']} | {w['why']}" + (f" (+{more} more)" if more else "") for t, (w, more) in list(first.items())[:TELL_STOCKS]]
+        n_serious, n_held = sum(w["serious"] for w in fresh), sum(t in mine for t in first)
+        lines = [f"News watch {day}: {n_serious} serious warnings on {len({w['ticker'] for w in fresh if w['serious']})} stocks"
+                 + (f"; {n_held} held stocks in this message" if n_held else "")] + [
+            ("HELD " if t in mine else "") + f"{t} ({w['direction']}): {w['headline']} | {w['why']}" + (f" (+{more} more)" if more else "")
+            for t, (w, more) in list(first.items())[:TELL_STOCKS]]
         if len(first) > TELL_STOCKS:
             lines.append(f"and {len(first) - TELL_STOCKS} more stocks (all are on the site)")
         if out["queued"]:
@@ -657,7 +777,7 @@ def track(now=None, prices=None):
             continue
         cs = closes[t]
         i = next((k for k, (d, _) in enumerate(cs) if d >= w["day"]), None)
-        row = {"ticker": t, "day": w["day"], "serious": w["serious"], "direction": w["direction"],
+        row = {"ticker": t, "day": w["day"], "serious": w["serious"], "direction": w["direction"], "held": w.get("held"), "kind": w.get("kind", "news"),
                "before": cs[i - 1][1] if i else (cs[-1][1] if i is None else None), "at": None if i is None else cs[i][1]}
         for n in TRACK_SESSIONS:
             row[f"after_{n}"] = cs[i + n][1] if i is not None and i + n < len(cs) else None
@@ -684,7 +804,8 @@ def evidence_rows(ticker, T, fetch=None, log_rows=None):
     fetch = fetch or M.online_article
     day_T = str(T)[:10]
     cut = (datetime.strptime(day_T, "%Y-%m-%d") - timedelta(days=KNOWN_WARNING_DAYS)).strftime("%Y-%m-%d")
-    mine = [w for w in (warnings_log() if log_rows is None else log_rows) if w["ticker"] == ticker and cut <= w["day"] <= day_T and w.get("url")]
+    mine = [w for w in (warnings_log() if log_rows is None else log_rows)
+            if w["ticker"] == ticker and cut <= w["day"] <= day_T and w.get("url") and w.get("kind", "news") == "news"]
     mine.sort(key=lambda w: w["day"], reverse=True)
     mine.sort(key=lambda w: not w["serious"])
     rows, ids, seen = [], [], set()
@@ -800,6 +921,10 @@ def morning(limit=None):
         finally:
             marker.unlink(missing_ok=True)
         check(limit)
+        try:
+            held_signals()
+        except Exception as e:  # noqa: BLE001  the code signals are an addition: their failure stops neither the telling nor the re-reads
+            log(f"held signals failed: {type(e).__name__}: {str(e)[:160]}")
         act()
         try:
             track()

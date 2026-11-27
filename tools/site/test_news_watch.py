@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import news_watch as N  # noqa: E402
 
 DAY = "2026-11-25"
+REAL_HELD = N.held
 NOW = datetime(2026, 11, 25, 21, 0, tzinfo=timezone.utc)
 
 
@@ -43,6 +44,7 @@ def home(tmp_path, monkeypatch):
                       ("STATE", "state.json"), ("USAGE", "usage.jsonl"), ("LOG", "log"), ("TRACK", "track.json")):
         monkeypatch.setattr(N, name, tmp_path / sub if sub else tmp_path)
     monkeypatch.setattr(N, "reports", lambda: {"AAA": report()})
+    monkeypatch.setattr(N, "held", lambda reps=None: set())           # no stock is held unless a test says so (holding)
     monkeypatch.setattr(N, "companies", lambda: {"AAA": "Alpha Corp"})
     monkeypatch.setattr(N, "last_close", lambda t, stocks=None: 12.5)
     monkeypatch.setattr(N.paths, "resolve", lambda key: tmp_path / "screener")
@@ -326,8 +328,8 @@ def test_the_track_record_logs_the_closes_around_a_warning_as_they_come(home):
             raise RuntimeError("no completed-session close")
         return {"closes": [{"date": d, "close": 10.0 + k} for k, d in enumerate(days)]}
     out = N.track(now=NOW, prices=prices)
-    assert out == {"w1": {"ticker": "AAA", "day": "2026-11-24", "serious": True, "direction": "worse", "before": 11.0, "at": 12.0,
-                          "after_1": 13.0, "after_20": None, "after_60": None}}          # the stock with no prices waits for the next run
+    assert out == {"w1": {"ticker": "AAA", "day": "2026-11-24", "serious": True, "direction": "worse", "held": None, "kind": "news",
+                          "before": 11.0, "at": 12.0, "after_1": 13.0, "after_20": None, "after_60": None}}   # the stock with no prices waits for the next run
     days += [f"2026-12-{d:02d}" for d in range(1, 21)]
     assert N.track(now=NOW, prices=prices)["w1"]["after_20"] == 10.0 + 22
 
@@ -456,3 +458,171 @@ def test_a_shell_page_or_another_page_is_not_the_article():
     assert not N.is_article("MSN", headline) and not N.is_article(None, headline)
     assert not N.is_article("Cookie settings and navigation. " * 60, headline)
     assert N.is_article("Alpha Corp said its largest customer left for a rival. " + "More of the report. " * 40, headline)
+
+
+# ------------------------------------------------------------ held names (PLAN_held_names_monitor_2026-11-27)
+def holding(monkeypatch, *tickers):
+    monkeypatch.setattr(N, "held", lambda reps=None: set(tickers))
+
+
+def test_held_is_the_watched_stocks_the_published_overlay_rates_buy(home, monkeypatch):
+    monkeypatch.setattr(N, "held", REAL_HELD)
+    monkeypatch.setattr(N.G, "OVERLAY", home / "overlay.json")
+    reps = {t: report(t) for t in ("AAA", "BBB", "CCC")}
+    assert N.held(reps) == set()                                                           # no overlay file: nothing is held
+    N._write(home / "overlay.json", {"tickers": {"AAA": {"verdict": "BUY", "analysis": "complete"}, "BBB": {"verdict": "WATCH", "analysis": "complete"},
+                                                 "CCC": {"verdict": "BUY", "analysis": "not run"}, "ZZZ": {"verdict": "BUY", "analysis": "complete"}}})
+    assert N.held(reps) == {"AAA"}                                                         # not WATCH, not a stock never analysed, not an unwatched stock
+
+
+def test_a_held_stock_whose_warning_is_worse_or_unclear_is_queued_first_inside_the_same_cap(home, monkeypatch):
+    acting(home, monkeypatch, ["AAA", "BBB", "CCC", "DDD", "EEE"])
+    holding(monkeypatch, "BBB", "CCC", "DDD")
+    for t, wid, d in (("AAA", "a1", "worse"), ("BBB", "b1", "worse"), ("CCC", "c1", "better"), ("DDD", "d1", "unclear"), ("EEE", "e1", "worse")):
+        warn(home, t, wid, direction=d)
+    queued, told = [], []
+
+    def enqueue(w, hit):
+        queued.append(w["ticker"])
+        return True
+    out = N.act(now=NOW, notify=lambda text: told.append(text) or True, enqueue=enqueue, filed=lambda t, since, now: HIT if t == "AAA" else None)
+    # held and not better first (BBB worse, DDD unclear), then the others as before: the one that has filed, then worst first
+    assert queued == ["BBB", "DDD", "AAA"] and out["over_cap"] == ["EEE", "CCC"] and len(queued) == N.REREADS_A_DAY
+    lines = told[0].splitlines()
+    assert lines[0] == f"News watch {DAY}: 5 serious warnings on 5 stocks; 3 held stocks in this message"
+    assert [ln.split(" (")[0] for ln in lines[1:6]] == ["HELD BBB", "HELD DDD", "HELD CCC", "AAA", "EEE"]
+
+
+def test_with_no_held_stock_the_order_and_the_message_are_as_before(home, monkeypatch):
+    acting(home, monkeypatch, ["AAA", "BBB"])
+    warn(home, "AAA", "a1", direction="unclear")
+    warn(home, "BBB", "b1")
+    told = []
+    out = N.act(now=NOW, notify=lambda text: told.append(text) or True, enqueue=lambda w, hit: True, filed=lambda t, since, now: None)
+    assert out["queued"] == ["BBB", "AAA"] and told[0].splitlines()[0] == f"News watch {DAY}: 2 serious warnings on 2 stocks" and "HELD" not in told[0]
+
+
+def code_warn(home, ticker, kind, key, serious, direction):
+    w = N.code_warning(ticker, DAY, kind, key, serious, direction, "why " + key, "headline " + key, report(ticker), None)
+    with (home / "warnings.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(w) + "\n")
+    return w
+
+
+def test_a_held_stocks_price_move_is_told_once_and_queues_no_re_read(home, monkeypatch):
+    acting(home, monkeypatch, ["AAA", "BBB"])
+    holding(monkeypatch, "AAA")
+    code_warn(home, "AAA", "price_move", "2026-11-24", False, "worse")
+    code_warn(home, "BBB", "price_move", "2026-11-24", False, "worse")           # no longer held: not told
+    told = []
+    out = N.act(now=NOW, notify=lambda text: told.append(text) or True, enqueue=never, filed=never)
+    assert out == {"told": 1, "queued": [], "over_cap": []}
+    assert told[0].splitlines()[:2] == [f"News watch {DAY}: 0 serious warnings on 0 stocks; 1 held stocks in this message",
+                                        "HELD AAA (worse): headline 2026-11-24 | why 2026-11-24"]
+    assert N.act(now=NOW, notify=never, enqueue=never, filed=never)["told"] == 0
+    news, review = N.for_site(report(), N.warnings_log(), now=NOW)
+    assert [w["serious"] for w in news] == [False] and review is None                # shown on the stock's page, the stock is not under review
+
+
+def test_critical_filings_are_the_8_ks_with_a_critical_item_since_the_report(home):
+    keys = ("accessionNumber", "form", "filingDate", "acceptanceDateTime", "reportDate", "items", "primaryDocument")
+    rows = [("A-6", "10-Q", "2026-11-21", "2026-11-21T14:00:00.000Z", "", "", "d.htm"),
+            ("A-5", "8-K/A", "2026-11-20", "2026-11-20T14:00:00.000Z", "", "1.03", "d.htm"),
+            ("A-4", "8-K", "2026-11-18", "2026-11-18T14:00:00.000Z", "", "4.02,2.06,9.01", "d.htm"),
+            ("A-3", "8-K", "2026-11-17", "2026-11-17T14:00:00.000Z", "", "2.02,9.01", "d.htm"),
+            ("A-2", "8-K", "2026-11-16", "2026-11-16T14:00:00.000Z", "", "", "d.htm"),
+            ("A-1", "8-K", "2026-11-01", "2026-11-01T14:00:00.000Z", "", "3.01", "d.htm")]
+    subs = json.dumps({"filings": {"recent": {k: [r[i] for r in rows] for i, k in enumerate(keys)}}}).encode()
+    since = datetime(2026, 11, 10, tzinfo=timezone.utc)
+    got = N.critical_filings("AAA", since, NOW, get=lambda url: subs, ciks={"AAA": "0000000001"})
+    assert got == [("A-4", "8-K", ["2.06", "4.02"], "0000000001"), ("A-5", "8-K/A", ["1.03"], "0000000001")]      # oldest first; earnings, no item, before the report: none
+    assert N.critical_filings("AAA", datetime(2026, 11, 24, tzinfo=timezone.utc), NOW, get=lambda url: subs, ciks={"AAA": "0000000001"}) == []
+    with pytest.raises(ValueError):
+        N.critical_filings("AAA", since, NOW, get=lambda url: subs, ciks={})
+    assert set(N.CRITICAL_ITEMS) == set(N.M.P0_ITEMS)
+
+
+def closes(last, n=70):
+    from datetime import date, timedelta
+    d0 = date(2026, 8, 1)
+    pts = [{"date": (d0 + timedelta(days=k)).isoformat(), "close": 100.0 + (0.5 if k % 2 else -0.5)} for k in range(n)]
+    pts.append({"date": (d0 + timedelta(days=n)).isoformat(), "close": last})
+    return pts
+
+
+def test_held_signals_raise_a_serious_warning_for_a_critical_filing_and_a_plain_one_for_a_price_move(home, monkeypatch):
+    acting(home, monkeypatch, ["AAA", "BBB"])
+    holding(monkeypatch, "AAA")
+    asked = []
+
+    def filings(t, since, now):
+        asked.append(t)
+        return [("A-4", "8-K", ["2.06", "4.02"], "0000000001")]
+
+    def prices(t, now):
+        c = closes(75.0)
+        return {"closes": c, "expected_session": c[-1]["date"]}
+    out = N.held_signals(now=NOW, filings=filings, prices=prices)
+    assert asked == ["AAA"] and out == {"held": 1, "filing_events": ["AAA"], "price_moves": ["AAA"], "errors": []}       # the stock not held is not looked at
+    f, m = N.warnings_log()
+    assert (f["kind"], f["serious"], f["direction"], f["reader"], f["held"], f["quote"], f["touches"]) == ("filing_event", True, "unclear", "code", True, None, [])
+    assert "item 2.06, a material impairment; item 4.02, earlier financial statements are not to be relied on" in f["why"] and "CIK=0000000001" in f["url"]
+    assert (m["kind"], m["serious"], m["direction"], m["url"]) == ("price_move", False, "worse", None) and "-25% over 5 sessions" in m["why"]
+    assert N.held_signals(now=NOW, filings=filings, prices=prices)["filing_events"] == [] and len(N.warnings_log()) == 2      # nothing is raised twice
+    # the serious one is told and queued as any serious warning; the re-read's press reports do not take a code warning
+    queued = []
+    N.act(now=NOW, notify=lambda text: True, enqueue=lambda w, hit: queued.append((w["ticker"], w["kind"])) or True, filed=lambda t, since, now: HIT)
+    assert queued == [("AAA", "filing_event")]
+    assert N.evidence_rows("AAA", "2026-11-25T21:00:00Z", fetch=never, log_rows=N.warnings_log()) == ([], [])
+
+
+def test_a_quiet_price_a_lagging_quote_and_an_unreadable_source_raise_nothing(home, monkeypatch):
+    holding(monkeypatch, "AAA")
+    none = lambda t, since, now: []                                                  # noqa: E731
+    quiet = closes(100.5)
+    assert N.held_signals(now=NOW, filings=none, prices=lambda t, now: {"closes": quiet, "expected_session": quiet[-1]["date"]})["price_moves"] == []
+    lag = closes(75.0)
+    assert N.held_signals(now=NOW, filings=none, prices=lambda t, now: {"closes": lag, "expected_session": "2026-12-31"})["price_moves"] == []
+
+    def broken(*a):
+        raise OSError("unreachable")
+    out = N.held_signals(now=NOW, filings=broken, prices=broken)
+    assert out["errors"] == ["AAA", "AAA"] and N.warnings_log() == []
+
+
+def test_a_readers_warning_says_whether_the_stock_was_held_and_the_record_keeps_it(home, monkeypatch):
+    gathered(home)
+    holding(monkeypatch, "AAA")
+    N.check(now=NOW, reader="ollama:m", ollama=lambda m, text, label: json.dumps({"events": [event()]}))
+    w = N.warnings_log()[0]
+    assert w["held"] is True
+    days = ["2026-11-24", "2026-11-25", "2026-11-26"]
+    row = N.track(now=NOW, prices=lambda t, now: {"closes": [{"date": d, "close": 10.0 + k} for k, d in enumerate(days)]})[w["id"]]
+    assert row["held"] is True and row["kind"] == "news"
+
+
+def test_the_checks_token_count_takes_a_row_that_carries_only_its_parts(home):
+    gathered(home)
+
+    def reader(m, text, label):
+        with N.USAGE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"at": "9999-01-01T00:00:00Z", "reader": "sonnet", "input_tokens": 100, "output_tokens": 20, "thinking_tokens": 5}) + "\n")
+            f.write(json.dumps({"at": "9999-01-01T00:00:00Z", "reader": "gemini", "total_tokens": 1000, "input_tokens": 900}) + "\n")
+        return json.dumps({"events": []})
+    out = N.check(now=NOW, reader="ollama:m", ollama=reader)
+    assert (out["calls"], out["tokens"]) == (2, 1125)
+
+
+def test_one_move_is_told_once_and_a_later_move_again(home, monkeypatch):
+    from datetime import timedelta
+    holding(monkeypatch, "AAA")
+    none = lambda t, since, now: []                                                  # noqa: E731
+
+    def prices(last):
+        c = closes(75.0)
+        c[-1]["date"] = last
+        return lambda t, now: {"closes": c, "expected_session": last}
+    assert N.held_signals(now=NOW, filings=none, prices=prices("2026-11-25"))["price_moves"] == ["AAA"]
+    assert N.held_signals(now=NOW + timedelta(days=1), filings=none, prices=prices("2026-11-26"))["price_moves"] == []      # the same move, the next session
+    assert N.held_signals(now=NOW + timedelta(days=6), filings=none, prices=prices("2026-12-01"))["price_moves"] == []
+    assert N.held_signals(now=NOW + timedelta(days=7), filings=none, prices=prices("2026-12-02"))["price_moves"] == ["AAA"]
