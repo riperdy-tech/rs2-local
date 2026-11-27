@@ -197,10 +197,44 @@ def too_long(result, run_dir, attempts):
     return _write(run_dir, result)
 
 
-def messages(packet, rec, prior, retry=None, task=None):
-    """[system, user] (+ the repair turn: the previous reply and what was wrong). The packet is shown with its prices masked."""
+NEWS_VERSION = "decided.news.v1 2026-11-28"     # operator 2026-11-28: a news re-read's valuation is given the press reports and why it was re-read
+
+
+def news_note(cause):
+    """The block a news re-read's valuation request carries after the prior read: what the news check flagged, and how a press report may be used."""
+    return ("WHY THIS RE-READ (written by code)\nThe daily news check raised these warnings on the company after the filings above were read:\n"
+            + ("\n".join(f"- {c}" for c in cause) or "- (no line was recorded)")
+            + "\nThe evidence items of kind news (ids N1, N2, ...) are press reports, not company filings, and no filing may yet confirm them. Judge what "
+              "they report as you judge any evidence. Where a report changes what you expect of the company's revenue, margins, reinvestment or risks, set "
+              "your inputs and ranges for it, cite the news item in that input's reason with an exact quote, and say there that the source is a press "
+              "report. Where a report changes nothing you expect, leave your inputs as the filings support them. A fall or a rise in the share price is "
+              "not by itself a reason to change an input.")
+
+
+def news_shown(news, packet):
+    """The packet a news re-read's valuation is SHOWN and may quote (the SEC packet plus its press reports, as the reading had it); every figure
+    is still prepared from the SEC packet. Refused when it is not the same stock at the same decision time."""
+    shown, _ = runner.load_packet(news["packet"])
+    if (shown["ticker"], shown["decision_time_utc"]) != (packet["ticker"], packet["decision_time_utc"]):
+        raise desk.DeskRefusal("news_packet_mismatch", "the news packet is not this packet with press reports added")
+    return shown
+
+
+def news_record(news, texts, verified):
+    """What a news re-read's valuation did with the press reports: the items it was shown, those a verified quote of a reason cites, and the
+    inputs whose reason cites one."""
+    cited = {k: sorted({q["id"] for q in kept if re.fullmatch(r"N\d+", q["id"])}) for k, (kept, _) in verified.items()}
+    return {"version": NEWS_VERSION, "items": sorted((i for i in texts if re.fullmatch(r"N\d+", i)), key=lambda i: int(i[1:])),
+            "cited": sorted({i for v in cited.values() for i in v}, key=lambda i: int(i[1:])), "inputs": sorted(k for k, v in cited.items() if v),
+            "cause": list(news["cause"])}
+
+
+def messages(packet, rec, prior, retry=None, task=None, note=None):
+    """[system, user] (+ the repair turn: the previous reply and what was wrong). The packet is shown with its prices masked. `note` (a news
+    re-read only): news_note's block, after the prior read."""
     user = "\n\n".join([tasks.render_packet(vtask.mask_price(packet)), rec,
-                        "PRIOR READ (another analyst's notes, unverified; not evidence, not to be quoted)\n" + prior, BASE_RATES, task or TASK])
+                        "PRIOR READ (another analyst's notes, unverified; not evidence, not to be quoted)\n" + prior]
+                       + ([note] if note else []) + [BASE_RATES, task or TASK])
     msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
     if retry:
         prev, problems = retry
@@ -702,8 +736,11 @@ def read_analysis(q1):
 
 
 def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=runner.SEED_BASE, out_root=vrun.RUNS, online=True, root=None,
-          allow_after_T=False, interest_override=None):
-    """One run of the decided method (one decision call, plus one repair turn when a check fails); writes result.json and raw/attempt_<n>.json
+          allow_after_T=False, interest_override=None, news=None):
+    """`news` (a news re-read only; None: exactly as before): {"packet": the path of the same packet with its press reports added, "cause": the
+    warnings' lines}. The reader is then shown that packet and news_note, and may quote a press report in a reason; every figure of the base is
+    still prepared from the SEC packet. `decided.news` records which items the reasons cite.
+    One run of the decided method (one decision call, plus one repair turn when a check fails); writes result.json and raw/attempt_<n>.json
     under out_root. The result has vrun.value's shape (status, values, base, cost_of_equity, checks.prob, stamps, versions) and `decided`.
     A name code refuses before any call is refused as the menu method refuses it. A call that gets no reply raises (the worker's failure path)."""
     packet, src = runner.load_packet(packet_path)
@@ -722,6 +759,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
             raise desk.DeskRefusal("family_not_routed", f"family {family!r}: the decided method values only {FAMILIES}")
         if any(e.get("kind") == "news" for e in packet.get("evidence") or []):         # as vrun.value
             raise desk.DeskRefusal("news_items_not_valued", "the packet holds news items; the valuation reads filings only")
+        shown = news_shown(news, packet) if news else packet
         f, b, bar, record, r, prov, fy_ends = vrun.prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T, family=family,
                                                      interest_override=interest_override, defer_e0=True, decided=True, **(V.PREPARE if V else {}))      # WO_NC8, WO_NC9c
     except desk.DeskRefusal as e:
@@ -733,12 +771,13 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
     code_ev = code_capital_events(cik, runner._parse_t(packet["decision_time_utc"]), b["fy0"], root)
     f_all = facts.build(cik, runner._parse_t(packet["decision_time_utc"]), online=False, root=root, years=ALL_YEARS, substitute_revenue=True, substitute_items=True)
     rec_text, rec = (V.record_text if V else record_text)(f, f_all, b, r, prov)
-    texts = contract.evidence_texts(vtask.mask_price(packet))
+    texts = contract.evidence_texts(vtask.mask_price(shown))
     texts["REC"] = rec_text
     prior, n_kept, n_dropped = prior_read(analysis)
+    note = news_note(news["cause"]) if news else None
     attempts, retry, out, extra = [], None, None, None
     for n in (1, 2):
-        msgs, left_out, fits = fitted(lambda p: messages(packet, rec_text, p, retry, V.TASK if V else None), prior)
+        msgs, left_out, fits = fitted(lambda p: messages(shown, rec_text, p, retry, V.TASK if V else None, note), prior)
         if not fits:
             return too_long(result, run_dir, attempts)
         t0 = time.monotonic()
@@ -810,6 +849,10 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
                            "depreciation_kept_rate": base_v["depreciation_kept_rate"]}}
     if V:
         dec[V.KEY] = extra["record"]
+    if news:
+        dec["news"] = news_record(news, texts, verified)
+        if dec["news"]["cited"]:
+            dec["flags"] = flags + [f"press_reports_cited: {', '.join(dec['news']['cited'])} for {', '.join(dec['news']['inputs'])}"]
     result.update(status="ok", values=vals, checks={"prob": dict(checks.PROB), "version": DECIDED_VERSION}, inputs=obj, checked_attempt=n, decided=dec)
     if b.get("tax_fallback"):
         result["tax_range"] = _tax_range(f, b, market_cap, inp, rng, r, vals, cash, offs, ev)

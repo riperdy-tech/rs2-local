@@ -1207,3 +1207,68 @@ def test_the_decided_method_prepares_with_both_options_and_the_second_tax_base_k
     monkeypatch.setattr(D.vrun.inputs, "base", lambda f, **k: seen.update(k) or dict(b))
     D.vrun.alt_tax_base({}, dict(b, tax_fallback={"rate_alt": 0.25}, options={"defer_e0": True, "decided": True}), 180e6)
     assert seen["defer_e0"] is True and seen["decided"] is True and seen["tau_override"] == 0.25
+
+
+# ---- a news re-read: the valuation is shown the press reports and why the stock is read again (operator 2026-11-28) ----
+
+N_TEXT = "Alpha Corp said its chief executive and founder will step down at once. The board has no successor."
+CAUSE = ["2026-11-17: The founder and chief executive resigned with no successor named. (press report: Alpha founder quits)"]
+
+
+def news_packet(tmp_path, **over):
+    pk = copy.deepcopy(PK)
+    pk["evidence"].append({"fact_id": "N1", "kind": "news", "title": "Alpha founder quits", "form": None, "period": None,
+                           "effective_at": "2026-11-17T12:00:00Z", "source": {"label": "secondary", "publisher": "wire", "url": "https://news.example/a"},
+                           "text": N_TEXT})
+    pk.update(over)
+    f = tmp_path / "packet_news.json"
+    f.write_text(json.dumps(pk), encoding="utf-8")
+    return {"packet": str(f), "cause": CAUSE}
+
+
+def test_without_news_the_request_and_the_record_are_as_before(tmp_path, monkeypatch):
+    packet, b, bar, sent, prepared = arrange(tmp_path, monkeypatch, [reply()])
+    res = run(tmp_path, packet)
+    assert "WHY THIS RE-READ" not in sent[0][1]["content"] and "news" not in res["decided"] and D.messages(PK, "REC", "p") == D.messages(PK, "REC", "p", note=None)
+
+
+def test_a_news_re_read_is_shown_the_press_reports_and_the_cause_and_may_quote_a_report(tmp_path, monkeypatch):
+    news = news_packet(tmp_path)
+    r = reply()
+    r["reasons"]["rev_growth"] = {"why": "A press report says the founder left with no successor, so growth is set lower.",
+                                  "quotes": [{"id": "N1", "quote": "chief executive and founder will step down at once"}]}
+    packet, b, bar, sent, prepared = arrange(tmp_path, monkeypatch, [r])
+    res = run(tmp_path, packet, news=news)
+    u = sent[0][1]["content"]
+    assert res["status"] == "ok" and N_TEXT in u and "WHY THIS RE-READ (written by code)" in u and CAUSE[0] in u
+    assert u.index("PRIOR READ") < u.index("WHY THIS RE-READ") < u.index("BASE RATES")
+    assert "are press reports, not company filings" in u and "A fall or a rise in the share price is not by itself a reason to change an input." in u
+    n = res["decided"]["news"]
+    assert n == {"version": D.NEWS_VERSION, "items": ["N1"], "cited": ["N1"], "inputs": ["rev_growth"], "cause": CAUSE}
+    assert "press_reports_cited: N1 for rev_growth" in res["decided"]["flags"]
+    assert res["decided"]["reasons"]["rev_growth"]["quotes"] == [{"id": "N1", "quote": "chief executive and founder will step down at once"}]
+    assert res["base"] == b and len(prepared) == 1                                  # every figure of the base is the SEC packet's
+
+
+def test_a_quote_that_is_not_in_the_press_report_fails_as_any_other_and_an_uncited_report_is_recorded_as_such(tmp_path, monkeypatch):
+    news = news_packet(tmp_path)
+    bad = reply()
+    bad["reasons"]["rev_growth"] = {"why": "w", "quotes": [{"id": "N1", "quote": "words the report does not hold"}]}
+    packet, b, bar, sent, prepared = arrange(tmp_path, monkeypatch, [bad, reply()])
+    res = run(tmp_path, packet, news=news)
+    assert res["attempts"][0]["problems"] == ["reasons.rev_growth has no quote found word for word in the item it cites"] and res["status"] == "ok"
+    assert res["decided"]["news"]["cited"] == [] and res["decided"]["news"]["inputs"] == [] and res["decided"]["news"]["items"] == ["N1"]
+    assert not [f for f in res["decided"]["flags"] if f.startswith("press_reports_cited")]
+
+
+def test_a_news_packet_of_another_stock_or_time_is_refused_without_a_call(tmp_path, monkeypatch):
+    packet, b, bar, sent, prepared = arrange(tmp_path, monkeypatch, [reply()])
+    for over in ({"ticker": "OTHER"}, {"decision_time_utc": "2026-11-19T00:00:00Z"}):
+        res = run(tmp_path, packet, news=news_packet(tmp_path, **over))
+        assert (res["status"], res["reason"]) == ("no_call", "news_packet_mismatch") and sent == []
+
+
+def test_the_news_note_is_pinned():
+    """What a news re-read's valuation is told is versioned with NEWS_VERSION: re-pin this hash and move the version together."""
+    assert D.NEWS_VERSION == "decided.news.v1 2026-11-28"
+    assert hashlib.sha256(D.news_note(["x"]).encode()).hexdigest() == "3e3515eb868f3a9018f1ab676f5d4ef7675e6a1f6a092f6ec87f7075a5b42c30"

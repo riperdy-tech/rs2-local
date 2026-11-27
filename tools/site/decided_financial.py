@@ -88,10 +88,11 @@ def record_text(f, b, bar, r, prov):
     return "\n".join(lines), {"roe": dict(rec["roe"]), "growth": dict(rec["book_growth"])}
 
 
-def messages(packet, rec, prior, retry=None):
-    """[system, user] (+ the repair turn: the previous reply and what was wrong). The packet is shown with its prices masked."""
+def messages(packet, rec, prior, retry=None, note=None):
+    """[system, user] (+ the repair turn: the previous reply and what was wrong). The packet is shown with its prices masked. `note` (a news
+    re-read only): D.news_note's block, after the prior read."""
     user = "\n\n".join([tasks.render_packet(vtask.mask_price(packet)), rec,
-                        "PRIOR READ (another analyst's notes, unverified; not evidence, not to be quoted)\n" + prior, TASK])
+                        "PRIOR READ (another analyst's notes, unverified; not evidence, not to be quoted)\n" + prior] + ([note] if note else []) + [TASK])
     msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
     if retry:
         prev, problems = retry
@@ -245,8 +246,9 @@ def flags_of(obj, rec, verified, vals):
 
 # ---------------------------------------------------------------- one run
 def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=runner.SEED_BASE, out_root=vrun.RUNS, online=True, root=None,
-          allow_after_T=False, interest_override=None):
-    """One run of the decided method for a financial name (one decision call, plus one repair turn when a check fails); writes result.json and
+          allow_after_T=False, interest_override=None, news=None):
+    """`news`: as decided_value.value's (a news re-read only; None: exactly as before).
+    One run of the decided method for a financial name (one decision call, plus one repair turn when a check fails); writes result.json and
     raw/attempt_<n>.json under out_root. The result has vrun.value's shape (status, values, base, cost_of_equity, checks.prob, stamps, versions) and
     `decided`. A name code refuses before any call is refused as the menu method refuses it. A call that gets no reply raises (the worker's failure path)."""
     packet, src = runner.load_packet(packet_path)
@@ -262,6 +264,7 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
             raise desk.DeskRefusal("family_not_routed", f"family {family!r}: the decided financial method values only {FAMILIES}")
         if any(e.get("kind") == "news" for e in packet.get("evidence") or []):         # as vrun.value
             raise desk.DeskRefusal("news_items_not_valued", "the packet holds news items; the valuation reads filings only")
+        shown = D.news_shown(news, packet) if news else packet
         f, b, bar, record, r, prov, fy_ends = vrun.prepare(packet, cik, sector, market_cap, online=online, root=root, allow_after_T=allow_after_T, family=family,
                                                      interest_override=interest_override, decided=True)
     except desk.DeskRefusal as e:
@@ -271,12 +274,13 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
                   stamps=b["stamps"] + prov.get("stamps", []) + list(checks.FIN_STAMPS))     # capital_constraint_not_modeled: as the menu route
     old_value, old_how = old_defaults(b, bar, r)                       # code only: before any call
     rec_text, rec = record_text(f, b, bar, r, prov)
-    texts = contract.evidence_texts(vtask.mask_price(packet))
+    texts = contract.evidence_texts(vtask.mask_price(shown))
     texts["REC"] = rec_text
     prior, n_kept, n_dropped = D.prior_read(analysis)
+    note = D.news_note(news["cause"]) if news else None
     attempts, retry, out = [], None, None
     for n in (1, 2):
-        msgs, left_out, fits = D.fitted(lambda p: messages(packet, rec_text, p, retry), prior)
+        msgs, left_out, fits = D.fitted(lambda p: messages(shown, rec_text, p, retry, note), prior)
         if not fits:
             return D.too_long(result, run_dir, attempts)
         t0 = time.monotonic()
@@ -327,6 +331,10 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
            "prior_read_claims": {"kept": n_kept, "dropped_unsupported": n_dropped},
            "diagnostics": {"equity_value": base_v["equity_value"], "tv_share": base_v["tv_pv"] / base_v["equity_value"] if base_v["equity_value"] else None,
                            "seam_ratio": base_v["seam_ratio"], "implied_pb": vals["base"] / (b["R1"] / b["shares"])}}
+    if news:
+        dec["news"] = D.news_record(news, texts, verified)
+        if dec["news"]["cited"]:
+            dec["flags"] = flags + [f"press_reports_cited: {', '.join(dec['news']['cited'])} for {', '.join(dec['news']['inputs'])}"]
     result.update(status="ok", values=vals, checks={"prob": dict(checks.PROB), "version": DECIDED_VERSION}, inputs=obj, checked_attempt=n, decided=dec)
     return D._write(run_dir, result)
 

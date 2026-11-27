@@ -22,9 +22,11 @@ so it should be a variable thing"): it is what the stock's own analysis named, o
 message. A serious warning queues its stock for a re-read in the worker's filing queue, at most REREADS_A_DAY stocks a day, a stock whose
 company has filed since its report first. THE RE-READ (gemini_ondemand.analyze, a queue reason news:...): the reading is run on the SEC
 packet plus the press reports of the stock's warnings as items of kind news (packet_with_news; qwen_c tells the reader they are press
-reports and checks their quotes like any other); the valuation is run on the SEC packet alone and is given the reading without its
-news-cited claims (without_news_claims), so the number moves only on filings. Monitoring never sells and moves no money (operator
-2026-10-01).
+reports and checks their quotes like any other). Since 2026-11-28 (operator: a large event decides a stock's direction, the re-read is to
+see it and re-value) the decided valuation of that re-read is shown the same press reports and the warnings' lines (cause_lines,
+decided_value.news_note) and may change an input for a report it quotes; every figure of its base still comes from the filings, and the
+report says which inputs cite a press report (`news_read.in_value`). The older menu valuation still reads filings only
+(without_news_claims). Monitoring never sells and moves no money (operator 2026-10-01).
 
 HELD NAMES (operator 2026-11-27; stocks-workspace/docs/PLAN_held_names_monitor_2026-11-27.md). A stock is held when the published overlay
 rates it BUY (held(): the AI book holds every such stock). For held names only, and by code alone (held_signals, between check and act):
@@ -852,6 +854,12 @@ def packet_with_news(ticker, packet_path, fetch=None):
         return str(packet_path), None
     return str(path), {"warnings": ids, "rows": out["news"]["rows_used"], "rows_left_out": out["news"]["rows_left_out"],
                        "text_from": [r["text_from"] for r in rows], "evidence_file": f.name}
+
+
+def cause_lines(ids, log_rows=None):
+    """One line a warning, for the valuation of a news re-read (decided_value.news_note): the day, what the check said, the headline."""
+    rows = {w["id"]: w for w in (warnings_log() if log_rows is None else log_rows)}
+    return [f"{w['day']}: {w['why']} (press report: {w['headline']})" for w in (rows.get(i) for i in ids) if w]
 
 
 def without_news_claims(analysis):

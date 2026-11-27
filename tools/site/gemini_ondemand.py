@@ -338,7 +338,7 @@ def analyze(t, source):
     t0 = time.time()
     STATE["label"] = f"{t}:q1"
     read_packet, news_read = packet, None
-    if source.startswith("news:"):              # news_watch: the reading also gets the press reports of the stock's warnings; the valuation does not
+    if source.startswith("news:"):              # news_watch: the reading gets the press reports of the stock's warnings; so does the decided valuation (2026-11-28)
         import news_watch
         read_packet, news_read = news_watch.packet_with_news(t, packet)
         log(f"{t} news re-read: {news_read or 'no press report added'}")
@@ -394,18 +394,20 @@ def analyze(t, source):
     results = {}
     use_decided = decided() and (n["family"] in decided_value.FAMILIES + decided_financial.FAMILIES or n["family"] in decided_value.VARIANTS)      # WO_NC7, WO_NC9b: every other family keeps the menu; WO_NC9c: real estate
     an = decided_value.read_analysis(q1) if use_decided else None
-    if an and news_read:
-        an = news_watch.without_news_claims(an)       # the valuation is given the reading without its news-cited claims: it reads filings only
+    # operator 2026-11-28: the decided valuation of a news re-read is shown the press reports and why the stock is read again (it keeps the
+    # reading's news-cited notes). The menu valuation is not: it refuses a packet that holds news.
+    nw = {"news": {"packet": read_packet, "cause": news_watch.cause_lines(news_read["warnings"])}} if news_read and use_decided else {}
     for seed in (() if why_reason else Q.SEEDS):
         STATE["label"] = f"{t}:value{seed}"
         if use_decided:
-            res = (decided_financial if n["family"] in decided_financial.FAMILIES else decided_value).value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), analysis=an, seed=seed, out_root=out_root, **ov)
+            res = (decided_financial if n["family"] in decided_financial.FAMILIES else decided_value).value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), analysis=an, seed=seed, out_root=out_root, **ov, **nw)
         else:
             res = vrun.value(packet, str(cik), str(n["sector"]), float(n["market_cap"] or 0), family=str(n["family"]), seed=seed, out_root=out_root, **ov)
         results[str(seed)] = res
         log(f"{t} value seed {seed} {res.get('status')} {res.get('reason') or ''}")
     if why_reason:
         results["loss_record"] = {"status": "no_call", "reason": why_reason}
+    prev = json.loads((ONDEMAND / f"{t}.json").read_text(encoding="utf-8")) if (ONDEMAND / f"{t}.json").exists() else {}        # the report this one replaces
     rep = Q.report(t, source, T, q1, n, results, commit, **ov)
     rep["model"] = GEM_MODEL
     rep["based_on"] = based_on(pkj)                                        # NC10b
@@ -415,6 +417,11 @@ def analyze(t, source):
     elif source.startswith("news:"):                                       # news_watch: a serious news warning
         rep["source"] = f"news warning ({source})"
         rep["news_read"] = news_read
+        if nw:                                  # what the valuation did with the press reports, and the value before this re-read
+            used = {s: (results[s].get("decided") or {}).get("news") for s in map(str, Q.SEEDS) if isinstance(results.get(s), dict)}
+            rep["news_read"] = dict(news_read, in_value={"inputs": sorted({k for u in used.values() if u for k in u["inputs"]}),
+                                                         "runs_citing": sum(1 for u in used.values() if u and u["cited"]), "runs": len(used),
+                                                         "value_before": (prev.get("value_per_filed_share") or {}).get("base")})
     if why:
         rep["loss_record"] = why
     if ifl:
