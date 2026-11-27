@@ -1244,7 +1244,7 @@ def test_a_news_re_read_is_shown_the_press_reports_and_the_cause_and_may_quote_a
     assert u.index("PRIOR READ") < u.index("WHY THIS RE-READ") < u.index("BASE RATES")
     assert "are press reports, not company filings" in u and "A fall or a rise in the share price is not by itself a reason to change an input." in u
     n = res["decided"]["news"]
-    assert n == {"version": D.NEWS_VERSION, "items": ["N1"], "cited": ["N1"], "inputs": ["rev_growth"], "cause": CAUSE}
+    assert n == {"version": D.NEWS_VERSION, "items": ["N1"], "cited": ["N1"], "inputs": ["rev_growth"], "cause": CAUSE, "left_out_for_length": []}
     assert "press_reports_cited: N1 for rev_growth" in res["decided"]["flags"]
     assert res["decided"]["reasons"]["rev_growth"]["quotes"] == [{"id": "N1", "quote": "chief executive and founder will step down at once"}]
     assert res["base"] == b and len(prepared) == 1                                  # every figure of the base is the SEC packet's
@@ -1293,3 +1293,27 @@ def test_the_news_arm_has_room_at_half_its_weekly_allowance_and_above_its_five_h
         assert (G.NEWS_ARM, G.NEWS_ARM_WEEKLY_FLOOR) == ("sonnet", 0.50)
     finally:
         G.set_arm("gemini")
+
+
+def test_a_news_re_read_too_long_for_the_channel_loses_its_last_press_reports_and_keeps_its_value(tmp_path, monkeypatch):
+    news = news_packet(tmp_path)
+    pk = json.loads(open(news["packet"], encoding="utf-8").read())
+    pk["evidence"].append(dict(pk["evidence"][-1], fact_id="N2", title="A second report", text="Second report. " + "x" * 4000))
+    open(news["packet"], "w", encoding="utf-8").write(json.dumps(pk))
+    packet, b, bar, sent, prepared = arrange(tmp_path, monkeypatch, [reply(), reply(), reply()])
+    whole = run(tmp_path, packet, news=news)
+    size = sum(len(m["content"].encode("utf-8")) for m in sent[0])
+    assert whole["decided"]["news"]["items"] == ["N1", "N2"] and whole["decided"]["news"]["left_out_for_length"] == []
+    del sent[:]
+    monkeypatch.setattr(D.runner, "PROMPT_BYTE_LIMIT", size - 2000, raising=False)       # N2 does not fit; N1 does
+    res = run(tmp_path, packet, news=news)
+    u = sent[0][1]["content"]
+    size_one = sum(len(m["content"].encode("utf-8")) for m in sent[0])
+    assert res["status"] == "ok" and N_TEXT in u and "Second report." not in u and CAUSE[0] in u
+    assert res["decided"]["news"]["items"] == ["N1"] and res["decided"]["news"]["left_out_for_length"] == ["N2"]
+    assert "press_reports_left_out_for_length: N2" in res["decided"]["flags"]
+    del sent[:]
+    monkeypatch.setattr(D.runner, "PROMPT_BYTE_LIMIT", size_one - 50, raising=False)       # neither fits: as without news, the cause kept
+    res = run(tmp_path, packet, news=news)
+    assert res["status"] == "ok" and N_TEXT not in sent[0][1]["content"] and CAUSE[0] in sent[0][1]["content"]
+    assert res["decided"]["news"]["items"] == [] and res["decided"]["news"]["left_out_for_length"] == ["N1", "N2"]

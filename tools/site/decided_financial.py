@@ -274,10 +274,12 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
                   stamps=b["stamps"] + prov.get("stamps", []) + list(checks.FIN_STAMPS))     # capital_constraint_not_modeled: as the menu route
     old_value, old_how = old_defaults(b, bar, r)                       # code only: before any call
     rec_text, rec = record_text(f, b, bar, r, prov)
+    prior, n_kept, n_dropped = D.prior_read(analysis)
+    note, news_out = (D.news_note(news["cause"]) if news else None), []
+    if news:
+        shown, news_out = D.news_that_fits(shown, lambda s, p: messages(s, rec_text, p, None, note), prior)
     texts = contract.evidence_texts(vtask.mask_price(shown))
     texts["REC"] = rec_text
-    prior, n_kept, n_dropped = D.prior_read(analysis)
-    note = D.news_note(news["cause"]) if news else None
     attempts, retry, out = [], None, None
     for n in (1, 2):
         msgs, left_out, fits = D.fitted(lambda p: messages(shown, rec_text, p, retry, note), prior)
@@ -332,9 +334,11 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
            "diagnostics": {"equity_value": base_v["equity_value"], "tv_share": base_v["tv_pv"] / base_v["equity_value"] if base_v["equity_value"] else None,
                            "seam_ratio": base_v["seam_ratio"], "implied_pb": vals["base"] / (b["R1"] / b["shares"])}}
     if news:
-        dec["news"] = D.news_record(news, texts, verified)
+        dec["news"] = D.news_record(news, texts, verified, news_out)
         if dec["news"]["cited"]:
             dec["flags"] = flags + [f"press_reports_cited: {', '.join(dec['news']['cited'])} for {', '.join(dec['news']['inputs'])}"]
+        if news_out:
+            dec["flags"] = dec["flags"] + [f"press_reports_left_out_for_length: {', '.join(news_out)}"]
     result.update(status="ok", values=vals, checks={"prob": dict(checks.PROB), "version": DECIDED_VERSION}, inputs=obj, checked_attempt=n, decided=dec)
     return D._write(run_dir, result)
 

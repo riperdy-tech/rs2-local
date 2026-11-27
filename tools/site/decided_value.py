@@ -220,13 +220,28 @@ def news_shown(news, packet):
     return shown
 
 
-def news_record(news, texts, verified):
-    """What a news re-read's valuation did with the press reports: the items it was shown, those a verified quote of a reason cites, and the
-    inputs whose reason cites one."""
+def news_that_fits(shown, build, prior):
+    """(the packet shown, the ids of the press reports left out). `build(packet, prior text)` gives the first request's messages. A request
+    that is too long even with the notes of the prior read left out (fitted) loses its last press reports until it fits: the filings are what every
+    figure comes from, the warnings' lines (news_note) still say what was reported, and a no-call would take a value the filings alone give
+    (2026-11-28, the first live morning: one stock's value was lost to `request_too_long`). With no press report left it is as without news."""
+    out = []
+    while not fitted(lambda p: build(shown, p), prior)[2]:
+        items = [e for e in shown["evidence"] if e.get("kind") == "news"]
+        if not items:
+            break
+        out.insert(0, items[-1]["fact_id"])
+        shown = dict(shown, evidence=[e for e in shown["evidence"] if e is not items[-1]])
+    return shown, out
+
+
+def news_record(news, texts, verified, left_out=()):
+    """What a news re-read's valuation did with the press reports: the items it was shown, those a verified quote of a reason cites, the
+    inputs whose reason cites one, and the items left out for length (news_that_fits)."""
     cited = {k: sorted({q["id"] for q in kept if re.fullmatch(r"N\d+", q["id"])}) for k, (kept, _) in verified.items()}
     return {"version": NEWS_VERSION, "items": sorted((i for i in texts if re.fullmatch(r"N\d+", i)), key=lambda i: int(i[1:])),
             "cited": sorted({i for v in cited.values() for i in v}, key=lambda i: int(i[1:])), "inputs": sorted(k for k, v in cited.items() if v),
-            "cause": list(news["cause"])}
+            "cause": list(news["cause"]), "left_out_for_length": list(left_out)}
 
 
 def messages(packet, rec, prior, retry=None, task=None, note=None):
@@ -771,10 +786,12 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
     code_ev = code_capital_events(cik, runner._parse_t(packet["decision_time_utc"]), b["fy0"], root)
     f_all = facts.build(cik, runner._parse_t(packet["decision_time_utc"]), online=False, root=root, years=ALL_YEARS, substitute_revenue=True, substitute_items=True)
     rec_text, rec = (V.record_text if V else record_text)(f, f_all, b, r, prov)
+    prior, n_kept, n_dropped = prior_read(analysis)
+    note, news_out = (news_note(news["cause"]) if news else None), []
+    if news:
+        shown, news_out = news_that_fits(shown, lambda s, p: messages(s, rec_text, p, None, V.TASK if V else None, note), prior)
     texts = contract.evidence_texts(vtask.mask_price(shown))
     texts["REC"] = rec_text
-    prior, n_kept, n_dropped = prior_read(analysis)
-    note = news_note(news["cause"]) if news else None
     attempts, retry, out, extra = [], None, None, None
     for n in (1, 2):
         msgs, left_out, fits = fitted(lambda p: messages(shown, rec_text, p, retry, V.TASK if V else None, note), prior)
@@ -850,9 +867,11 @@ def value(packet_path, cik, sector, market_cap, *, family, analysis=None, seed=r
     if V:
         dec[V.KEY] = extra["record"]
     if news:
-        dec["news"] = news_record(news, texts, verified)
+        dec["news"] = news_record(news, texts, verified, news_out)
         if dec["news"]["cited"]:
             dec["flags"] = flags + [f"press_reports_cited: {', '.join(dec['news']['cited'])} for {', '.join(dec['news']['inputs'])}"]
+        if news_out:
+            dec["flags"] = dec["flags"] + [f"press_reports_left_out_for_length: {', '.join(news_out)}"]
     result.update(status="ok", values=vals, checks={"prob": dict(checks.PROB), "version": DECIDED_VERSION}, inputs=obj, checked_attempt=n, decided=dec)
     if b.get("tax_fallback"):
         result["tax_range"] = _tax_range(f, b, market_cap, inp, rng, r, vals, cash, offs, ev)
